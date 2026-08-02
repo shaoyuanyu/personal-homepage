@@ -1,0 +1,12 @@
+# Caddy 反向代理配置
+# TODO: 将 example.com 替换为你的域名，将 umami.example.com 替换为统计子域名
+
+example.com {
+    reverse_proxy web:3000
+    encode gzip
+}
+
+umami.example.com {
+    reverse_proxy umami:3000
+    encode gzip
+}

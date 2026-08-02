@@ -1,0 +1,49 @@
+# 个人资料
+# 所有字段均可按需修改，占位符待用户提供真实内容后替换
+name: YU Shaoyuan
+title:
+  zh: 博士生
+  en: PhD Student
+institution:
+  zh: 某大学 · 计算机学院
+  en: Some University · School of Computer Science
+avatar: /images/avatar.svg # 占位，替换为真实头像
+email: shaoyuanyu@foxmail.com
+location:
+  zh: 中国
+  en: China
+bio:
+  zh: |
+    博士生，研究方向为 AI 安全、大模型可解释性与持续学习。
+    这里是我的个人主页，欢迎交流合作。
+  en: |
+    PhD student interested in AI safety, interpretability of large
+    language models, and continual learning. Welcome to my homepage!
+researchInterests:
+  - key: ai-safety
+    zh: AI 安全
+    en: AI Safety
+  - key: interpretability
+    zh: 大模型可解释性
+    en: LLM Interpretability
+  - key: continual-learning
+    zh: 持续学习
+    en: Continual Learning
+socials:
+  github: https://github.com/ # 占位
+  googleScholar: https://scholar.google.com/ # 占位
+  semanticScholar: https://www.semanticscholar.org/ # 占位
+  orcid: https://orcid.org/ # 占位
+  twitter: https://twitter.com/ # 占位（可选）
+  zhihu: "" # 占位（可选）
+  bilibili: "" # 占位（可选）
+education:
+  - period: 2023 - 至今
+    zh: 计算机科学与技术 · 博士
+    en: PhD in Computer Science
+    institution: Some University
+  - period: 2019 - 2023
+    zh: 计算机科学与技术 · 学士
+    en: B.S. in Computer Science
+    institution: Some University
+experience: [] # 工作/实习经历，占位

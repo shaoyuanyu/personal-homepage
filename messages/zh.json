@@ -1,0 +1,91 @@
+{
+  "nav": {
+    "home": "首页",
+    "publications": "论文",
+    "talks": "报告",
+    "projects": "项目",
+    "blog": "博客",
+    "nav": "导航",
+    "cv": "简历",
+    "menu": "菜单"
+  },
+  "hero": {
+    "hello": "你好，我是",
+    "intro": "博士生，研究方向为 AI 安全、大模型可解释性与持续学习。",
+    "contactMe": "联系我"
+  },
+  "home": {
+    "researchInterests": "研究方向",
+    "interestDescriptions": {
+      "ai-safety": "关注大模型的对齐与安全机制，降低 AI 系统部署风险。",
+      "interpretability": "研究注意力模式与内部表征，让大模型的决策过程可解释。",
+      "continual-learning": "探索缓解灾难性遗忘的方法，使模型可持续学习新知识。"
+    },
+    "publications": "最新论文",
+    "viewAll": "查看全部",
+    "blog": "最新博客",
+    "viewAllBlog": "全部文章",
+    "contact": "联系方式",
+    "email": "邮箱",
+    "location": "所在地",
+    "education": "教育经历"
+  },
+  "publications": {
+    "title": "论文",
+    "description": "已发表论文与预印本",
+    "filter": {
+      "all": "全部",
+      "paper": "会议/期刊",
+      "preprint": "预印本",
+      "year": "年份"
+    },
+    "copyBibtex": "复制 BibTeX",
+    "copied": "已复制到剪贴板",
+    "empty": "暂无论文"
+  },
+  "talks": {
+    "title": "学术报告",
+    "description": "受邀报告、会议演讲与研讨会",
+    "empty": "暂无报告"
+  },
+  "projects": {
+    "title": "项目",
+    "description": "研究与开源项目",
+    "empty": "暂无项目"
+  },
+  "blog": {
+    "title": "博客",
+    "description": "技术笔记与研究思考",
+    "searchPlaceholder": "搜索文章...",
+    "noResults": "未找到相关文章",
+    "readMore": "阅读全文",
+    "tags": "标签",
+    "allTags": "全部",
+    "updated": "更新于",
+    "backToBlog": "返回博客列表"
+  },
+  "navPage": {
+    "title": "学术导航",
+    "description": "常用学术网站与工具",
+    "searchPlaceholder": "搜索网站或工具...",
+    "noResults": "未找到相关链接",
+    "categories": "分类"
+  },
+  "cv": {
+    "title": "简历",
+    "description": "教育经历、科研经历与技能",
+    "download": "下载 PDF",
+    "education": "教育经历",
+    "experience": "经历",
+    "skills": "技能",
+    "contact": "联系方式"
+  },
+  "footer": {
+    "builtWith": "使用 Next.js 与 shadcn/ui 构建",
+    "copyright": "© {year} Yu Shaoyuan. 保留所有权利。"
+  },
+  "misc": {
+    "soon": "即将上线",
+    "loading": "加载中..."
+  }
+}

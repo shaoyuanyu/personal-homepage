@@ -1,0 +1,15 @@
+node_modules
+.next
+.velite
+.git
+.agents
+.github
+*.md
+.eslintrc*
+eslint.config.mjs
+tsconfig.json
+next-env.d.ts
+Dockerfile
+docker-compose.yml
+Caddyfile
+.gitignore
