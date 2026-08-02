@@ -1,0 +1,37 @@
+name: Sync Papers
+
+# 每周自动从 arXiv 拉取新论文，合并到 publications.yaml 并提交 PR
+on:
+  schedule:
+    - cron: "0 4 * * 1" # 每周一 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Sync papers from arXiv
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Sync papers
+        env:
+          # TODO: 配置 arXiv 搜索参数（作者名）
+          ARXIV_AUTHOR: "Yu_Shaoyuan"
+        run: node scripts/sync-papers.mjs
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: sync papers from arXiv"
+          branch: chore/sync-papers
+          title: "📄 论文自动同步"
+          body: |
+            每周自动同步脚本检测到新的 arXiv 论文，请确认后合并。
+          delete-branch: true
+          labels: automation

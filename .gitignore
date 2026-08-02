@@ -38,4 +38,7 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# velite content build output
+/.velite/
 next-env.d.ts

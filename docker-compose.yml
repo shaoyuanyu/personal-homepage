@@ -1,0 +1,61 @@
+# 个人网站 VPS 部署编排：站点 + Umami 统计 + Caddy 反向代理
+# 用法：docker compose up -d --build
+# 部署前请修改 Caddyfile 中的域名
+
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - web
+
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - DATABASE_TYPE=postgresql
+      - DATABASE_URL=postgresql://umami:umami@db:5432/umami
+      - APP_SECRET=change-me-to-a-random-string # TODO: 修改为随机密钥
+    depends_on:
+      - db
+    networks:
+      - web
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=umami
+      - POSTGRES_PASSWORD=umami
+      - POSTGRES_DB=umami
+    volumes:
+      - umami-db:/var/lib/postgresql/data
+    networks:
+      - web
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - web
+
+volumes:
+  umami-db:
+  caddy-data:
+  caddy-config:
+
+networks:
+  web:

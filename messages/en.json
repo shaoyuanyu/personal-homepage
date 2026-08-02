@@ -1,0 +1,91 @@
+{
+  "nav": {
+    "home": "Home",
+    "publications": "Publications",
+    "talks": "Talks",
+    "projects": "Projects",
+    "blog": "Blog",
+    "nav": "Links",
+    "cv": "CV",
+    "menu": "Menu"
+  },
+  "hero": {
+    "hello": "Hi, I'm",
+    "intro": "PhD student interested in AI safety, interpretability of large language models, and continual learning.",
+    "contactMe": "Contact Me"
+  },
+  "home": {
+    "researchInterests": "Research Interests",
+    "interestDescriptions": {
+      "ai-safety": "Studying alignment and safety mechanisms of large models to reduce deployment risks.",
+      "interpretability": "Analyzing attention patterns and internal representations to make LLMs interpretable.",
+      "continual-learning": "Exploring mitigation of catastrophic forgetting for life-long learning."
+    },
+    "publications": "Latest Publications",
+    "viewAll": "View All",
+    "blog": "Latest Posts",
+    "viewAllBlog": "All Posts",
+    "contact": "Contact",
+    "email": "Email",
+    "location": "Location",
+    "education": "Education"
+  },
+  "publications": {
+    "title": "Publications",
+    "description": "Papers and preprints",
+    "filter": {
+      "all": "All",
+      "paper": "Conference/Journal",
+      "preprint": "Preprint",
+      "year": "Year"
+    },
+    "copyBibtex": "Copy BibTeX",
+    "copied": "Copied to clipboard",
+    "empty": "No publications yet"
+  },
+  "talks": {
+    "title": "Talks",
+    "description": "Invited talks, conferences, and seminars",
+    "empty": "No talks yet"
+  },
+  "projects": {
+    "title": "Projects",
+    "description": "Research and open-source projects",
+    "empty": "No projects yet"
+  },
+  "blog": {
+    "title": "Blog",
+    "description": "Technical notes and research thoughts",
+    "searchPlaceholder": "Search posts...",
+    "noResults": "No posts found",
+    "readMore": "Read More",
+    "tags": "Tags",
+    "allTags": "All",
+    "updated": "Updated",
+    "backToBlog": "Back to Blog"
+  },
+  "navPage": {
+    "title": "Academic Links",
+    "description": "Frequently used academic websites and tools",
+    "searchPlaceholder": "Search sites or tools...",
+    "noResults": "No links found",
+    "categories": "Categories"
+  },
+  "cv": {
+    "title": "CV",
+    "description": "Education, experience, and skills",
+    "download": "Download PDF",
+    "education": "Education",
+    "experience": "Experience",
+    "skills": "Skills",
+    "contact": "Contact"
+  },
+  "footer": {
+    "builtWith": "Built with Next.js and shadcn/ui",
+    "copyright": "© {year} Yu Shaoyuan. All rights reserved."
+  },
+  "misc": {
+    "soon": "Coming Soon",
+    "loading": "Loading..."
+  }
+}

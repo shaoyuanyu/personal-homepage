@@ -1,0 +1,153 @@
+# 学术导航链接
+# 占位数据：可自由增删改
+# 字段说明：
+#   group  分组名，支持 zh / en（必填）
+#   links  链接数组：
+#     name  名称（必填）
+#     url   URL（必填）
+#     desc  描述，支持 zh / en（可选）
+#     icon  可选：iconify 图标名，如 "simple-icons:googlescholar"
+groups:
+  - group:
+      zh: 论文搜索
+      en: Paper Search
+    links:
+      - name: Google Scholar
+        url: "https://scholar.google.com/"
+        desc:
+          zh: 学术搜索与引用追踪
+          en: Academic search & citation tracking
+        icon: simple-icons:googlescholar
+      - name: arXiv
+        url: "https://arxiv.org/"
+        desc:
+          zh: 预印本论文库
+          en: Preprint repository
+        icon: simple-icons:arxiv
+      - name: DBLP
+        url: "https://dblp.org/"
+        desc:
+          zh: 计算机科学文献库
+          en: CS bibliography database
+        icon: simple-icons:dblp
+      - name: Semantic Scholar
+        url: "https://www.semanticscholar.org/"
+        desc:
+          zh: AI 驱动的论文检索
+          en: AI-powered paper search
+        icon: simple-icons:semanticscholar
+      - name: Connected Papers
+        url: "https://www.connectedpapers.com/"
+        desc:
+          zh: 论文关联图谱
+          en: Explore paper relationships
+      - name: Paper Digest
+        url: "https://www.paperdigest.org/"
+        desc:
+          zh: 论文摘要与动态
+          en: Paper digests & updates
+  - group:
+      zh: AI 工具
+      en: AI Tools
+    links:
+      - name: ChatGPT
+        url: "https://chat.openai.com/"
+        desc:
+          zh: AI 对话助手
+          en: AI chatbot
+        icon: simple-icons:openai
+      - name: Claude
+        url: "https://claude.ai/"
+        desc:
+          zh: AI 对话助手
+          en: AI chatbot
+        icon: simple-icons:anthropic
+      - name: Hugging Face
+        url: "https://huggingface.co/"
+        desc:
+          zh: 模型与数据集平台
+          en: Models & datasets hub
+        icon: simple-icons:huggingface
+      - name: Perplexity
+        url: "https://www.perplexity.ai/"
+        desc:
+          zh: AI 搜索引擎
+          en: AI search engine
+        icon: simple-icons:perplexity
+  - group:
+      zh: 写作与排版
+      en: Writing & Typesetting
+    links:
+      - name: Overleaf
+        url: "https://www.overleaf.com/"
+        desc:
+          zh: 在线 LaTeX 协作
+          en: Online LaTeX editor
+        icon: simple-icons:overleaf
+      - name: DeepL
+        url: "https://www.deepl.com/"
+        desc:
+          zh: 翻译工具
+          en: Translation tool
+        icon: simple-icons:deepl
+      - name: Grammarly
+        url: "https://www.grammarly.com/"
+        desc:
+          zh: 英文写作校对
+          en: English writing assistant
+        icon: simple-icons:grammarly
+      - name: Latexify
+        url: "https://latexify.cn/"
+        desc:
+          zh: LaTeX 公式手写识别
+          en: Handwriting to LaTeX
+  - group:
+      zh: 代码与数据
+      en: Code & Data
+    links:
+      - name: GitHub
+        url: "https://github.com/"
+        desc:
+          zh: 代码托管
+          en: Code hosting
+        icon: simple-icons:github
+      - name: Papers with Code
+        url: "https://paperswithcode.com/"
+        desc:
+          zh: 论文与代码配套
+          en: Papers with code
+        icon: simple-icons:paperswithcode
+      - name: Kaggle
+        url: "https://www.kaggle.com/"
+        desc:
+          zh: 数据科学竞赛
+          en: Data science competitions
+        icon: simple-icons:kaggle
+      - name: Google Colab
+        url: "https://colab.research.google.com/"
+        desc:
+          zh: 在线笔记本
+          en: Online notebooks
+        icon: simple-icons:googlecolab
+  - group:
+      zh: 其他
+      en: Others
+    links:
+      - name: Zotero
+        url: "https://www.zotero.org/"
+        desc:
+          zh: 文献管理
+          en: Reference management
+        icon: simple-icons:zotero
+      - name: Zhihu
+        url: "https://www.zhihu.com/"
+        desc:
+          zh: 知乎
+          en: Zhihu Q&A
+        icon: simple-icons:zhihu
+      - name: Bilibili
+        url: "https://www.bilibili.com/"
+        desc:
+          zh: 视频学习平台
+          en: Video learning platform
+        icon: simple-icons:bilibili
