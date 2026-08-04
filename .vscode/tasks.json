@@ -1,0 +1,71 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev · 开发服务器（热更新）",
+      "type": "shell",
+      "command": "pnpm dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "build · 生产构建",
+      "type": "shell",
+      "command": "pnpm build",
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    },
+    {
+      "label": "preview · 构建并启动生产服务器",
+      "type": "shell",
+      "command": "pnpm preview",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "start · 启动生产服务器",
+      "type": "shell",
+      "command": "pnpm start",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "lint · 代码检查",
+      "type": "shell",
+      "command": "pnpm lint",
+      "problemMatcher": ["$eslint-stylish"],
+      "group": "build"
+    },
+    {
+      "label": "typecheck · 类型检查",
+      "type": "shell",
+      "command": "pnpm exec tsc --noEmit",
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    },
+    {
+      "label": "content · 重新生成内容层",
+      "type": "shell",
+      "command": "pnpm exec velite --clean",
+      "problemMatcher": []
+    }
+  ]
+}

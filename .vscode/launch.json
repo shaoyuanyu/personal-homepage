@@ -1,0 +1,43 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Next.js: 调试开发服务器",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm dev",
+      "serverReadyAction": {
+        "pattern": "Ready in",
+        "uriFormat": "http://localhost:3000",
+        "action": "openExternally"
+      },
+      "autoAttachChildProcesses": true
+    },
+    {
+      "name": "Next.js: 调试生产服务器",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm start",
+      "serverReadyAction": {
+        "pattern": "Ready in",
+        "uriFormat": "http://localhost:3000",
+        "action": "openExternally"
+      },
+      "autoAttachChildProcesses": true
+    },
+    {
+      "name": "Node: 调试脚本 (scripts/*.mjs)",
+      "type": "node",
+      "request": "launch",
+      "program": "${file}",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Next.js: 开发服务器 + 调试",
+      "configurations": ["Next.js: 调试开发服务器"]
+    }
+  ]
+}
