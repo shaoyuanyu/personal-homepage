@@ -72,7 +72,7 @@ export default function CVPage() {
                   className="absolute top-1.5 left-0 size-2 rounded-full bg-primary/60"
                 />
                 <p className="text-sm font-medium">{item[lang]}</p>
-                <p className="text-sm text-muted-foreground">{item.institution}</p>
+                <p className="text-sm text-muted-foreground">{item.institution[lang]}</p>
                 <p className="font-mono text-xs text-muted-foreground">{item.period}</p>
               </div>
             ))}

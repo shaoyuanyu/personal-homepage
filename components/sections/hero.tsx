@@ -60,14 +60,16 @@ export function Hero() {
           {profile.bio[lang]}
         </p>
 
-        {/* 研究方向 Badge */}
-        <div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
-          {profile.researchInterests.map((interest) => (
-            <Badge key={interest.key} variant="secondary">
-              {interest[lang]}
-            </Badge>
-          ))}
-        </div>
+        {/* 研究方向 Badge（暂无内容时不显示） */}
+        {profile.researchInterests.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+            {profile.researchInterests.map((interest) => (
+              <Badge key={interest.key} variant="secondary">
+                {interest[lang]}
+              </Badge>
+            ))}
+          </div>
+        )}
 
         {/* 社交链接 */}
         <div className="mt-1 flex flex-wrap items-center justify-center gap-1 md:justify-start">

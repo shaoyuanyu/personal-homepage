@@ -11,7 +11,7 @@
   },
   "hero": {
     "hello": "Hi, I'm",
-    "intro": "PhD student interested in AI safety, interpretability of large language models, and continual learning.",
+    "intro": "M.S. student, currently learning.",
     "contactMe": "Contact Me"
   },
   "home": {
@@ -22,6 +22,7 @@
       "continual-learning": "Exploring mitigation of catastrophic forgetting for life-long learning."
     },
     "publications": "Latest Publications",
+    "noPublications": "No publications yet — still learning",
     "viewAll": "View All",
     "blog": "Latest Posts",
     "viewAllBlog": "All Posts",

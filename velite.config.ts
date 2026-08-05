@@ -52,7 +52,7 @@ const profile = defineCollection({
         period: s.string(),
         zh: s.string(),
         en: s.string(),
-        institution: s.string(),
+        institution: s.object({ zh: s.string(), en: s.string() }),
       }),
     ),
     experience: s
@@ -61,7 +61,7 @@ const profile = defineCollection({
           period: s.string(),
           zh: s.string(),
           en: s.string(),
-          institution: s.string(),
+          institution: s.object({ zh: s.string(), en: s.string() }),
         }),
       )
       .default([]),

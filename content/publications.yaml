@@ -1,6 +1,5 @@
 # 出版物列表
-# 占位数据：展示支持的字段与格式，请用真实论文替换
-# 字段说明：
+# 暂无已发表论文。发表后请按以下格式添加：
 #   key       BibTeX 引用 key（必填）
 #   title     论文标题（必填）
 #   authors   作者数组，`*` 后缀标记本人（必填）
@@ -8,47 +7,4 @@
 #   year      年份（必填）
 #   type      paper | preprint | thesis（可选，默认 paper）
 #   url / pdf / doi / arxiv / code / bibtex（可选，有则显示对应按钮）
-publications:
-  - key: example2026a
-    title: "Towards Interpretable Large Language Models: A Case Study on Attention Patterns"
-    authors:
-      - "Yu Shaoyuan*"
-      - "Doe John"
-    venue: NeurIPS 2026
-    year: 2026
-    type: paper
-    url: "#"
-    pdf: "#"
-    doi: "10.0000/example.0001"
-    arxiv: "2501.00000"
-    code: "#"
-  - key: example2025b
-    title: "Safety Alignment for Continual Learning of Language Models"
-    authors:
-      - "Doe John"
-      - "Yu Shaoyuan*"
-    venue: ICML 2025
-    year: 2025
-    type: paper
-    url: "#"
-    doi: "10.0000/example.0002"
-    arxiv: "2405.00000"
-  - key: example2024c
-    title: "Catastrophic Forgetting Revisited: Mitigation Strategies for LLMs"
-    authors:
-      - "Yu Shaoyuan*"
-      - "Smith Jane"
-    venue: ACL 2024
-    year: 2024
-    type: paper
-    url: "#"
-  - key: example2023d
-    title: "A Survey on Robustness of Foundation Models"
-    authors:
-      - "Yu Shaoyuan*"
-      - "Smith Jane"
-      - "Doe John"
-    venue: arXiv preprint
-    year: 2023
-    type: preprint
-    arxiv: "2310.00000"
+publications: []

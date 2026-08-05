@@ -13,7 +13,7 @@ export function generateStaticParams() {
 }
 
 export const alt =
-  "Yu Shaoyuan | AI Safety · LLM Interpretability · Continual Learning";
+  "Yu Shaoyuan | M.S. Student at SUSTech, Dept. of Computer Science and Engineering";
 
 /** Y-Fork 品牌标记（与 app/icon.svg 同一图形） */
 const Y_FORK = (stroke: string) => (
@@ -44,9 +44,11 @@ export default async function OpenGraphImage({
 }) {
   const { locale } = await params;
   const lang = locale === "zh" ? "zh" : "en";
-  const subtitle = profile.researchInterests
-    .map((i) => i[lang])
-    .join("  ·  ");
+  // 暂无研究方向时回退为学历/身份标题
+  const subtitle =
+    profile.researchInterests.length > 0
+      ? profile.researchInterests.map((i) => i[lang]).join("  ·  ")
+      : profile.title[lang];
 
   return new ImageResponse(
     (
