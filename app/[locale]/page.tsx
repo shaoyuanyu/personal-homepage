@@ -12,12 +12,11 @@ import {
 import { Hero } from "@/components/sections/hero";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "@/lib/i18n/navigation";
 import { formatDate } from "@/lib/utils/format";
-import { profile, posts, publications } from "@/lib/data";
+import { profile, posts } from "@/lib/data";
 
 const interestIcons = {
   "ai-safety": ShieldCheckIcon,
@@ -30,7 +29,6 @@ export default function HomePage() {
   const t = useTranslations("home");
   const lang = locale === "zh" ? "zh" : "en";
 
-  const latestPubs = [...publications].sort((a, b) => b.year - a.year).slice(0, 3);
   const latestPosts = posts
     .filter((p) => p.locale === locale)
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -69,47 +67,6 @@ export default function HomePage() {
           </div>
         </section>
       )}
-
-      {/* 最新论文 */}
-      <section className="py-8">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold tracking-tight">{t("publications")}</h2>
-            <Separator className="hidden flex-1 sm:block" />
-          </div>
-          <Button variant="ghost" size="sm" render={<Link href="/publications" />}>
-            {t("viewAll")}
-            <ArrowRightIcon data-icon="inline-end" />
-          </Button>
-        </div>
-        <div className="flex flex-col gap-3">
-          {latestPubs.length > 0 ? (
-            latestPubs.map((pub) => (
-              <Card key={pub.key}>
-                <CardContent className="flex flex-col gap-2 py-4 sm:flex-row sm:items-baseline sm:gap-4">
-                  <span className="w-12 shrink-0 font-mono text-sm text-muted-foreground">{pub.year}</span>
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <Link href={pub.url ?? "#"} className="truncate font-medium hover:underline">
-                      {pub.title}
-                    </Link>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {pub.authors.join(", ")}
-                    </p>
-                    <p className="text-sm text-muted-foreground">{pub.venue}</p>
-                  </div>
-                  {pub.type === "preprint" && <Badge variant="secondary" className="shrink-0">Preprint</Badge>}
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <Empty>
-              <EmptyHeader>
-                <EmptyTitle className="text-sm font-normal">{t("noPublications")}</EmptyTitle>
-              </EmptyHeader>
-            </Empty>
-          )}
-        </div>
-      </section>
 
       {/* 最新博客 */}
       <section className="py-8">
