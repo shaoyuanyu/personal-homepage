@@ -14,16 +14,16 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Yu Shaoyuan | AI Safety & Interpretability",
+    default: "Yu Shaoyuan | M.S. Student",
     template: "%s | Yu Shaoyuan",
   },
   description:
-    "PhD student interested in AI safety, interpretability of large language models, and continual learning.",
+    "M.S. student at SUSTech, Dept. of Computer Science and Engineering. Currently learning.",
   keywords: [
-    "AI Safety",
-    "LLM Interpretability",
-    "Continual Learning",
     "Yu Shaoyuan",
+    "SUSTech",
+    "Computer Science",
+    "M.S. Student",
   ],
   metadataBase: new URL("https://example.com"), // TODO: 替换为正式域名
   openGraph: {

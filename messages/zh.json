@@ -11,7 +11,7 @@
   },
   "hero": {
     "hello": "你好，我是",
-    "intro": "博士生，研究方向为 AI 安全、大模型可解释性与持续学习。",
+    "intro": "硕士生，正在学习中。",
     "contactMe": "联系我"
   },
   "home": {
@@ -22,6 +22,7 @@
       "continual-learning": "探索缓解灾难性遗忘的方法，使模型可持续学习新知识。"
     },
     "publications": "最新论文",
+    "noPublications": "暂无论文，正在学习中…",
     "viewAll": "查看全部",
     "blog": "最新博客",
     "viewAllBlog": "全部文章",
