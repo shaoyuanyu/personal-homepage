@@ -6,7 +6,24 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
-import { profile } from "@/lib/data";
+
+/* Y-Fork 图标：与浏览器标签页 favicon（app/icon.svg）保持同一图形 */
+function YForkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="size-4 shrink-0">
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="4.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M5 4.5 12 12l7-7.5" />
+        <path d="M12 12v8.5" />
+      </g>
+    </svg>
+  );
+}
 
 const navItems = [
   { href: "/", key: "home" },
@@ -20,14 +37,18 @@ const navItems = [
 
 export function SiteHeader() {
   const t = useTranslations("nav");
-  const name = profile.name.split(" ").map((s) => s[0]).join("");
+  const s = useTranslations("site");
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
-        {/* Logo */}
-        <Link href="/" className="font-mono text-sm font-semibold tracking-tight">
-          {name}
+        {/* Logo：Y-Fork 图标 + 标语 */}
+        <Link
+          href="/"
+          className="flex items-center gap-1.5 font-mono text-sm font-semibold tracking-tight"
+        >
+          <YForkIcon />
+          {s("tagline")}
         </Link>
 
         {/* Desktop nav */}

@@ -1,4 +1,7 @@
 {
+  "site": {
+    "tagline": "Stay Curious"
+  },
   "nav": {
     "home": "Home",
     "publications": "Publications",
