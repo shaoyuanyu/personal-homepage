@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Yu Shaoyuan">
+  <!-- Y-Fork：姓氏首字母 Y + 持续学习（知识分叉） -->
+  <style>
+    path {
+      stroke: #18181b;
+    }
+    @media (prefers-color-scheme: dark) {
+      path {
+        stroke: #f5f5f4;
+      }
+    }
+  </style>
+  <g fill="none" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 4.5 12 12l7-7.5" />
+    <path d="M12 12v8.5" />
+  </g>
+</svg>

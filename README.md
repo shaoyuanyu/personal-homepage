@@ -65,6 +65,12 @@ pnpm start        # 生产运行
 
 推送 `main` 分支 → CI 门禁（lint + typecheck + build）→ 自动构建镜像并部署。
 
+## 🎨 品牌资产
+
+- `app/icon.svg` — 站点图标（Y-Fork 标记：姓氏首字母 Y + 持续学习的知识分叉），自动作为 favicon，并按明暗主题自适应
+- `app/[locale]/opengraph-image.tsx` — OG 社交分享图（1200×630，按语言本地化），分享链接到微信/推特等平台时展示
+- `public/images/avatar.gif` — 个人头像（动画 GIF），引用自 `content/profile.yaml` 的 `avatar` 字段
+
 ## 🗂 目录结构
 
 ```
