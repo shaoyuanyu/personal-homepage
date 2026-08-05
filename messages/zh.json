@@ -1,4 +1,7 @@
 {
+  "site": {
+    "tagline": "保持好奇"
+  },
   "nav": {
     "home": "首页",
     "publications": "论文",
