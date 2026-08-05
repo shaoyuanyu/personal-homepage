@@ -1,5 +1,5 @@
 # 学术报告 / Talks 列表
-# 占位数据：展示支持的字段与格式
+# 目前暂无报告，有真实报告后再填写。
 # 字段说明：
 #   title     报告标题（必填）
 #   event     活动/会议名称（必填）
@@ -7,19 +7,4 @@
 #   location  地点（可选）
 #   url       回放/资料链接（可选）
 #   slides    幻灯片链接（可选）
-talks:
-  - title: "Interpreting Attention in Large Language Models"
-    event: "XX Workshop on Interpretable ML"
-    date: 2026-05-20
-    location: Beijing, China
-    url: "#"
-    slides: "#"
-  - title: "AI Safety Challenges in Continual Learning"
-    event: "XX University Seminar"
-    date: 2025-11-08
-    location: Online
-    url: "#"
-  - title: "Poster: Forgetting in Pre-trained Language Models"
-    event: "XX Conference on Machine Learning"
-    date: 2024-12-12
-    location: Shanghai, China
+talks: []
