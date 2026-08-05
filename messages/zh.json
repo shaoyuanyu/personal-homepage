@@ -43,9 +43,22 @@
     "description": "已发表论文与预印本",
     "filter": {
       "all": "全部",
-      "paper": "会议/期刊",
+      "conference": "会议",
+      "journal": "期刊",
       "preprint": "预印本",
       "year": "年份"
+    },
+    "sections": {
+      "conference": "会议论文",
+      "journal": "期刊论文",
+      "preprint": "预印本",
+      "thesis": "学位论文"
+    },
+    "types": {
+      "conference": "会议",
+      "journal": "期刊",
+      "preprint": "预印本",
+      "thesis": "学位论文"
     },
     "copyBibtex": "复制 BibTeX",
     "copied": "已复制到剪贴板",

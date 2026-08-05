@@ -18,10 +18,16 @@ export function generateBibtex(pub: Publication): string {
   add("author", pub.authors.join(" and "));
   add("year", String(pub.year));
 
-  if (pub.venue) add("booktitle", pub.venue);
+  if (pub.venue) {
+    // 会议 → booktitle，期刊 → journal，学位论文 → school
+    const venueField = pub.type === "journal" ? "journal" : pub.type === "thesis" ? "school" : "booktitle";
+    add(venueField, pub.venue);
+  }
   if (pub.doi) add("doi", pub.doi);
   if (pub.url) add("url", pub.url);
 
-  const type = pub.type === "preprint" ? "article" : "inproceedings";
-  return `@${type}{${pub.key},\n${fields.join(",\n")}\n}`;
+  // 会议 → inproceedings，期刊/预印本 → article，学位论文 → phdthesis
+  const bibType =
+    pub.type === "conference" ? "inproceedings" : pub.type === "thesis" ? "phdthesis" : "article";
+  return `@${bibType}{${pub.key},\n${fields.join(",\n")}\n}`;
 }

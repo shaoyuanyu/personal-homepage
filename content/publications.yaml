@@ -5,6 +5,6 @@
 #   authors   作者数组，`*` 后缀标记本人（必填）
 #   venue     发表场合（必填）
 #   year      年份（必填）
-#   type      paper | preprint | thesis（可选，默认 paper）
+#   type      conference | journal | preprint | thesis（可选，默认 conference）
 #   url / pdf / doi / arxiv / code / bibtex（可选，有则显示对应按钮）
 publications: []

@@ -10,7 +10,15 @@ import { Separator } from "@/components/ui/separator";
 import { PublicationCard } from "@/components/sections/publication-card";
 import type { Publication } from "@/lib/data";
 
-type TypeFilter = "all" | "paper" | "preprint";
+type TypeFilter = "all" | "conference" | "journal" | "preprint";
+
+/** 列表按类型分区块展示，顺序：会议 → 期刊 → 预印本 → 学位论文 */
+const sections = [
+  { type: "conference", labelKey: "sections.conference" },
+  { type: "journal", labelKey: "sections.journal" },
+  { type: "preprint", labelKey: "sections.preprint" },
+  { type: "thesis", labelKey: "sections.thesis" },
+] as const;
 
 export function PublicationsList({
   publications,
@@ -40,15 +48,16 @@ export function PublicationsList({
     [publications, type, year],
   );
 
-  const groups = useMemo(() => {
+  /** 按年份分组（倒序） */
+  const groupByYear = (pubs: Publication[]) => {
     const map = new Map<number, Publication[]>();
-    for (const pub of filtered) {
+    for (const pub of pubs) {
       const list = map.get(pub.year) ?? [];
       list.push(pub);
       map.set(pub.year, list);
     }
     return [...map.entries()].sort((a, b) => b[0] - a[0]);
-  }, [filtered]);
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -60,7 +69,8 @@ export function PublicationsList({
           aria-label="Filter by type"
         >
           <ToggleGroupItem value="all">{t("filter.all")}</ToggleGroupItem>
-          <ToggleGroupItem value="paper">{t("filter.paper")}</ToggleGroupItem>
+          <ToggleGroupItem value="conference">{t("filter.conference")}</ToggleGroupItem>
+          <ToggleGroupItem value="journal">{t("filter.journal")}</ToggleGroupItem>
           <ToggleGroupItem value="preprint">{t("filter.preprint")}</ToggleGroupItem>
         </ToggleGroup>
 
@@ -86,19 +96,31 @@ export function PublicationsList({
         )}
       </div>
 
-      {/* 列表 */}
-      {groups.length === 0 && <Empty title={t("empty")} />}
-      {groups.map(([year, pubs]) => (
-        <div key={year} className="flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            <h2 className="font-mono text-lg font-semibold tracking-tight">{year}</h2>
-            <Separator className="flex-1" />
+      {/* 按类型分区块：会议论文 / 期刊论文 / 预印本 / 学位论文 */}
+      {filtered.length === 0 && <Empty title={t("empty")} />}
+      {sections.map((section) => {
+        const pubs = filtered.filter((p) => p.type === section.type);
+        if (pubs.length === 0) return null;
+        return (
+          <div key={section.type} className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold tracking-tight">{t(section.labelKey)}</h2>
+              <Separator className="flex-1" />
+            </div>
+            {groupByYear(pubs).map(([year, yearPubs]) => (
+              <div key={year} className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <h3 className="font-mono text-sm font-medium text-muted-foreground">{year}</h3>
+                  <Separator className="flex-1" />
+                </div>
+                {yearPubs.map((pub) => (
+                  <PublicationCard key={pub.key} pub={pub} isMe={isMe} />
+                ))}
+              </div>
+            ))}
           </div>
-          {pubs.map((pub) => (
-            <PublicationCard key={pub.key} pub={pub} isMe={isMe} />
-          ))}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
