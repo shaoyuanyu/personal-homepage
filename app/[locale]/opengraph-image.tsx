@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { ImageResponse } from "next/og";
 
 import { routing } from "@/lib/i18n/routing";
@@ -29,6 +31,12 @@ const Y_FORK = (stroke: string) => (
   </svg>
 );
 
+/** 头像静态帧（GIF 第一帧），构建时内联为 data URI，供 ImageResponse 渲染 */
+const AVATAR_DATA_URI = (() => {
+  const file = path.join(process.cwd(), "public", "images", "avatar-og.png");
+  return `data:image/png;base64,${readFileSync(file).toString("base64")}`;
+})();
+
 export default async function OpenGraphImage({
   params,
 }: {
@@ -47,42 +55,58 @@ export default async function OpenGraphImage({
           width: "100%",
           height: "100%",
           display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
+          justifyContent: "space-between",
+          alignItems: "center",
           padding: "0 96px",
           background: "#fafaf9",
         }}
       >
-        {Y_FORK("#1c1917")}
-        <div
-          style={{
-            marginTop: 36,
-            fontSize: 76,
-            fontWeight: 700,
-            letterSpacing: "-0.03em",
-            color: "#1c1917",
-          }}
-        >
-          {profile.name}
+        {/* 左半：品牌标记 + 姓名 + 研究方向 */}
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {Y_FORK("#1c1917")}
+          <div
+            style={{
+              marginTop: 36,
+              fontSize: 76,
+              fontWeight: 700,
+              letterSpacing: "-0.03em",
+              color: "#1c1917",
+            }}
+          >
+            {profile.name}
+          </div>
+          <div
+            style={{
+              marginTop: 24,
+              width: 96,
+              height: 6,
+              background: "#1c1917",
+            }}
+          />
+          <div
+            style={{
+              marginTop: 26,
+              fontSize: 28,
+              letterSpacing: "0.02em",
+              color: "#78716c",
+            }}
+          >
+            {subtitle}
+          </div>
         </div>
-        <div
+
+        {/* 右半：圆形头像 */}
+        <img
+          src={AVATAR_DATA_URI}
+          width={264}
+          height={264}
+          alt=""
           style={{
-            marginTop: 24,
-            width: 96,
-            height: 6,
-            background: "#1c1917",
+            borderRadius: "50%",
+            border: "10px solid #e7e5e4",
+            objectFit: "cover",
           }}
         />
-        <div
-          style={{
-            marginTop: 26,
-            fontSize: 28,
-            letterSpacing: "0.02em",
-            color: "#78716c",
-          }}
-        >
-          {subtitle}
-        </div>
       </div>
     ),
     { ...size }
