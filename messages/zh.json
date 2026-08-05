@@ -2,6 +2,12 @@
   "site": {
     "tagline": "保持好奇"
   },
+  "theme": {
+    "label": "切换主题",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
+  },
   "nav": {
     "home": "首页",
     "publications": "论文",

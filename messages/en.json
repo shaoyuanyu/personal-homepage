@@ -2,6 +2,12 @@
   "site": {
     "tagline": "Stay Curious"
   },
+  "theme": {
+    "label": "Switch theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
   "nav": {
     "home": "Home",
     "publications": "Publications",
