@@ -15,13 +15,11 @@
     "projects": "项目",
     "blog": "博客",
     "nav": "导航",
-    "cv": "简历",
     "menu": "菜单"
   },
   "hero": {
     "hello": "你好，我是",
-    "intro": "硕士生，正在学习中。",
-    "contactMe": "联系我"
+    "intro": "硕士生，正在学习中。"
   },
   "home": {
     "researchInterests": "研究方向",
@@ -80,15 +78,6 @@
     "searchPlaceholder": "搜索网站或工具...",
     "noResults": "未找到相关链接",
     "categories": "分类"
-  },
-  "cv": {
-    "title": "简历",
-    "description": "教育经历、科研经历与技能",
-    "download": "下载 PDF",
-    "education": "教育经历",
-    "experience": "经历",
-    "skills": "技能",
-    "contact": "联系方式"
   },
   "footer": {
     "icp": "苏ICP备2026008270号-2",

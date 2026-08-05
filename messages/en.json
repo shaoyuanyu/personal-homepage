@@ -15,13 +15,11 @@
     "projects": "Projects",
     "blog": "Blog",
     "nav": "Links",
-    "cv": "CV",
     "menu": "Menu"
   },
   "hero": {
     "hello": "Hi, I'm",
-    "intro": "M.S. student, currently learning.",
-    "contactMe": "Contact Me"
+    "intro": "M.S. student, currently learning."
   },
   "home": {
     "researchInterests": "Research Interests",
@@ -80,15 +78,6 @@
     "searchPlaceholder": "Search sites or tools...",
     "noResults": "No links found",
     "categories": "Categories"
-  },
-  "cv": {
-    "title": "CV",
-    "description": "Education, experience, and skills",
-    "download": "Download PDF",
-    "education": "Education",
-    "experience": "Experience",
-    "skills": "Skills",
-    "contact": "Contact"
   },
   "footer": {
     "icp": "苏ICP备2026008270号-2",
