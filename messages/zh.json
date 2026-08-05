@@ -48,12 +48,6 @@
       "preprint": "预印本",
       "year": "年份"
     },
-    "sections": {
-      "conference": "会议论文",
-      "journal": "期刊论文",
-      "preprint": "预印本",
-      "thesis": "学位论文"
-    },
     "types": {
       "conference": "会议",
       "journal": "期刊",
