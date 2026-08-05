@@ -1,5 +1,5 @@
 # 项目列表
-# 占位数据：展示支持的字段与格式
+# 目前暂无项目，有真实项目后再填写。
 # 字段说明：
 #   name        项目名称（必填）
 #   description 项目简介，支持 zh / en（必填）
@@ -7,24 +7,4 @@
 #   github      GitHub 链接（可选）
 #   url         项目主页/演示（可选）
 #   featured    是否在首页展示（可选，默认 false）
-projects:
-  - name: llm-interpretability-toolkit
-    description:
-      zh: 大模型可解释性分析工具集（占位描述）
-      en: A toolkit for analyzing LLM interpretability (placeholder)
-    tags: [Python, PyTorch, LLM]
-    github: "https://github.com/"
-    featured: true
-  - name: continual-learning-benchmark
-    description:
-      zh: 持续学习基准测试框架（占位描述）
-      en: Benchmark framework for continual learning (placeholder)
-    tags: [Python, Benchmark]
-    github: "https://github.com/"
-    featured: true
-  - name: ai-safety-notes
-    description:
-      zh: AI 安全学习笔记与资源整理（占位描述）
-      en: Notes and resources on AI safety (placeholder)
-    tags: [Documentation]
-    url: "#"
+projects: []
