@@ -43,9 +43,22 @@
     "description": "Papers and preprints",
     "filter": {
       "all": "All",
-      "paper": "Conference/Journal",
+      "conference": "Conference",
+      "journal": "Journal",
       "preprint": "Preprint",
       "year": "Year"
+    },
+    "sections": {
+      "conference": "Conference Papers",
+      "journal": "Journal Papers",
+      "preprint": "Preprints",
+      "thesis": "Thesis"
+    },
+    "types": {
+      "conference": "Conference",
+      "journal": "Journal",
+      "preprint": "Preprint",
+      "thesis": "Thesis"
     },
     "copyBibtex": "Copy BibTeX",
     "copied": "Copied to clipboard",

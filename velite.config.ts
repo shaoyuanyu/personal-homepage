@@ -75,7 +75,7 @@ const publicationSchema = s.object({
   authors: s.array(s.string()),
   venue: s.string(),
   year: s.number().int().min(1990).max(2100),
-  type: s.enum(["paper", "preprint", "thesis"]).default("paper"),
+  type: s.enum(["conference", "journal", "preprint", "thesis"]).default("conference"),
   url: s.string().optional(),
   pdf: s.string().optional(),
   doi: s.string().optional(),

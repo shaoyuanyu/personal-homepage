@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { BookOpenIcon, CopyIcon, ExternalLinkIcon, FileCode2Icon, FolderGit2Icon, ScrollTextIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,12 +14,6 @@ import { generateBibtex } from "@/lib/bibtex";
 import { cn } from "@/lib/utils";
 import type { Publication } from "@/lib/data";
 
-const typeLabel: Record<Publication["type"], string> = {
-  paper: "Paper",
-  preprint: "Preprint",
-  thesis: "Thesis",
-};
-
 export function PublicationCard({
   pub,
   isMe,
@@ -30,7 +24,6 @@ export function PublicationCard({
   defaultOpen?: boolean;
 }) {
   const t = useTranslations("publications");
-  const locale = useLocale();
   const [open, setOpen] = useState(defaultOpen ?? false);
 
   const bibtex = generateBibtex(pub);
@@ -71,7 +64,7 @@ export function PublicationCard({
             </a>
           </h3>
           <Badge variant={pub.type === "preprint" ? "secondary" : "outline"}>
-            {locale === "zh" ? (pub.type === "preprint" ? "预印本" : "论文") : typeLabel[pub.type]}
+            {t(`types.${pub.type}`)}
           </Badge>
         </div>
 
