@@ -32,12 +32,14 @@ export function Hero() {
     <section className="flex flex-col-reverse items-center gap-8 py-12 sm:py-16 md:flex-row md:items-start md:gap-12">
       {/* 头像 */}
       <div className="shrink-0">
+        {/* unoptimized：GIF 为动画头像，跳过图片优化以保留动画帧 */}
         <Image
           src={profile.avatar}
           alt={profile.name}
           width={168}
           height={168}
           priority
+          unoptimized
           className="size-36 rounded-full border object-cover ring-1 ring-border md:size-42"
         />
       </div>
