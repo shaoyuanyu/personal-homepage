@@ -4,7 +4,7 @@ import { posts } from "@velite/index";
 
 const BASE_URL = "https://example.com"; // TODO: 替换为正式域名
 
-const staticRoutes = ["", "/publications", "/talks", "/projects", "/blog", "/nav", "/cv"] as const;
+const staticRoutes = ["", "/publications", "/talks", "/projects", "/blog", "/nav"] as const;
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const entries: MetadataRoute.Sitemap = [];

@@ -5,7 +5,6 @@ import { MailIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "@/lib/i18n/navigation";
 import { profile } from "@/lib/data";
 
 const socialIcons: Record<string, string> = {
@@ -91,9 +90,6 @@ export function Hero() {
             render={<a href={`mailto:${profile.email}`} aria-label="Email" />}
           >
             <MailIcon data-icon="default" className="text-base" />
-          </Button>
-          <Button size="sm" className="ml-2" render={<Link href="/cv" />}>
-            {t("contactMe")}
           </Button>
         </div>
       </div>

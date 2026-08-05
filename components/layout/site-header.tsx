@@ -32,7 +32,6 @@ const navItems = [
   { href: "/projects", key: "projects" },
   { href: "/blog", key: "blog" },
   { href: "/nav", key: "nav" },
-  { href: "/cv", key: "cv" },
 ] as const;
 
 export function SiteHeader() {
