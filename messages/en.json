@@ -48,12 +48,6 @@
       "preprint": "Preprint",
       "year": "Year"
     },
-    "sections": {
-      "conference": "Conference Papers",
-      "journal": "Journal Papers",
-      "preprint": "Preprints",
-      "thesis": "Thesis"
-    },
     "types": {
       "conference": "Conference",
       "journal": "Journal",
