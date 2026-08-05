@@ -82,7 +82,7 @@
     "contact": "联系方式"
   },
   "footer": {
-    "builtWith": "使用 Next.js 与 shadcn/ui 构建",
+    "icp": "苏ICP备2026008270号-2",
     "copyright": "© {year} Yu Shaoyuan. 保留所有权利。"
   },
   "misc": {
