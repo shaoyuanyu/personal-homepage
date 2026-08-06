@@ -56,3 +56,24 @@ export const publications: Publication[] =
 export const talks: Talk[] = rawTalks[0]?.talks ?? [];
 export const projects: Project[] = rawProjects[0]?.projects ?? [];
 export const navLinks: NavLinkGroup[] = rawNavLinks[0]?.groups ?? [];
+
+// ---- CCF 推荐目录（静态数据，来源 https://ccf.atom.im/ 2026 第七版）----
+import ccfData from "./ccf-2026.json";
+
+export type CcfEntry = {
+  /** 缩写 */
+  a: string;
+  /** 全称 */
+  n: string;
+  /** 级别 A/B/C */
+  l: "A" | "B" | "C";
+  /** 专业领域（官方中文名） */
+  f: string;
+};
+
+export const ccf = ccfData as {
+  version: string;
+  edition: number;
+  conferences: CcfEntry[];
+  journals: CcfEntry[];
+};

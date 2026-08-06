@@ -87,6 +87,23 @@
     "categories": "Categories",
     "fabLabel": "Academic Links"
   },
+  "ccf": {
+    "title": "CCF Recommended List",
+    "description": "CCF recommended international conferences and journals (2026, 7th edition, approved March 2026)",
+    "source": "Data source:",
+    "searchPlaceholder": "Search abbreviation or full name...",
+    "typeAll": "All",
+    "typeConference": "Conferences",
+    "typeJournal": "Journals",
+    "levelAll": "All levels",
+    "fieldAll": "All fields",
+    "levels": {
+      "class": "Class"
+    },
+    "stats": "{total} venues · {conferences} conferences · {journals} journals · {matched} match current filters",
+    "items": "items",
+    "empty": "No matching conferences or journals"
+  },
   "footer": {
     "icp": "苏ICP备2026008270号-2",
     "copyright": "© {year} Yu Shaoyuan. All rights reserved."
