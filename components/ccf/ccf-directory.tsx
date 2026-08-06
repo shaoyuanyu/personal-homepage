@@ -6,7 +6,6 @@ import {
   AwardIcon,
   BookOpenIcon,
   LayersIcon,
-  LayoutGridIcon,
   PresentationIcon,
   RotateCcwIcon,
   SearchIcon,
@@ -17,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ccf, type CcfEntry } from "@/lib/data";
 
@@ -159,7 +157,8 @@ export function CcfDirectory() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<TypeFilter>("all");
   const [level, setLevel] = useState<LevelFilter>("all");
-  const [field, setField] = useState<string>("all");
+  // 多选领域集合；空数组 = 全部领域
+  const [selectedFields, setSelectedFields] = useState<string[]>([]);
 
   // 保持官方领域顺序去重
   const fields = useMemo(() => {
@@ -177,11 +176,21 @@ export function CcfDirectory() {
 
   const fieldName = (f: string) => (isZh ? f : FIELD_EN[FIELD_KEY(f)] ?? f);
 
+  const toggleField = (f: string) => {
+    setSelectedFields((prev) =>
+      prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f],
+    );
+  };
+
   const { confs, jours } = useMemo(() => {
     const q = query.trim().toLowerCase();
     const match = (e: CcfEntry) => {
       if (level !== "all" && e.l !== level) return false;
-      if (field !== "all" && FIELD_KEY(e.f) !== FIELD_KEY(field)) return false;
+      if (
+        selectedFields.length > 0 &&
+        !selectedFields.some((f) => FIELD_KEY(f) === FIELD_KEY(e.f))
+      )
+        return false;
       if (!q) return true;
       return e.a.toLowerCase().includes(q) || e.n.toLowerCase().includes(q);
     };
@@ -189,7 +198,7 @@ export function CcfDirectory() {
       confs: ccf.conferences.filter(match),
       jours: ccf.journals.filter(match),
     };
-  }, [query, level, field]);
+  }, [query, level, selectedFields]);
 
   // 按领域分组（保持官方顺序）；组内：会议在前（按级别、缩写），期刊在后
   const groups = useMemo(() => {
@@ -229,13 +238,7 @@ export function CcfDirectory() {
     setQuery("");
     setType("all");
     setLevel("all");
-    setField("all");
-  };
-
-  const scrollToField = (index: number) => {
-    document
-      .getElementById(`ccf-field-${index}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setSelectedFields([]);
   };
 
   return (
@@ -304,38 +307,6 @@ export function CcfDirectory() {
             <ToggleGroupItem value="C">C</ToggleGroupItem>
           </ToggleGroup>
 
-          <Select value={field} onValueChange={setField}>
-            <SelectTrigger
-              size="sm"
-              className="min-w-44 max-w-64 bg-muted/50 hover:bg-muted/80 dark:bg-input/40 dark:hover:bg-input/60"
-            >
-              <SelectValue>
-                <LayoutGridIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate" title={field === "all" ? t("fieldAll") : fieldName(field)}>
-                  {field === "all" ? t("fieldAll") : fieldName(field)}
-                </span>
-              </SelectValue>
-            </SelectTrigger>
-            {/* w-max 让面板随内容自适应宽度，保证领域全称完整显示 */}
-            <SelectContent className="w-max min-w-72 max-w-[min(28rem,calc(100vw-2rem))] rounded-xl p-1 shadow-lg">
-              <SelectItem
-                value="all"
-                className="rounded-md py-1.5 pr-8 pl-2 data-[selected]:font-medium"
-              >
-                {t("fieldAll")}
-              </SelectItem>
-              {fields.map((f) => (
-                <SelectItem
-                  key={f}
-                  value={f}
-                  className="rounded-md py-1.5 pr-8 pl-2 data-[selected]:font-medium"
-                >
-                  {fieldName(f)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
           <Badge
             variant="outline"
             className="ml-auto hidden shrink-0 font-normal tabular-nums text-muted-foreground lg:inline-flex"
@@ -345,20 +316,34 @@ export function CcfDirectory() {
         </div>
       </div>
 
-      {/* 领域快速导航：换行排列，避免横向拖动 */}
-      <nav aria-label={t("jumpLabel")} className="flex flex-wrap gap-1.5">
-        {fields.map((f, i) => (
-          <Button
-            key={f}
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0 rounded-full text-xs"
-            onClick={() => scrollToField(i)}
-          >
-            {fieldName(f)}
-          </Button>
-        ))}
+      {/* 领域多选筛选：可同时勾选多个领域（空 = 全部） */}
+      <nav aria-label={t("fieldFilter")} className="flex flex-wrap gap-1.5">
+        <Button
+          type="button"
+          variant={selectedFields.length === 0 ? "default" : "outline"}
+          size="sm"
+          className="rounded-full text-xs"
+          onClick={() => setSelectedFields([])}
+          aria-pressed={selectedFields.length === 0}
+        >
+          {t("fieldAll")}
+        </Button>
+        {fields.map((f) => {
+          const selected = selectedFields.includes(f);
+          return (
+            <Button
+              key={f}
+              type="button"
+              variant={selected ? "default" : "outline"}
+              size="sm"
+              className="rounded-full text-xs"
+              onClick={() => toggleField(f)}
+              aria-pressed={selected}
+            >
+              {fieldName(f)}
+            </Button>
+          );
+        })}
       </nav>
 
       {/* 匹配统计 */}
