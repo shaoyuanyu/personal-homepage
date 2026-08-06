@@ -1,11 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { SearchIcon } from "lucide-react";
+import {
+  AwardIcon,
+  BookOpenIcon,
+  LayersIcon,
+  PresentationIcon,
+  RotateCcwIcon,
+  SearchIcon,
+} from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -31,18 +40,28 @@ const FIELD_EN: Record<string, string> = {
 /* 领域名以「/」为界拆分后的第一段即官方领域短名，便于做键与展示 */
 const FIELD_KEY = (field: string) => field.split("/")[0];
 
+/* 级别专属配色：徽章文字 + 行首色条 */
+const LEVEL_STYLE = {
+  A: {
+    badge: "bg-red-500/10 text-red-600 ring-red-600/20 dark:bg-red-500/15 dark:text-red-400",
+    bar: "bg-red-500",
+  },
+  B: {
+    badge: "bg-blue-500/10 text-blue-600 ring-blue-600/20 dark:bg-blue-500/15 dark:text-blue-400",
+    bar: "bg-blue-500",
+  },
+  C: {
+    badge: "bg-emerald-500/10 text-emerald-600 ring-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-400",
+    bar: "bg-emerald-500",
+  },
+} as const;
+
 function LevelBadge({ level }: { level: CcfEntry["l"] }) {
   const t = useTranslations("ccf.levels");
-  const style = {
-    A: "bg-red-500/10 text-red-600 ring-red-600/20 dark:bg-red-500/15 dark:text-red-400",
-    B: "bg-blue-500/10 text-blue-600 ring-blue-600/20 dark:bg-blue-500/15 dark:text-blue-400",
-    C: "bg-emerald-500/10 text-emerald-600 ring-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-400",
-  }[level];
-
   return (
     <Badge
       variant="outline"
-      className={`w-6 justify-center rounded-md ring-1 ring-inset ${style}`}
+      className={`w-7 shrink-0 justify-center rounded-md text-xs font-bold ring-1 ring-inset ${LEVEL_STYLE[level].badge}`}
       aria-label={`${level} ${t("class")}`}
     >
       {level}
@@ -53,24 +72,81 @@ function LevelBadge({ level }: { level: CcfEntry["l"] }) {
 function EntryRow({ entry, type }: { entry: CcfEntry; type: "conf" | "jour" }) {
   const t = useTranslations("ccf");
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-transparent px-3 py-1.5 transition-colors hover:border-border hover:bg-muted/50">
-      <span className="shrink-0 font-mono text-[13px] font-semibold tracking-tight">
+    <li className="group relative flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/60">
+      {/* 级别色条 */}
+      <span
+        aria-hidden
+        className={`absolute inset-y-1 left-0 w-[3px] rounded-r-full opacity-0 transition-opacity group-hover:opacity-100 ${LEVEL_STYLE[entry.l].bar}`}
+      />
+      <span className="w-28 shrink-0 truncate font-mono text-[13px] font-semibold tracking-tight sm:w-32">
         {entry.a}
       </span>
       <span
-        className="min-w-0 flex-1 truncate text-sm text-muted-foreground"
+        className="min-w-0 flex-1 truncate text-sm text-muted-foreground transition-colors group-hover:text-foreground/80"
         title={entry.n}
       >
         {entry.n}
       </span>
       <Badge
-        variant="outline"
-        className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline-flex"
+        variant="secondary"
+        className="hidden shrink-0 text-[10px] font-normal text-muted-foreground sm:inline-flex"
       >
         {type === "conf" ? t("typeConference") : t("typeJournal")}
       </Badge>
       <LevelBadge level={entry.l} />
     </li>
+  );
+}
+
+/** 组内会议/期刊分区的小标题（仅当两者同时存在时出现） */
+function TypeDivider({ type }: { type: "conf" | "jour" }) {
+  const t = useTranslations("ccf");
+  return (
+    <li
+      aria-hidden
+      className="border-t bg-muted/40 px-4 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground/70"
+    >
+      {type === "conf" ? t("typeConference") : t("typeJournal")}
+    </li>
+  );
+}
+
+/** 顶部统计卡片 */
+function StatCard({
+  icon: Icon,
+  value,
+  label,
+  highlight = false,
+}: {
+  icon: typeof LayersIcon;
+  value: number;
+  label: string;
+  highlight?: boolean;
+}) {
+  return (
+    <Card
+      className={`transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+        highlight ? "border-primary/30 bg-primary/5" : "hover:border-border"
+      }`}
+    >
+      <CardContent className="flex items-center gap-3 p-3.5 sm:p-4">
+        <div
+          className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
+            highlight
+              ? "bg-primary/15 text-primary"
+              : "bg-muted text-muted-foreground"
+          }`}
+        >
+          <Icon className="size-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xl leading-none font-semibold tracking-tight tabular-nums">
+            {value}
+          </p>
+          <p className="mt-1.5 truncate text-xs text-muted-foreground">{label}</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -144,65 +220,131 @@ export function CcfDirectory() {
   const total = ccf.conferences.length + ccf.journals.length;
   // 实际渲染条数（与分组结果一致）
   const shown = groups.reduce((acc, g) => acc + g.list.length, 0);
+  const classACount =
+    ccf.conferences.filter((e) => e.l === "A").length +
+    ccf.journals.filter((e) => e.l === "A").length;
+
+  const resetFilters = () => {
+    setQuery("");
+    setType("all");
+    setLevel("all");
+    setField("all");
+  };
+
+  const scrollToField = (index: number) => {
+    document
+      .getElementById(`ccf-field-${index}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* 筛选工具条 */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full sm:w-72">
-          <SearchIcon
-            className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
-            data-icon="inline-start"
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("searchPlaceholder")}
-            className="pl-10"
-            aria-label={t("searchPlaceholder")}
-          />
-        </div>
-
-        <ToggleGroup
-          value={[type]}
-          onValueChange={(v) => setType((v[0] as TypeFilter) ?? "all")}
-          className="flex-wrap"
-        >
-          <ToggleGroupItem value="all">{t("typeAll")}</ToggleGroupItem>
-          <ToggleGroupItem value="conf">{t("typeConference")}</ToggleGroupItem>
-          <ToggleGroupItem value="jour">{t("typeJournal")}</ToggleGroupItem>
-        </ToggleGroup>
-
-        <ToggleGroup
-          value={[level]}
-          onValueChange={(v) => setLevel((v[0] as LevelFilter) ?? "all")}
-          className="flex-wrap"
-        >
-          <ToggleGroupItem value="all">{t("levelAll")}</ToggleGroupItem>
-          <ToggleGroupItem value="A">A</ToggleGroupItem>
-          <ToggleGroupItem value="B">B</ToggleGroupItem>
-          <ToggleGroupItem value="C">C</ToggleGroupItem>
-        </ToggleGroup>
-
-        <Select value={field} onValueChange={setField}>
-          <SelectTrigger size="sm" className="min-w-44">
-            <SelectValue>
-              {field === "all" ? t("fieldAll") : fieldName(field)}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("fieldAll")}</SelectItem>
-            {fields.map((f) => (
-              <SelectItem key={f} value={f}>
-                {fieldName(f)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+    <div className="flex flex-col gap-8">
+      {/* 统计卡片 */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          icon={LayersIcon}
+          value={total}
+          label={t("statsTotal")}
+          highlight
+        />
+        <StatCard
+          icon={PresentationIcon}
+          value={ccf.conferences.length}
+          label={t("statsConferences")}
+        />
+        <StatCard
+          icon={BookOpenIcon}
+          value={ccf.journals.length}
+          label={t("statsJournals")}
+        />
+        <StatCard
+          icon={AwardIcon}
+          value={classACount}
+          label={t("statsClassA")}
+        />
       </div>
 
-      {/* 统计 */}
+      {/* sticky 筛选栏 */}
+      <div className="sticky top-14 z-30 rounded-2xl border bg-background/85 px-3 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-64 lg:w-72">
+            <SearchIcon
+              className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
+              data-icon="inline-start"
+            />
+            <Input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("searchPlaceholder")}
+              className="pl-10"
+              aria-label={t("searchPlaceholder")}
+            />
+          </div>
+
+          <ToggleGroup
+            value={[type]}
+            onValueChange={(v) => setType((v[0] as TypeFilter) ?? "all")}
+            className="flex-wrap"
+          >
+            <ToggleGroupItem value="all">{t("typeAll")}</ToggleGroupItem>
+            <ToggleGroupItem value="conf">{t("typeConference")}</ToggleGroupItem>
+            <ToggleGroupItem value="jour">{t("typeJournal")}</ToggleGroupItem>
+          </ToggleGroup>
+
+          <ToggleGroup
+            value={[level]}
+            onValueChange={(v) => setLevel((v[0] as LevelFilter) ?? "all")}
+            className="flex-wrap"
+          >
+            <ToggleGroupItem value="all">{t("levelAll")}</ToggleGroupItem>
+            <ToggleGroupItem value="A">A</ToggleGroupItem>
+            <ToggleGroupItem value="B">B</ToggleGroupItem>
+            <ToggleGroupItem value="C">C</ToggleGroupItem>
+          </ToggleGroup>
+
+          <Select value={field} onValueChange={setField}>
+            <SelectTrigger size="sm" className="min-w-44">
+              <SelectValue>
+                {field === "all" ? t("fieldAll") : fieldName(field)}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("fieldAll")}</SelectItem>
+              {fields.map((f) => (
+                <SelectItem key={f} value={f}>
+                  {fieldName(f)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Badge
+            variant="outline"
+            className="ml-auto hidden shrink-0 font-normal tabular-nums text-muted-foreground lg:inline-flex"
+          >
+            {shown} {t("items")}
+          </Badge>
+        </div>
+      </div>
+
+      {/* 领域快速导航 */}
+      <nav aria-label={t("jumpLabel")} className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+        {fields.map((f, i) => (
+          <Button
+            key={f}
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 rounded-full text-xs"
+            onClick={() => scrollToField(i)}
+          >
+            {fieldName(f)}
+          </Button>
+        ))}
+      </nav>
+
+      {/* 匹配统计 */}
       <p className="text-xs text-muted-foreground">
         {t("stats", {
           total,
@@ -212,33 +354,51 @@ export function CcfDirectory() {
         })}
       </p>
 
-      {groups.length === 0 && <Empty title={t("empty")} />}
-
-      {/* 按领域分组 */}
-      {groups.map((g) => (
-        <section key={g.field} className="flex flex-col gap-3">
-          <div className="flex items-baseline justify-between gap-4 border-b pb-1.5">
-            <h2 className="text-lg font-semibold tracking-tight">
-              {fieldName(g.field)}
-            </h2>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {g.list.length} {t("items")}
-            </span>
-          </div>
-          <ul className="flex flex-col gap-0.5">
-            {g.list.map((e) => {
-              const isConf = ccf.conferences.includes(e);
-              return (
-                <EntryRow
-                  key={`${isConf ? "conf" : "jour"}-${e.a}-${e.l}-${e.n}`}
-                  entry={e}
-                  type={isConf ? "conf" : "jour"}
+      {groups.length === 0 ? (
+        <Empty title={t("empty")}>
+          <Button variant="outline" size="sm" onClick={resetFilters}>
+            <RotateCcwIcon />
+            {t("resetFilters")}
+          </Button>
+        </Empty>
+      ) : (
+        /* 按领域分组 */
+        groups.map((g, gi) => (
+          <section
+            key={g.field}
+            id={`ccf-field-${gi}`}
+            className="flex scroll-mt-44 flex-col gap-3"
+          >
+            <div className="flex items-center justify-between gap-4 border-b pb-2">
+              <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tight">
+                <span
+                  aria-hidden
+                  className="h-4 w-1 shrink-0 rounded-full bg-primary/70"
                 />
-              );
-            })}
-          </ul>
-        </section>
-      ))}
+                {fieldName(g.field)}
+              </h2>
+              <Badge variant="secondary" className="shrink-0 tabular-nums">
+                {g.list.length} {t("items")}
+              </Badge>
+            </div>
+            <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border bg-card">
+              {g.list.map((e, ei) => {
+                const isConf = ccf.conferences.includes(e);
+                const prev = ei > 0 ? g.list[ei - 1] : null;
+                const prevIsConf = prev ? ccf.conferences.includes(prev) : null;
+                return (
+                  <Fragment key={`${isConf ? "conf" : "jour"}-${e.a}-${e.l}-${e.n}`}>
+                    {prev && prevIsConf !== isConf && (
+                      <TypeDivider type={isConf ? "conf" : "jour"} />
+                    )}
+                    <EntryRow entry={e} type={isConf ? "conf" : "jour"} />
+                  </Fragment>
+                );
+              })}
+            </ul>
+          </section>
+        ))
+      )}
     </div>
   );
 }

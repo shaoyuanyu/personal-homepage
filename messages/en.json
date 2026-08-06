@@ -90,6 +90,7 @@
   "ccf": {
     "title": "CCF Recommended List",
     "description": "CCF recommended international conferences and journals (2026, 7th edition, approved March 2026)",
+    "versionBadge": "2026 · 7th Edition",
     "source": "Data source:",
     "searchPlaceholder": "Search abbreviation or full name...",
     "typeAll": "All",
@@ -100,9 +101,16 @@
     "levels": {
       "class": "Class"
     },
+    "statsTotal": "Total venues",
+    "statsConferences": "Conferences",
+    "statsJournals": "Journals",
+    "statsClassA": "Class A venues",
+    "jumpLabel": "Jump to field",
     "stats": "{total} venues · {conferences} conferences · {journals} journals · {matched} match current filters",
     "items": "items",
-    "empty": "No matching conferences or journals"
+    "empty": "No matching conferences or journals",
+    "resetFilters": "Reset filters",
+    "sourceNote": "Data extracted from ccf.atom.im (7th edition approved by CCF in March 2026). In case of discrepancy, the official CCF release prevails."
   },
   "footer": {
     "icp": "苏ICP备2026008270号-2",
