@@ -57,6 +57,20 @@ groups:
           zh: 论文检索智能体
           en: AI paper search agent
   - group:
+      zh: 会议与投稿
+      en: Conferences & Deadlines
+    links:
+      - name: CCF 推荐目录
+        url: "https://ccf.atom.im/"
+        desc:
+          zh: 中国计算机学会推荐会议与期刊
+          en: CCF recommended venues & journals
+      - name: AI Deadlines
+        url: "https://paperswithcode.co/ai-deadlines"
+        desc:
+          zh: AI 顶会投稿截止时间
+          en: AI conference deadlines
+  - group:
       zh: 开源平台
       en: Open-source Platforms
     links:
@@ -72,6 +86,15 @@ groups:
           zh: 模型与数据集平台
           en: Models & datasets hub
         icon: simple-icons:huggingface
+  - group:
+      zh: 算力平台
+      en: Cloud Compute
+    links:
+      - name: AutoDL
+        url: "https://www.autodl.com/"
+        desc:
+          zh: GPU 算力租赁平台
+          en: Cloud GPU rental
   - group:
       zh: 写作与排版
       en: Writing & Typesetting
