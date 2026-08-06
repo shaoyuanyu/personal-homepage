@@ -129,3 +129,34 @@
     @apply font-sans;
   }
 }
+
+/* ---- CCF 目录页：分段式筛选控件（segmented control）---- */
+.ccf-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: calc(var(--radius-md));
+  padding: 2px;
+  background-color: color-mix(in oklab, var(--muted) 65%, transparent);
+}
+.ccf-segmented [data-slot="toggle-group-item"] {
+  border-radius: calc(var(--radius-sm));
+  background-color: transparent;
+  color: var(--muted-foreground);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+.ccf-segmented [data-slot="toggle-group-item"]:hover {
+  background-color: color-mix(in oklab, var(--background) 55%, transparent);
+  color: var(--foreground);
+}
+.ccf-segmented [data-slot="toggle-group-item"][aria-pressed="true"] {
+  background-color: var(--background);
+  color: var(--foreground);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.08),
+    0 1px 1px rgb(0 0 0 / 0.04);
+  outline: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+}
