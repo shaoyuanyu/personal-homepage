@@ -1,6 +1,6 @@
-# 个人网站 VPS 部署编排：站点 + Umami 统计 + Caddy 反向代理
+# 个人网站 VPS 部署编排：站点 + Umami 统计
+# 反向代理使用宿主机 Nginx（多域名分流），容器端口仅绑定回环地址 127.0.0.1
 # 用法：docker compose up -d --build
-# 部署前请修改 Caddyfile 中的域名
 
 services:
   web:
@@ -10,8 +10,8 @@ services:
         # 站点 URL 构建期内联：部署初期证书未就绪用 http，就绪后改为 https://shaoyuanyu.cn
         SITE_URL: ${SITE_URL:-https://shaoyuanyu.cn}
     restart: unless-stopped
-    expose:
-      - "3000"
+    ports:
+      - "127.0.0.1:3000:3000" # 仅本机回环：Nginx proxy_pass http://127.0.0.1:3000
     environment:
       - NODE_ENV=production
     networks:
@@ -20,8 +20,8 @@ services:
   umami:
     image: ghcr.io/umami-software/umami:postgresql-latest
     restart: unless-stopped
-    expose:
-      - "3000"
+    ports:
+      - "127.0.0.1:3001:3000" # Nginx 分流 umami.shaoyuanyu.cn 时使用；不需要可删除本服务与 db
     environment:
       - DATABASE_TYPE=postgresql
       - DATABASE_URL=postgresql://umami:${POSTGRES_PASSWORD}@db:5432/umami
@@ -44,23 +44,8 @@ services:
     networks:
       - web
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    networks:
-      - web
-
 volumes:
   umami-db:
-  caddy-data:
-  caddy-config:
 
 networks:
   web:

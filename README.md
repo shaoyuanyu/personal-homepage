@@ -52,14 +52,36 @@ pnpm start        # 生产运行
 > 新增论文/报告/项目/导航链接 = 编辑对应 YAML；新增博客 = 新建 MDX 文件。
 > 结构错误会在构建期由 Zod 直接报错，无需担心运行时崩溃。
 
-## 📦 部署（VPS + Docker）
+## 📦 部署（VPS + Docker + Nginx）
 
 1. 准备密钥文件（`.env` 不入库）：
    ```bash
    cp .env.example .env
    # 编辑 .env，填入随机密钥（可用 openssl rand -hex 32 / -hex 16 生成）
    ```
-2. 域名已配置为 `shaoyuanyu.cn`（`Caddyfile`，自动签发 HTTPS）；如需更换域名改此处
+2. 反向代理：宿主机 Nginx 按域名分流到容器端口（仅绑定回环，不直接暴露公网）：
+   ```nginx
+   # /etc/nginx/sites-enabled/shaoyuanyu.cn.conf
+   server {
+       listen 80;
+       server_name shaoyuanyu.cn;
+
+       location /_next/static/ {
+           proxy_pass http://127.0.0.1:3000;
+           proxy_set_header Host $host;
+           expires 1y;
+           add_header Cache-Control "public, immutable";
+       }
+       location / {
+           proxy_pass http://127.0.0.1:3000;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+   }
+   ```
+   （umami 统计面板可参照映射到 127.0.0.1:3001；HTTPS 就绪后用 certbot 签发证书并将 SITE_URL 改为 https）
 3. 服务器上执行：
    ```bash
    git clone <repo> && cd ysy-personal-homepage
