@@ -1,5 +1,4 @@
 # 学术导航链接
-# 占位数据：可自由增删改
 # 字段说明：
 #   group  分组名，支持 zh / en（必填）
 #   links  链接数组：
@@ -46,34 +45,33 @@ groups:
         desc:
           zh: 论文摘要与动态
           en: Paper digests & updates
+      - name: IEEE Xplore
+        url: "https://ieeexplore.ieee.org/"
+        desc:
+          zh: 电气与电子工程文献库
+          en: IEEE digital library
+        icon: simple-icons:ieee
+      - name: PASA Agent
+        url: "https://pasa-agent.ai/"
+        desc:
+          zh: 论文检索智能体
+          en: AI paper search agent
   - group:
-      zh: AI 工具
-      en: AI Tools
+      zh: 开源平台
+      en: Open-source Platforms
     links:
-      - name: ChatGPT
-        url: "https://chat.openai.com/"
+      - name: GitHub
+        url: "https://github.com/"
         desc:
-          zh: AI 对话助手
-          en: AI chatbot
-        icon: simple-icons:openai
-      - name: Claude
-        url: "https://claude.ai/"
-        desc:
-          zh: AI 对话助手
-          en: AI chatbot
-        icon: simple-icons:anthropic
+          zh: 代码托管
+          en: Code hosting
+        icon: simple-icons:github
       - name: Hugging Face
         url: "https://huggingface.co/"
         desc:
           zh: 模型与数据集平台
           en: Models & datasets hub
         icon: simple-icons:huggingface
-      - name: Perplexity
-        url: "https://www.perplexity.ai/"
-        desc:
-          zh: AI 搜索引擎
-          en: AI search engine
-        icon: simple-icons:perplexity
   - group:
       zh: 写作与排版
       en: Writing & Typesetting
@@ -101,53 +99,3 @@ groups:
         desc:
           zh: LaTeX 公式手写识别
           en: Handwriting to LaTeX
-  - group:
-      zh: 代码与数据
-      en: Code & Data
-    links:
-      - name: GitHub
-        url: "https://github.com/"
-        desc:
-          zh: 代码托管
-          en: Code hosting
-        icon: simple-icons:github
-      - name: Papers with Code
-        url: "https://paperswithcode.com/"
-        desc:
-          zh: 论文与代码配套
-          en: Papers with code
-        icon: simple-icons:paperswithcode
-      - name: Kaggle
-        url: "https://www.kaggle.com/"
-        desc:
-          zh: 数据科学竞赛
-          en: Data science competitions
-        icon: simple-icons:kaggle
-      - name: Google Colab
-        url: "https://colab.research.google.com/"
-        desc:
-          zh: 在线笔记本
-          en: Online notebooks
-        icon: simple-icons:googlecolab
-  - group:
-      zh: 其他
-      en: Others
-    links:
-      - name: Zotero
-        url: "https://www.zotero.org/"
-        desc:
-          zh: 文献管理
-          en: Reference management
-        icon: simple-icons:zotero
-      - name: Zhihu
-        url: "https://www.zhihu.com/"
-        desc:
-          zh: 知乎
-          en: Zhihu Q&A
-        icon: simple-icons:zhihu
-      - name: Bilibili
-        url: "https://www.bilibili.com/"
-        desc:
-          zh: 视频学习平台
-          en: Video learning platform
-        icon: simple-icons:bilibili
