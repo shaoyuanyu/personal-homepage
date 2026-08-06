@@ -2,7 +2,8 @@ import type { MetadataRoute } from "next";
 import { routing } from "@/lib/i18n/routing";
 import { posts } from "@velite/index";
 
-const BASE_URL = "https://example.com"; // TODO: 替换为正式域名
+// 站点对外 URL：构建时通过 SITE_URL 注入（见 Dockerfile ARG）；默认 HTTPS
+const BASE_URL = process.env.SITE_URL ?? "https://shaoyuanyu.cn";
 
 const staticRoutes = ["", "/publications", "/talks", "/projects", "/blog", "/nav"] as const;
 

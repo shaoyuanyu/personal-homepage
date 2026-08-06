@@ -6,6 +6,6 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
     },
-    sitemap: "https://example.com/sitemap.xml", // TODO: 替换为正式域名
+    sitemap: `${process.env.SITE_URL ?? "https://shaoyuanyu.cn"}/sitemap.xml`,
   };
 }
