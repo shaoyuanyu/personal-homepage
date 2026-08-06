@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   AwardIcon,
@@ -59,6 +59,19 @@ for (const e of [...ccf.conferences, ...ccf.journals]) {
   const key = FIELD_KEYS[FIELD_KEY(e.f)];
   if (key && !KEY_TO_FIELD.has(key)) KEY_TO_FIELD.set(key, e.f);
 }
+
+/* 合法领域名集合（校验 localStorage 恢复数据） */
+const ALL_FIELDS = new Set(KEY_TO_FIELD.values());
+
+/* localStorage 记忆键：从导航/论文页无参数进入时恢复上次筛选 */
+const STORAGE_KEY = "ccf:filters";
+
+type SavedFilters = {
+  fields?: string[];
+  type?: TypeFilter;
+  level?: LevelFilter;
+  q?: string;
+};
 
 /* 级别专属配色：徽章文字 + 行首色条 */
 const LEVEL_STYLE = {
@@ -262,25 +275,53 @@ export function CcfDirectory() {
     setSelectedFields([]);
   };
 
-  // 首次挂载：从 URL 查询参数恢复筛选状态（刷新/分享链接可还原）
+  // 首次挂载恢复筛选状态：URL 查询参数优先（可分享/可刷新），
+  // 无参数时回退到 localStorage 的上次记忆（导航页/论文页入口进入也不丢）
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const t = p.get("type");
     const l = p.get("level");
     const keys = (p.get("fields") ?? "").split(",").filter(Boolean);
-    setQuery(p.get("q") ?? "");
-    if (t === "conf" || t === "jour") setType(t);
-    if (l === "A" || l === "B" || l === "C") setLevel(l);
-    setSelectedFields(
-      keys
-        .map((k) => KEY_TO_FIELD.get(k))
-        .filter((f): f is string => Boolean(f)),
-    );
+    const q = p.get("q");
+
+    if (t || l || keys.length || q !== null) {
+      setQuery(q ?? "");
+      if (t === "conf" || t === "jour") setType(t);
+      if (l === "A" || l === "B" || l === "C") setLevel(l);
+      setSelectedFields(
+        keys
+          .map((k) => KEY_TO_FIELD.get(k))
+          .filter((f): f is string => Boolean(f)),
+      );
+    } else {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const saved = JSON.parse(raw) as SavedFilters;
+          setQuery(saved.q ?? "");
+          if (saved.type === "conf" || saved.type === "jour") setType(saved.type);
+          if (saved.level === "A" || saved.level === "B" || saved.level === "C")
+            setLevel(saved.level);
+          setSelectedFields(
+            (saved.fields ?? []).filter((f) => ALL_FIELDS.has(f)),
+          );
+        }
+      } catch {
+        // localStorage 不可用或数据损坏时静默忽略
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 筛选状态变化时同步到 URL（replaceState：刷新/重访保留，不堆积历史）
+  // 筛选状态变化时同步：URL（可分享）+ localStorage（记忆上次筛选）。
+  // 跳过首次渲染：客户端导航可能重复挂载组件，若首次就用默认 state 写入，
+  // 会覆盖 localStorage 里的记忆，导致恢复失效。
+  const hasPersisted = useRef(false);
   useEffect(() => {
+    if (!hasPersisted.current) {
+      hasPersisted.current = true;
+      return;
+    }
     const p = new URLSearchParams();
     if (selectedFields.length > 0) {
       p.set(
@@ -297,6 +338,20 @@ export function CcfDirectory() {
       ? `${window.location.pathname}?${qs}`
       : window.location.pathname;
     window.history.replaceState(null, "", url);
+
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          fields: selectedFields,
+          type,
+          level,
+          q,
+        } satisfies SavedFilters),
+      );
+    } catch {
+      // 隐私模式等场景下写入失败时静默忽略
+    }
   }, [type, level, selectedFields, query]);
 
   return (

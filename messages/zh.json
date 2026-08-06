@@ -41,6 +41,7 @@
   "publications": {
     "title": "论文",
     "description": "已发表论文与预印本",
+    "ccfEntry": "CCF 推荐目录",
     "filter": {
       "all": "全部",
       "conference": "会议",

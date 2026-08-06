@@ -41,6 +41,7 @@
   "publications": {
     "title": "Publications",
     "description": "Papers and preprints",
+    "ccfEntry": "CCF Recommended List",
     "filter": {
       "all": "All",
       "conference": "Conference",
