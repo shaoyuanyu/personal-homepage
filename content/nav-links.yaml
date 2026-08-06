@@ -94,8 +94,3 @@ groups:
           zh: 英文写作校对
           en: English writing assistant
         icon: simple-icons:grammarly
-      - name: Latexify
-        url: "https://latexify.cn/"
-        desc:
-          zh: LaTeX 公式手写识别
-          en: Handwriting to LaTeX
