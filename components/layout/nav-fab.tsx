@@ -17,10 +17,14 @@ export function NavFab() {
   const pathname = usePathname();
   const fabRef = useRef<HTMLDivElement>(null);
 
+  // 导航页自身不显示悬浮球
+  const isNavPage = pathname === "/nav";
+
   useEffect(() => {
-    const el = fabRef.current;
+    if (isNavPage) return;
+
     const footer = document.querySelector("footer");
-    if (!el || !footer) return;
+    if (!footer) return;
 
     const FAB_BOTTOM = 20; // 对应 bottom-5
     const GAP = 12; // 悬浮球与页脚保持的间距
@@ -28,6 +32,10 @@ export function NavFab() {
     let raf = 0;
     const update = () => {
       raf = 0;
+      // 每次实时取节点：导航页会卸载该 div，切回时是全新节点，
+      // 不能复用 effect 开头捕获的旧引用（否则 transform 一直写在已脱离文档的节点上）
+      const el = fabRef.current;
+      if (!el) return;
       const rect = footer.getBoundingClientRect();
       // 悬浮球底部需停在页脚顶部上方 GAP 处；页脚未进入视口时 offset 为 0（贴视口底部）
       const offset = Math.max(
@@ -48,10 +56,9 @@ export function NavFab() {
       window.removeEventListener("resize", schedule);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [isNavPage]);
 
-  // 导航页自身不显示悬浮球
-  if (pathname === "/nav") {
+  if (isNavPage) {
     return null;
   }
 
