@@ -160,3 +160,13 @@
     0 1px 1px rgb(0 0 0 / 0.04);
   outline: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
 }
+
+/* ---- CCF 目录页：跳过视口外领域组的布局与渲染 ----
+   681 行列表页高约 3 万像素，浏览器默认布局整个页面；
+   content-visibility 让离屏分组不参与布局/绘制，
+   显著降低进入页面与跳转离开时的渲染开销。
+   contain-intrinsic-size 提供估计高度，避免滚动条跳动。 */
+section[id^="ccf-field"] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 640px;
+}
