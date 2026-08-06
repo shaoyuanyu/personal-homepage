@@ -4,7 +4,11 @@
 
 services:
   web:
-    build: .
+    build:
+      context: .
+      args:
+        # 站点 URL 构建期内联：部署初期证书未就绪用 http，就绪后改为 https://shaoyuanyu.cn
+        SITE_URL: ${SITE_URL:-https://shaoyuanyu.cn}
     restart: unless-stopped
     expose:
       - "3000"
@@ -20,8 +24,9 @@ services:
       - "3000"
     environment:
       - DATABASE_TYPE=postgresql
-      - DATABASE_URL=postgresql://umami:umami@db:5432/umami
-      - APP_SECRET=change-me-to-a-random-string # TODO: 修改为随机密钥
+      - DATABASE_URL=postgresql://umami:${POSTGRES_PASSWORD}@db:5432/umami
+      # 密钥从 .env 读取（.env.example 是模板，勿提交真实密钥）
+      - APP_SECRET=${UMAMI_APP_SECRET}
     depends_on:
       - db
     networks:
@@ -32,7 +37,7 @@ services:
     restart: unless-stopped
     environment:
       - POSTGRES_USER=umami
-      - POSTGRES_PASSWORD=umami
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=umami
     volumes:
       - umami-db:/var/lib/postgresql/data

@@ -10,6 +10,9 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# 站点对外 URL（SSG 构建期内联到 sitemap/robots/metadata；HTTP 部署时由 compose 传入 http:// 值）
+ARG SITE_URL=https://shaoyuanyu.cn
+ENV SITE_URL=$SITE_URL
 # 构建 Next.js standalone 产物（构建时会同步生成 Velite 内容层）
 RUN pnpm build
 

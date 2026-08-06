@@ -25,7 +25,8 @@ export const metadata: Metadata = {
     "Computer Science",
     "M.S. Student",
   ],
-  metadataBase: new URL("https://example.com"), // TODO: 替换为正式域名
+  // 站点对外 URL：构建时通过 SITE_URL 注入（见 Dockerfile ARG）；默认 HTTPS
+  metadataBase: new URL(process.env.SITE_URL ?? "https://shaoyuanyu.cn"),
   openGraph: {
     type: "website",
     locale: "en_US",

@@ -54,13 +54,19 @@ pnpm start        # 生产运行
 
 ## 📦 部署（VPS + Docker）
 
-1. 修改 `Caddyfile` 与 `docker-compose.yml` 中的域名/密钥
-2. 服务器上执行：
+1. 准备密钥文件（`.env` 不入库）：
+   ```bash
+   cp .env.example .env
+   # 编辑 .env，填入随机密钥（可用 openssl rand -hex 32 / -hex 16 生成）
+   ```
+2. 域名已配置为 `shaoyuanyu.cn`（`Caddyfile`，自动签发 HTTPS）；如需更换域名改此处
+3. 服务器上执行：
    ```bash
    git clone <repo> && cd ysy-personal-homepage
+   cp .env.example .env   # 填入与本地一致的密钥
    docker compose up -d --build
    ```
-3. 配置 GitHub Actions secrets 实现自动部署：
+4. 配置 GitHub Actions secrets 实现自动部署：
    - `VPS_HOST` / `VPS_USER` / `VPS_SSH_KEY`
 
 推送 `main` 分支 → CI 门禁（lint + typecheck + build）→ 自动构建镜像并部署。
