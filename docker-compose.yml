@@ -21,7 +21,7 @@ services:
     image: ghcr.io/umami-software/umami:postgresql-latest
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3001:3000" # Nginx 分流 umami.shaoyuanyu.cn 时使用；不需要可删除本服务与 db
+      - "127.0.0.1:3001:3000" # Nginx 分流 status.shaoyuanyu.cn 时使用；不需要可删除本服务与 db
     environment:
       - DATABASE_TYPE=postgresql
       - DATABASE_URL=postgresql://umami:${POSTGRES_PASSWORD}@db:5432/umami

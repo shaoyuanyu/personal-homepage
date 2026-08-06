@@ -81,7 +81,7 @@ pnpm start        # 生产运行
        }
    }
    ```
-   （umami 统计面板可参照映射到 127.0.0.1:3001；HTTPS 就绪后用 certbot 签发证书并将 SITE_URL 改为 https）
+   （umami 统计面板经 Nginx 分流到 127.0.0.1:3001（域名 status.shaoyuanyu.cn）；HTTPS 就绪后用 certbot 签发证书并将 SITE_URL 改为 https）
 3. 服务器上执行：
    ```bash
    git clone <repo> && cd ysy-personal-homepage
