@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
 
+import { Badge } from "@/components/ui/badge";
 import { CcfDirectory } from "@/components/ccf/ccf-directory";
 
 export const metadata: Metadata = {
@@ -14,8 +15,13 @@ export default function CcfPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6">
-      <div className="mb-8 flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
+      <div className="mb-8 flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
+          <Badge variant="secondary" className="rounded-full">
+            {t("versionBadge")}
+          </Badge>
+        </div>
         <p className="text-muted-foreground">{t("description")}</p>
         <p className="text-xs text-muted-foreground/80">
           {t("source")}{" "}
@@ -39,6 +45,9 @@ export default function CcfPage() {
         </p>
       </div>
       <CcfDirectory />
+      <p className="mt-14 border-t pt-4 text-xs text-muted-foreground/70">
+        {t("sourceNote")}
+      </p>
     </div>
   );
 }
