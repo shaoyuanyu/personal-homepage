@@ -4,6 +4,9 @@
 
 services:
   web:
+    # 镜像标签与 GitHub Actions 推送的 GHCR 标签一致：
+    # 自动部署 = docker pull 该标签；手动部署 = docker load 同标签镜像
+    image: ghcr.io/shaoyuanyu/personal-homepage:latest
     build:
       context: .
       args:
