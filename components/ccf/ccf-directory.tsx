@@ -311,12 +311,13 @@ export function CcfDirectory() {
             >
               <SelectValue>
                 <LayoutGridIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate">
+                <span className="truncate" title={field === "all" ? t("fieldAll") : fieldName(field)}>
                   {field === "all" ? t("fieldAll") : fieldName(field)}
                 </span>
               </SelectValue>
             </SelectTrigger>
-            <SelectContent className="rounded-xl p-1 shadow-lg">
+            {/* w-max 让面板随内容自适应宽度，保证领域全称完整显示 */}
+            <SelectContent className="w-max min-w-72 max-w-[min(28rem,calc(100vw-2rem))] rounded-xl p-1 shadow-lg">
               <SelectItem
                 value="all"
                 className="rounded-md py-1.5 pr-8 pl-2 data-[selected]:font-medium"
@@ -344,8 +345,8 @@ export function CcfDirectory() {
         </div>
       </div>
 
-      {/* 领域快速导航 */}
-      <nav aria-label={t("jumpLabel")} className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      {/* 领域快速导航：换行排列，避免横向拖动 */}
+      <nav aria-label={t("jumpLabel")} className="flex flex-wrap gap-1.5">
         {fields.map((f, i) => (
           <Button
             key={f}
