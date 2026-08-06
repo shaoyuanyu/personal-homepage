@@ -61,10 +61,10 @@ groups:
       en: Conferences & Deadlines
     links:
       - name: CCF 推荐目录
-        url: "https://ccf.atom.im/"
+        url: "/ccf"
         desc:
-          zh: 中国计算机学会推荐会议与期刊
-          en: CCF recommended venues & journals
+          zh: CCF 会议与期刊目录（站内版）
+          en: CCF recommended venues & journals (local)
       - name: AI Deadlines
         url: "https://paperswithcode.co/ai-deadlines"
         desc:

@@ -3,18 +3,28 @@
 import { useMemo, useState } from "react";
 import { Icon } from "@iconify/react";
 import { useLocale, useTranslations } from "next-intl";
-import { SearchIcon, GlobeIcon } from "lucide-react";
+import { SearchIcon, GlobeIcon, CompassIcon } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
+import { Link } from "@/lib/i18n/navigation";
 import type { NavLinkGroup } from "@/lib/data";
 
 type NavLink = NavLinkGroup["links"][number];
 
+/** 站内页面链接（url 以 / 开头）：用本站罗盘图标，不做 favicon 探测 */
+function isInternal(url: string) {
+  return url.startsWith("/");
+}
+
 /** 优先使用 iconify 品牌图标；未配置时抓取网站 favicon，加载失败才兜底为地球图标 */
 function LinkIcon({ link }: { link: NavLink }) {
   const [failed, setFailed] = useState(false);
+
+  if (isInternal(link.url)) {
+    return <CompassIcon className="size-4 shrink-0 text-muted-foreground" />;
+  }
 
   if (link.icon) {
     return <Icon icon={link.icon} className="size-4 shrink-0 text-muted-foreground" />;
@@ -89,14 +99,23 @@ export function LinksSearch({ groups }: { groups: NavLinkGroup[] }) {
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-sm font-medium">
                     <LinkIcon link={link} />
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="truncate group-hover:underline"
-                    >
-                      {link.name}
-                    </a>
+                    {isInternal(link.url) ? (
+                      <Link
+                        href={link.url}
+                        className="truncate underline-offset-4 group-hover:underline"
+                      >
+                        {link.name}
+                      </Link>
+                    ) : (
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate group-hover:underline"
+                      >
+                        {link.name}
+                      </a>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 {link.desc && (

@@ -87,6 +87,23 @@
     "categories": "分类",
     "fabLabel": "学术导航"
   },
+  "ccf": {
+    "title": "CCF 推荐目录",
+    "description": "中国计算机学会推荐国际学术会议和期刊目录（2026 第七版，2026 年 3 月通过）",
+    "source": "数据来源：",
+    "searchPlaceholder": "搜索缩写或全称...",
+    "typeAll": "全部",
+    "typeConference": "会议",
+    "typeJournal": "期刊",
+    "levelAll": "全部等级",
+    "fieldAll": "全部领域",
+    "levels": {
+      "class": "类"
+    },
+    "stats": "共 {total} 项 · 会议 {conferences} · 期刊 {journals} · 当前匹配 {matched} 项",
+    "items": "项",
+    "empty": "未找到匹配的会议或期刊"
+  },
   "footer": {
     "icp": "苏ICP备2026008270号-2",
     "copyright": "© {year} Yu Shaoyuan. 保留所有权利。"
