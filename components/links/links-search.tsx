@@ -10,6 +10,36 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
 import type { NavLinkGroup } from "@/lib/data";
 
+type NavLink = NavLinkGroup["links"][number];
+
+/** 优先使用 iconify 品牌图标；未配置时抓取网站 favicon，加载失败才兜底为地球图标 */
+function LinkIcon({ link }: { link: NavLink }) {
+  const [failed, setFailed] = useState(false);
+
+  if (link.icon) {
+    return <Icon icon={link.icon} className="size-4 shrink-0 text-muted-foreground" />;
+  }
+
+  if (failed) {
+    return <GlobeIcon className="size-4 shrink-0 text-muted-foreground" />;
+  }
+
+  const hostname = new URL(link.url).hostname;
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=64`}
+      alt=""
+      width={16}
+      height={16}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="size-4 shrink-0"
+    />
+  );
+}
+
 export function LinksSearch({ groups }: { groups: NavLinkGroup[] }) {
   const t = useTranslations("navPage");
   const locale = useLocale();
@@ -58,11 +88,7 @@ export function LinksSearch({ groups }: { groups: NavLinkGroup[] }) {
               <Card key={link.name} className="group transition-colors hover:border-primary/40">
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    {link.icon ? (
-                      <Icon icon={link.icon} className="size-4 shrink-0 text-muted-foreground" />
-                    ) : (
-                      <GlobeIcon className="size-4 shrink-0 text-muted-foreground" />
-                    )}
+                    <LinkIcon link={link} />
                     <a
                       href={link.url}
                       target="_blank"
