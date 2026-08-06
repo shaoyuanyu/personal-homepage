@@ -7,7 +7,6 @@ node_modules
 *.md
 .eslintrc*
 eslint.config.mjs
-tsconfig.json
 next-env.d.ts
 Dockerfile
 docker-compose.yml
