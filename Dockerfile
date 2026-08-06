@@ -8,6 +8,8 @@ RUN pnpm install --frozen-lockfile
 # ---- 构建阶段 ----
 FROM node:22-alpine AS builder
 WORKDIR /app
+# builder 是独立镜像，需重新启用 corepack（pnpm 版本由 packageManager 字段决定）
+RUN corepack enable
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # 站点对外 URL（SSG 构建期内联到 sitemap/robots/metadata；HTTP 部署时由 compose 传入 http:// 值）
