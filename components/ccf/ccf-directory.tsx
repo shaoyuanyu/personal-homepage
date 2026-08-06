@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   AwardIcon,
@@ -22,6 +22,20 @@ import { ccf, type CcfEntry } from "@/lib/data";
 type TypeFilter = "all" | "conf" | "jour";
 type LevelFilter = "all" | "A" | "B" | "C";
 
+/* 领域 → URL 短键（避免中文过长与编码问题） */
+const FIELD_KEYS: Record<string, string> = {
+  计算机体系结构: "arch",
+  计算机网络: "net",
+  网络与信息安全: "sec",
+  软件工程: "se",
+  数据库: "db",
+  计算机科学理论: "theory",
+  计算机图形学与多媒体: "graphics",
+  人工智能: "ai",
+  人机交互与普适计算: "hci",
+  交叉: "inter",
+};
+
 /** 领域英文名（数据中只有官方中文名） */
 const FIELD_EN: Record<string, string> = {
   计算机体系结构: "Architecture, Parallel & Distributed Computing, Storage",
@@ -38,6 +52,13 @@ const FIELD_EN: Record<string, string> = {
 
 /* 领域名以「/」为界拆分后的第一段即官方领域短名，便于做键与展示 */
 const FIELD_KEY = (field: string) => field.split("/")[0];
+
+/* 短键 → 完整领域名（模块级静态构建） */
+const KEY_TO_FIELD = new Map<string, string>();
+for (const e of [...ccf.conferences, ...ccf.journals]) {
+  const key = FIELD_KEYS[FIELD_KEY(e.f)];
+  if (key && !KEY_TO_FIELD.has(key)) KEY_TO_FIELD.set(key, e.f);
+}
 
 /* 级别专属配色：徽章文字 + 行首色条 */
 const LEVEL_STYLE = {
@@ -240,6 +261,43 @@ export function CcfDirectory() {
     setLevel("all");
     setSelectedFields([]);
   };
+
+  // 首次挂载：从 URL 查询参数恢复筛选状态（刷新/分享链接可还原）
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get("type");
+    const l = p.get("level");
+    const keys = (p.get("fields") ?? "").split(",").filter(Boolean);
+    setQuery(p.get("q") ?? "");
+    if (t === "conf" || t === "jour") setType(t);
+    if (l === "A" || l === "B" || l === "C") setLevel(l);
+    setSelectedFields(
+      keys
+        .map((k) => KEY_TO_FIELD.get(k))
+        .filter((f): f is string => Boolean(f)),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 筛选状态变化时同步到 URL（replaceState：刷新/重访保留，不堆积历史）
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (selectedFields.length > 0) {
+      p.set(
+        "fields",
+        selectedFields.map((f) => FIELD_KEYS[FIELD_KEY(f)]).join(","),
+      );
+    }
+    if (type !== "all") p.set("type", type);
+    if (level !== "all") p.set("level", level);
+    const q = query.trim();
+    if (q) p.set("q", q);
+    const qs = p.toString();
+    const url = qs
+      ? `${window.location.pathname}?${qs}`
+      : window.location.pathname;
+    window.history.replaceState(null, "", url);
+  }, [type, level, selectedFields, query]);
 
   return (
     <div className="flex flex-col gap-8">
