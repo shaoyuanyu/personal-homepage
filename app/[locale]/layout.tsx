@@ -32,9 +32,11 @@ export default async function LocaleLayout({
       <div className="flex min-h-svh flex-col">
         <Providers>
           <SiteHeader />
-          <main className="flex-1">{children}</main>
+          <main className="flex-1">
+            {children}
+            <NavFab />
+          </main>
           <SiteFooter />
-          <NavFab />
         </Providers>
       </div>
     </NextIntlClientProvider>
