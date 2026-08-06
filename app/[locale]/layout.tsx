@@ -6,6 +6,7 @@ import { routing } from "@/lib/i18n/routing";
 import { Providers } from "@/components/providers";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
+import { NavFab } from "@/components/layout/nav-fab";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -33,6 +34,7 @@ export default async function LocaleLayout({
           <SiteHeader />
           <main className="flex-1">{children}</main>
           <SiteFooter />
+          <NavFab />
         </Providers>
       </div>
     </NextIntlClientProvider>

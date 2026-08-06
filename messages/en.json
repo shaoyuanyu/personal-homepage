@@ -84,7 +84,8 @@
     "description": "Frequently used academic websites and tools",
     "searchPlaceholder": "Search sites or tools...",
     "noResults": "No links found",
-    "categories": "Categories"
+    "categories": "Categories",
+    "fabLabel": "Academic Links"
   },
   "footer": {
     "icp": "苏ICP备2026008270号-2",
