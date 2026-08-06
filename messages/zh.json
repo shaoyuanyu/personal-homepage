@@ -105,7 +105,7 @@
     "statsConferences": "推荐会议",
     "statsJournals": "推荐期刊",
     "statsClassA": "A 类收录",
-    "jumpLabel": "跳转到领域",
+    "fieldFilter": "按领域筛选（可多选）",
     "stats": "共 {total} 项 · 会议 {conferences} · 期刊 {journals} · 当前匹配 {matched} 项",
     "items": "项",
     "empty": "未找到匹配的会议或期刊",

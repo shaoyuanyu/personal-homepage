@@ -105,7 +105,7 @@
     "statsConferences": "Conferences",
     "statsJournals": "Journals",
     "statsClassA": "Class A venues",
-    "jumpLabel": "Jump to field",
+    "fieldFilter": "Filter by field (multi-select)",
     "stats": "{total} venues · {conferences} conferences · {journals} journals · {matched} match current filters",
     "items": "items",
     "empty": "No matching conferences or journals",
