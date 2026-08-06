@@ -84,7 +84,8 @@
     "description": "常用学术网站与工具",
     "searchPlaceholder": "搜索网站或工具...",
     "noResults": "未找到相关链接",
-    "categories": "分类"
+    "categories": "分类",
+    "fabLabel": "学术导航"
   },
   "footer": {
     "icp": "苏ICP备2026008270号-2",
