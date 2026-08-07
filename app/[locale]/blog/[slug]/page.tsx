@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Link } from "@/lib/i18n/navigation";
 import { formatDate } from "@/lib/utils/format";
-import { posts } from "@/lib/data";
+import { posts, profile } from "@/lib/data";
 
 type Props = {
   params: Promise<{ locale: string; slug: string }>;
@@ -33,8 +33,30 @@ export default async function PostPage({ params }: Props) {
   const post = posts.find((p) => p.locale === locale && p.slug === slug);
   if (!post) notFound();
 
+  // BlogPosting 结构化数据：文章详情页收录（headline/日期/作者）
+  const siteUrl = process.env.SITE_URL ?? "https://shaoyuanyu.cn";
+  const blogPostJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.summary,
+    datePublished: post.date,
+    dateModified: post.date,
+    inLanguage: locale,
+    author: { "@type": "Person", name: profile.name, url: siteUrl },
+    publisher: { "@type": "Person", name: profile.name, url: siteUrl },
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": `${siteUrl}/${locale}/blog/${post.slug}`,
+    },
+  };
+
   return (
     <article className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostJsonLd) }}
+      />
       <Button variant="ghost" size="sm" className="mb-8 -ml-2" render={<Link href="/blog" />}>
         <ArrowLeftIcon data-icon="inline-start" />
         {t("backToBlog")}
