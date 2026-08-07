@@ -13,6 +13,13 @@
 # testing
 /coverage
 
+# playwright
+/playwright-report/
+/test-results/
+
+# OG 图字体缓存（构建期下载，不入镜像）
+/.og-fonts/
+
 # next.js
 /.next/
 /out/

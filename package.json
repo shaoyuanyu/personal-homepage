@@ -9,7 +9,9 @@
     "start": "node scripts/start-standalone.mjs",
     "preview": "pnpm build && pnpm start",
     "lint": "eslint",
-    "fetch:favicons": "node scripts/fetch-favicons.mjs"
+    "fetch:favicons": "node scripts/fetch-favicons.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:local": "bash scripts/e2e-local.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -33,6 +35,8 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@fontsource/noto-sans-sc": "^5.3.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

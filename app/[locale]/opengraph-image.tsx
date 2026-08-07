@@ -4,6 +4,7 @@ import { ImageResponse } from "next/og";
 
 import { routing } from "@/lib/i18n/routing";
 import { profile } from "@/lib/data";
+import { loadOgFonts, FONT_FAMILY } from "@/lib/og-fonts";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -44,6 +45,7 @@ export default async function OpenGraphImage({
 }) {
   const { locale } = await params;
   const lang = locale === "zh" ? "zh" : "en";
+  const fonts = await loadOgFonts();
   // 暂无研究方向时回退为学历/身份标题
   const subtitle =
     profile.researchInterests.length > 0
@@ -61,6 +63,7 @@ export default async function OpenGraphImage({
           alignItems: "center",
           padding: "0 96px",
           background: "#fafaf9",
+          fontFamily: FONT_FAMILY,
         }}
       >
         {/* 左半：品牌标记 + 姓名 + 研究方向 */}
@@ -111,6 +114,6 @@ export default async function OpenGraphImage({
         />
       </div>
     ),
-    { ...size }
+    { ...size, fonts }
   );
 }
