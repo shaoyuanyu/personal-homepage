@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+
+import { UmamiTracker } from "@/components/analytics/umami-tracker";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -49,6 +51,8 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        {/* Umami 自托管统计（仅在线上域名生效） */}
+        <UmamiTracker />
       </body>
     </html>
   );

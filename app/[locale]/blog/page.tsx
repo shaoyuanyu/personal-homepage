@@ -7,6 +7,11 @@ import { posts } from "@/lib/data";
 export const metadata: Metadata = {
   title: "Blog",
   description: "Technical notes and research thoughts",
+  alternates: {
+    types: {
+      "application/rss+xml": "/feed.xml",
+    },
+  },
 };
 
 export default function BlogPage() {

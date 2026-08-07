@@ -34,8 +34,33 @@ export default function HomePage() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 3);
 
+  // Person 结构化数据：帮助搜索引擎（Google 学术等）正确索引个人主页
+  const siteUrl = process.env.SITE_URL ?? "https://shaoyuanyu.cn";
+  const personJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name: profile.name,
+    url: siteUrl,
+    image: `${siteUrl}${profile.avatar}`,
+    email: `mailto:${profile.email}`,
+    jobTitle: profile.title[lang],
+    affiliation: {
+      "@type": "Organization",
+      name: profile.institution[lang],
+    },
+    alumniOf: profile.education.map((edu) => ({
+      "@type": "CollegeOrUniversity",
+      name: edu.institution[lang],
+    })),
+    sameAs: Object.values(profile.socials).filter(Boolean),
+  };
+
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(personJsonLd) }}
+      />
       <Hero />
 
       {/* 研究方向（暂无内容时隐藏） */}
