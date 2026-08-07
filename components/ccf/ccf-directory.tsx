@@ -310,7 +310,6 @@ export function CcfDirectory() {
         // localStorage 不可用或数据损坏时静默忽略
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 筛选状态变化时同步：URL（可分享）+ localStorage（记忆上次筛选）。
