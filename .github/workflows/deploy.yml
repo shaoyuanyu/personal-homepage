@@ -14,8 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-    steps:
+      packages: write    steps:
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -64,3 +63,32 @@ jobs:
             done
             docker compose up -d --no-deps web
             docker image prune -f
+
+  smoke-test:
+    name: Smoke Test (Production)
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke test production
+        # 对线上站点跑同一套冒烟用例（页面 200 / 301 跳转 / OG 图 / 资源）
+        env:
+          E2E_BASE_URL: https://shaoyuanyu.cn
+        run: pnpm exec playwright test
