@@ -78,7 +78,11 @@
     "tags": "Tags",
     "allTags": "All",
     "updated": "Updated",
-    "backToBlog": "Back to Blog"
+    "backToBlog": "Back to Blog",
+    "readingTime": "{minutes} min read",
+    "tableOfContents": "Contents",
+    "previousPost": "Previous",
+    "nextPost": "Next"
   },
   "navPage": {
     "title": "Academic Links",

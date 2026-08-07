@@ -1,6 +1,36 @@
 import { relative } from "node:path";
 import { defineCollection, defineConfig, s } from "velite";
 
+/**
+ * 给 h1-h4 标题注入 id = 标题原文（与 s.toc() 生成的锚点 URL 一致，
+ * 例如 `## 欢迎` → `id="欢迎"` / `#欢迎`）。纯文本递归拼接，无额外依赖。
+ */
+function headingIdPlugin() {
+  return (tree: unknown) => {
+    const collectText = (node: any): string => {
+      if (!node) return "";
+      if (node.type === "text") return node.value;
+      if (Array.isArray(node.children)) {
+        return node.children.map(collectText).join("");
+      }
+      return "";
+    };
+    const walk = (node: any) => {
+      if (!node || typeof node !== "object") return;
+      if (
+        node.type === "element" &&
+        /^h[1-4]$/.test(node.tagName ?? "") &&
+        !node.properties?.id
+      ) {
+        const id = collectText(node).trim();
+        if (id) node.properties.id = id;
+      }
+      (node.children ?? []).forEach(walk);
+    };
+    walk(tree);
+  };
+}
+
 // ---------- Posts (MDX 博客) ----------
 const posts = defineCollection({
   name: "Post",
@@ -12,7 +42,10 @@ const posts = defineCollection({
       tags: s.array(s.string()).default([]),
       summary: s.string().max(300).optional(),
       slug: s.slug("posts"),
-      body: s.mdx(),
+      body: s.mdx({ rehypePlugins: [headingIdPlugin] }),
+      // 目录（标题锚点树）与阅读统计，由 Velite 从 MDX 自动提取
+      toc: s.toc(),
+      meta: s.metadata(),
     })
     .transform((data, { meta }) => {
       // content/posts/{zh|en}/{slug}.mdx → locale 从路径推断

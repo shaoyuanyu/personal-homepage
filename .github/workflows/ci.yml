@@ -39,6 +39,9 @@ jobs:
       - name: Fetch favicons
         run: pnpm fetch:favicons
 
+      - name: Sync publications (Semantic Scholar)
+        run: pnpm fetch:publications
+
       - name: Build
         run: pnpm build
 
