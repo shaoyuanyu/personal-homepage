@@ -36,5 +36,8 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit
 
+      - name: Fetch favicons
+        run: pnpm fetch:favicons
+
       - name: Build
         run: pnpm build

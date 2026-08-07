@@ -15,6 +15,8 @@ COPY . .
 # 站点对外 URL（SSG 构建期内联到 sitemap/robots/metadata；HTTP 部署时由 compose 传入 http:// 值）
 ARG SITE_URL=https://shaoyuanyu.cn
 ENV SITE_URL=$SITE_URL
+# 预下载导航页外部站点图标（构建环境可访问 Google/iconify；运行时不再依赖境外服务）
+RUN pnpm fetch:favicons
 # 构建 Next.js standalone 产物（构建时会同步生成 Velite 内容层）
 RUN pnpm build
 

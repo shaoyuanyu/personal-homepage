@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Icon } from "@iconify/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { SearchIcon, GlobeIcon, CompassIcon } from "lucide-react";
 
@@ -18,16 +17,27 @@ function isInternal(url: string) {
   return url.startsWith("/");
 }
 
-/** 优先使用 iconify 品牌图标；未配置时抓取网站 favicon，加载失败才兜底为地球图标 */
+/**
+ * 外部链接图标：构建期已由 scripts/fetch-favicons.mjs 缓存到本站
+ * /favicons/{hostname}.{svg|png}，运行时不再依赖 Google/iconify 境外服务；
+ * 加载失败时兜底为地球图标。
+ *
+ * 注意：SSR 输出的 <img> 若在 React hydration 绑定 onError 之前就 404，
+ * error 事件会被错过，因此 mount 后还需主动检查一次破图状态。
+ */
 function LinkIcon({ link }: { link: NavLink }) {
   const [failed, setFailed] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const el = imgRef.current;
+    if (el && el.complete && el.naturalWidth === 0) {
+      setFailed(true);
+    }
+  }, []);
 
   if (isInternal(link.url)) {
     return <CompassIcon className="size-4 shrink-0 text-muted-foreground" />;
-  }
-
-  if (link.icon) {
-    return <Icon icon={link.icon} className="size-4 shrink-0 text-muted-foreground" />;
   }
 
   if (failed) {
@@ -35,11 +45,15 @@ function LinkIcon({ link }: { link: NavLink }) {
   }
 
   const hostname = new URL(link.url).hostname;
+  const src = link.icon
+    ? `/favicons/${hostname}.svg`
+    : `/favicons/${hostname}.png`;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=64`}
+      ref={imgRef}
+      src={src}
       alt=""
       width={16}
       height={16}
