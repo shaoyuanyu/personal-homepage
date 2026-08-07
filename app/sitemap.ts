@@ -11,9 +11,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const entries: MetadataRoute.Sitemap = [];
 
   for (const locale of routing.locales) {
+    // 默认语言（zh）不带前缀，其他语言带 /en 前缀
+    const prefix = locale === routing.defaultLocale ? "" : `/${locale}`;
     for (const route of staticRoutes) {
       entries.push({
-        url: `${BASE_URL}/${locale}${route}`,
+        url: `${BASE_URL}${prefix}${route}`,
         lastModified: new Date(),
         changeFrequency: "monthly",
         priority: route === "" ? 1 : 0.8,
@@ -21,7 +23,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     }
     for (const post of posts.filter((p) => p.locale === locale)) {
       entries.push({
-        url: `${BASE_URL}/${locale}/blog/${post.slug}`,
+        url: `${BASE_URL}${prefix}/blog/${post.slug}`,
         lastModified: new Date(post.date),
         changeFrequency: "monthly",
         priority: 0.6,

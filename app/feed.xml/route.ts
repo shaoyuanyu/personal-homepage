@@ -1,9 +1,15 @@
 import { posts, profile } from "@/lib/data";
+import { routing } from "@/lib/i18n/routing";
 
 // 静态生成（构建时输出 feed.xml，无需运行时）
 export const dynamic = "force-static";
 
 const SITE_URL = process.env.SITE_URL ?? "https://shaoyuanyu.cn";
+
+// 默认语言（zh）不带前缀，其他语言带 /en 前缀
+function localePrefix(locale: string): string {
+  return locale === routing.defaultLocale ? "" : `/${locale}`;
+}
 
 function escapeXml(value: string): string {
   return value
@@ -18,7 +24,7 @@ export function GET() {
   const items = [...posts]
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((post) => {
-      const url = `${SITE_URL}/${post.locale}/blog/${post.slug}`;
+      const url = `${SITE_URL}${localePrefix(post.locale)}/blog/${post.slug}`;
       return `    <item>
       <title>${escapeXml(post.title)}</title>
       <link>${url}</link>
