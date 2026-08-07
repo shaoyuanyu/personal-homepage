@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Link } from "@/lib/i18n/navigation";
 import { formatDate } from "@/lib/utils/format";
 import { posts, profile } from "@/lib/data";
+import { routing } from "@/lib/i18n/routing";
 
 type Props = {
   params: Promise<{ locale: string; slug: string }>;
@@ -35,6 +36,8 @@ export default async function PostPage({ params }: Props) {
 
   // BlogPosting 结构化数据：文章详情页收录（headline/日期/作者）
   const siteUrl = process.env.SITE_URL ?? "https://shaoyuanyu.cn";
+  // 默认语言（zh）不带前缀，其他语言带 /en 前缀
+  const urlPrefix = locale === routing.defaultLocale ? "" : `/${locale}`;
   const blogPostJsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
@@ -47,7 +50,7 @@ export default async function PostPage({ params }: Props) {
     publisher: { "@type": "Person", name: profile.name, url: siteUrl },
     mainEntityOfPage: {
       "@type": "WebPage",
-      "@id": `${siteUrl}/${locale}/blog/${post.slug}`,
+      "@id": `${siteUrl}${urlPrefix}/blog/${post.slug}`,
     },
   };
 
