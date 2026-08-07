@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "node scripts/start-standalone.mjs",
     "preview": "pnpm build && pnpm start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "fetch:favicons": "node scripts/fetch-favicons.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

@@ -21,6 +21,9 @@
 /build
 /dist
 
+# 构建时生成的导航页站点图标（由 scripts/fetch-favicons.mjs 生成）
+/public/favicons/
+
 # misc
 .DS_Store
 *.pem
