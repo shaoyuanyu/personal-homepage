@@ -45,6 +45,20 @@ test.describe("页面可达性", () => {
   test("博客文章页：200 + 渲染标题", async ({ page }) => {
     await expectPageOk(page, "/blog/welcome", "欢迎来到我的博客");
   });
+
+  test("博客文章页：TOC 锚点 + 阅读时间", async ({ page }) => {
+    await expectPageOk(page, "/blog/welcome");
+    // 目录侧栏存在且含文章标题锚点
+    const tocLink = page.locator('nav[aria-label="目录"] a[href="#欢迎"]');
+    await expect(tocLink).toBeVisible();
+    // 阅读时间显示
+    await expect(page.getByText(/阅读 \d+ 分钟|min read/)).toBeVisible();
+    // 点击目录锚点后 URL 带 hash（中文会被 URL 编码，先解码再断言）
+    await tocLink.click();
+    await expect
+      .poll(() => decodeURIComponent(page.url()))
+      .toContain("#欢迎");
+  });
 });
 
 test.describe("旧链接与 SEO 资源", () => {

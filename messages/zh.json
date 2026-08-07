@@ -78,7 +78,11 @@
     "tags": "标签",
     "allTags": "全部",
     "updated": "更新于",
-    "backToBlog": "返回博客列表"
+    "backToBlog": "返回博客列表",
+    "readingTime": "阅读 {minutes} 分钟",
+    "tableOfContents": "目录",
+    "previousPost": "上一篇",
+    "nextPost": "下一篇"
   },
   "navPage": {
     "title": "学术导航",
