@@ -59,7 +59,7 @@ function LinkIcon({ link }: { link: NavLink }) {
       height={16}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
-      className="size-4 shrink-0 opacity-80 grayscale transition-all duration-200 group-hover:opacity-100 group-hover:grayscale-0"
+      className="size-4 shrink-0 opacity-80 grayscale transition-all duration-200 group-hover:opacity-100 group-hover:grayscale-0 dark:brightness-0 dark:invert"
     />
   );
 }
