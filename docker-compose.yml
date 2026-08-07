@@ -30,6 +30,8 @@ services:
       - DATABASE_URL=postgresql://umami:${POSTGRES_PASSWORD}@db:5432/umami
       # 密钥从 .env 读取（.env.example 是模板，勿提交真实密钥）
       - APP_SECRET=${UMAMI_APP_SECRET}
+      # 禁止公开注册（此前曾遭公网扫描器抢注 admin；账号改为数据库直插创建）
+      - DISABLE_REGISTRATION=true
     depends_on:
       - db
     networks:
