@@ -5,29 +5,34 @@ import { defineCollection, defineConfig, s } from "velite";
  * 给 h1-h4 标题注入 id = 标题原文（与 s.toc() 生成的锚点 URL 一致，
  * 例如 `## 欢迎` → `id="欢迎"` / `#欢迎`）。纯文本递归拼接，无额外依赖。
  */
+type HastNode = {
+  type: string;
+  value?: string;
+  tagName?: string;
+  properties?: { id?: string };
+  children?: HastNode[];
+};
+
 function headingIdPlugin() {
   return (tree: unknown) => {
-    const collectText = (node: any): string => {
+    const collectText = (node: HastNode | undefined): string => {
       if (!node) return "";
-      if (node.type === "text") return node.value;
-      if (Array.isArray(node.children)) {
-        return node.children.map(collectText).join("");
-      }
-      return "";
+      if (node.type === "text") return node.value ?? "";
+      return (node.children ?? []).map(collectText).join("");
     };
-    const walk = (node: any) => {
-      if (!node || typeof node !== "object") return;
+    const walk = (node: HastNode | undefined) => {
+      if (!node) return;
       if (
         node.type === "element" &&
         /^h[1-4]$/.test(node.tagName ?? "") &&
         !node.properties?.id
       ) {
         const id = collectText(node).trim();
-        if (id) node.properties.id = id;
+        if (id) node.properties = { ...node.properties, id };
       }
       (node.children ?? []).forEach(walk);
     };
-    walk(tree);
+    walk(tree as HastNode);
   };
 }
 
