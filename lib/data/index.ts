@@ -69,6 +69,8 @@ export type CcfEntry = {
   l: "A" | "B" | "C";
   /** 专业领域（官方中文名） */
   f: string;
+  /** DBLP venue 页链接（脚本生成，可能为空） */
+  d?: string;
 };
 
 export const ccf = ccfData as {

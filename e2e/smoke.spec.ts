@@ -116,6 +116,25 @@ test.describe("关键资源", () => {
     expect(broken, `导航页应有加载失败的图标（实际 ${broken} 个）`).toBe(0);
   });
 
+  test("CCF 目录条目带 DBLP 外链", async ({ page }) => {
+    await expectPageOk(page, "/ccf");
+    // 绝大多数条目应有 DBLP 链接
+    const dblpLinks = page.locator('a[aria-label$=" on DBLP"]');
+    const count = await dblpLinks.count();
+    expect(count, `DBLP 链接数应足够多（实际 ${count} 个）`).toBeGreaterThan(100);
+    // 抽查：ASPLOS 行应直链到其 DBLP venue 页
+    const asplosRow = page.locator("li", { hasText: "ASPLOS" }).first();
+    await expect(asplosRow.locator('a[aria-label="ASPLOS on DBLP"]')).toHaveAttribute(
+      "href",
+      /dblp\.org\/db\/conf\/asplos/,
+    );
+    // 外链应新窗口打开
+    await expect(asplosRow.locator('a[aria-label="ASPLOS on DBLP"]')).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+  });
+
   test("页面无控制台错误", async ({ page }) => {
     const errors = collectPageErrors(page);
     await expectPageOk(page, "/");
