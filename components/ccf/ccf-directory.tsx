@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import {
   AwardIcon,
   BookOpenIcon,
+  ExternalLinkIcon,
   LayersIcon,
   PresentationIcon,
   RotateCcwIcon,
@@ -127,6 +128,18 @@ function EntryRow({ entry, type }: { entry: CcfEntry; type: "conf" | "jour" }) {
         {type === "conf" ? t("typeConference") : t("typeJournal")}
       </Badge>
       <LevelBadge level={entry.l} />
+      {entry.d && (
+        <a
+          href={entry.d}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`${entry.a} on DBLP`}
+          title="DBLP"
+          className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-primary focus-visible:text-primary"
+        >
+          <ExternalLinkIcon className="size-3.5" aria-hidden />
+        </a>
+      )}
     </li>
   );
 }
