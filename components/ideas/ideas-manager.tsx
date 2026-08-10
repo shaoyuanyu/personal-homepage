@@ -43,6 +43,29 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // 数据新鲜度：useState 只在挂载时取一次 initialIdeas，而客户端导航返回时
+  // Router Cache 可能提供含旧数据的 RSC payload，因此每次挂载后主动拉取最新
+  // 列表覆盖（拉取失败静默保留现有数据）；同时跟随服务端 revalidate 后的
+  // initialIdeas prop 变化。
+  useEffect(() => {
+    setIdeas(initialIdeas);
+  }, [initialIdeas]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ideas")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { ideas?: Idea[] } | null) => {
+        if (!cancelled && data?.ideas) setIdeas(data.ideas);
+      })
+      .catch(() => {
+        // 网络异常等：保留现有数据，不打扰用户
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // 相对时间格式化（"3 分钟前"），整点刷新保持新鲜
   const rtf = useMemo(() => new Intl.RelativeTimeFormat(locale, { numeric: "auto" }), [locale]);
   const [, forceTick] = useState(0);
