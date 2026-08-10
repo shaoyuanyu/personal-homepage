@@ -17,7 +17,9 @@
     "nav": "导航",
     "menu": "菜单",
     "ideas": "速记",
-    "login": "登录"
+    "login": "登录",
+    "owner": "主人",
+    "logout": "退出登录"
   },
   "login": {
     "title": "管理登录",
@@ -26,6 +28,7 @@
     "codePlaceholder": "6 位验证码或 16 位恢复码",
     "submit": "登录",
     "submitting": "验证中…",
+    "recoveryHint": "验证码无效？可使用设置时生成的 16 位恢复码",
     "error": {
       "invalid": "验证码无效，请重试",
       "rateLimited": "尝试次数过多，请 15 分钟后再试",

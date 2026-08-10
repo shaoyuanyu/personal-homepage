@@ -79,7 +79,7 @@ export function SiteHeader() {
                     {t(item.key)}
                   </Button>
                 ))}
-                <OwnerNavItem />
+                <OwnerNavItem className="w-full justify-start" />
               </nav>
             </SheetContent>
           </Sheet>

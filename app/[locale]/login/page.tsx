@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
+import { KeyRoundIcon } from "lucide-react";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { isOwner } from "@/lib/auth/owner";
+import { Card, CardContent } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: "Admin Login",
@@ -27,11 +29,21 @@ export default async function LoginPage({
 
   return (
     <div className="mx-auto flex max-w-md flex-col px-4 py-16 sm:px-6">
-      <div className="mb-8 text-center">
+      <div className="mb-8 flex flex-col items-center text-center">
+        <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20">
+          <KeyRoundIcon className="size-6" />
+        </div>
         <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{t("description")}</p>
       </div>
-      <LoginForm />
+      <Card className="p-6 sm:p-8">
+        <CardContent className="p-0">
+          <LoginForm />
+        </CardContent>
+      </Card>
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        {t("recoveryHint")}
+      </p>
     </div>
   );
 }

@@ -205,6 +205,26 @@ test.describe("主人登录（TOTP）", () => {
     const cookies = await page.context().cookies();
     expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
   });
+
+  test("主人菜单：通过导航退出登录", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    // 导航栏出现主人菜单（桌面视口）
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(page.getByRole("button", { name: "主人" })).toBeVisible();
+
+    // 菜单含「速记」入口与「退出登录」项（nav.ideas 文案为「速记」）
+    await page.getByRole("button", { name: "主人" }).click();
+    await expect(page.getByRole("menuitem", { name: /速记/ })).toBeVisible();
+    await page.getByRole("menuitem", { name: /退出登录/ }).click();
+
+    // 回到首页且会话被清除，导航恢复为「登录」
+    await expect(page).toHaveURL(/\/$/);
+    const cookies = await page.context().cookies();
+    expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
+    await expect(page.getByRole("button", { name: "登录" })).toBeVisible();
+  });
 });
 
 test.describe("想法速记（主人专属）", () => {
