@@ -47,6 +47,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 
 - **路由**：`/admin/ideas`（`requireOwner` 守卫）；API：`GET/POST /api/ideas`、`PATCH/DELETE /api/ideas/[id]`（游客一律 401）。
 - **存储**：单文件 JSON `data/ideas.json`（`lib/ideas/store.ts`），原子写入（tmp + rename），零依赖。容器内 `/app/data` 由 compose 绑定挂载到 VPS 宿主机 `~/personal-homepage/data/`。
+- **备份**：VPS crontab 每 6 小时（`0 */6 * * *`）执行 `~/backup-ideas.sh`（仓库 `scripts/backup-ideas.sh`），把 `data/ideas.json` 推送到 private 仓库 `shaoyuanyu/ideas-backup`。认证用 deploy key `~/.ssh/ideas_backup` + SSH 别名 `github.com-backup`（仅该仓库写权限）；日志 `~/backup-ideas.log`。**改动脚本后需重新 scp 同步 VPS**：`scp -i ~/.ssh/vps-deploy scripts/backup-ideas.sh ysy@106.14.135.32:~/backup-ideas.sh`。恢复：clone 该 repo 后 `cp ideas.json ~/personal-homepage/data/ideas.json`。
 - **注意**：本地 standalone 数据在 `.next/standalone/data/`（cwd 为 standalone 目录），dev 模式在项目根 `data/`，均被 gitignore。
 - 后续管理员专属功能沿用 `/admin/*` + `requireOwner()`。
 
