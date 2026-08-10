@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 };
 
 /** Idea 速记：主人专属页面，未登录重定向到登录页 */
-export default async function AdminIdeasPage({
+export default async function IdeasPage({
   params,
 }: {
   params: Promise<{ locale: string }>;
