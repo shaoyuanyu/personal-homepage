@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { LightbulbIcon } from "lucide-react";
 
 import { requireOwner } from "@/lib/auth/owner";
 import { listIdeas } from "@/lib/ideas/store";
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-/** 想法速记：主人专属页面，未登录重定向到登录页 */
+/** Idea 速记：主人专属页面，未登录重定向到登录页 */
 export default async function AdminIdeasPage({
   params,
 }: {
@@ -26,7 +27,10 @@ export default async function AdminIdeasPage({
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <header className="mb-6">
+      <header className="mb-8 flex flex-col items-center text-center">
+        <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20">
+          <LightbulbIcon className="size-6" />
+        </div>
         <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{t("description")}</p>
       </header>

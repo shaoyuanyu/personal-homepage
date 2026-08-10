@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 想法速记（ideas.json）定期备份脚本
+# Idea 速记（ideas.json）定期备份脚本
 #
 # 由 VPS crontab 每 6 小时触发（0 */6 * * *），将数据推送到
 # private 仓库 shaoyuanyu/ideas-backup（deploy key 认证，仅该仓库写权限）。

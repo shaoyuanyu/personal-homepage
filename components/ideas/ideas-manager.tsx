@@ -2,21 +2,23 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "@/lib/i18n/navigation";
 import {
   CheckIcon,
+  CircleAlertIcon,
   CircleIcon,
   LoaderCircleIcon,
-  LogOutIcon,
   PencilIcon,
   PlusIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Idea, IdeaStatus } from "@/lib/ideas/store";
@@ -24,14 +26,13 @@ import type { Idea, IdeaStatus } from "@/lib/ideas/store";
 type Filter = "all" | IdeaStatus;
 
 /**
- * 想法速记管理面板（仅主人可见）：
+ * Idea 速记管理面板（仅主人可见）：
  * 快速记录 + 筛选 + 行内编辑 + 完成切换 + 删除。
  * 所有变更乐观更新，失败回滚并提示。
  */
 export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
   const t = useTranslations("ideas");
   const locale = useLocale();
-  const router = useRouter();
 
   const [ideas, setIdeas] = useState<Idea[]>(initialIdeas);
   const [filter, setFilter] = useState<Filter>("all");
@@ -152,14 +153,6 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
     }
   }
 
-  function handleLogout() {
-    void (async () => {
-      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-      router.push("/");
-      router.refresh();
-    })();
-  }
-
   const visible = useMemo(() => {
     if (filter === "all") return ideas;
     return ideas.filter((i) => i.status === filter);
@@ -176,47 +169,50 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* 快速记录 */}
-      <form
-        className="flex flex-col gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void handleCreate();
-        }}
-      >
-        <Textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void handleCreate();
-            }
+      {/* 快速记录：卡片式输入区，聚焦时整卡高亮 */}
+      <Card className="p-4 transition-shadow focus-within:ring-2 focus-within:ring-ring/50 sm:p-5">
+        <form
+          className="flex flex-col gap-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleCreate();
           }}
-          placeholder={t("placeholder")}
-          aria-label={t("placeholder")}
-          rows={3}
-          disabled={submitting}
-          className="resize-none"
-        />
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">{t("hint")}</p>
-          <Button type="submit" disabled={submitting || !input.trim()} size="sm">
-            {submitting ? (
-              <LoaderCircleIcon className="animate-spin" />
-            ) : (
-              <PlusIcon />
-            )}
-            {t("add")}
-          </Button>
-        </div>
-      </form>
+        >
+          <Textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void handleCreate();
+              }
+            }}
+            placeholder={t("placeholder")}
+            aria-label={t("placeholder")}
+            rows={3}
+            disabled={submitting}
+            className="resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+          />
+          <div className="mt-2 flex items-center justify-between gap-2 border-t pt-3">
+            <p className="text-xs text-muted-foreground">{t("hint")}</p>
+            <Button type="submit" disabled={submitting || !input.trim()} size="sm">
+              {submitting ? (
+                <LoaderCircleIcon className="animate-spin" />
+              ) : (
+                <PlusIcon />
+              )}
+              {t("add")}
+            </Button>
+          </div>
+        </form>
+      </Card>
 
       {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <CircleAlertIcon />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {/* 筛选：Base UI ToggleGroup 的 value 恒为数组（单选时最多一个元素） */}
@@ -266,7 +262,10 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
             <li
               key={idea.id}
               data-idea-status={idea.status}
-              className="group flex items-start gap-3 rounded-xl border p-3.5 transition-colors hover:bg-muted/40"
+              className={cn(
+                "group flex items-start gap-3 rounded-xl border p-3.5 transition-all hover:bg-muted/50",
+                idea.status === "done" && "opacity-75",
+              )}
             >
               {/* 完成切换 */}
               <button
@@ -381,14 +380,6 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
           ))}
         </ul>
       )}
-
-      {/* 退出登录 */}
-      <div className="mt-2 border-t pt-4">
-        <Button variant="ghost" size="sm" onClick={handleLogout}>
-          <LogOutIcon />
-          {t("logout")}
-        </Button>
-      </div>
     </div>
   );
 }
