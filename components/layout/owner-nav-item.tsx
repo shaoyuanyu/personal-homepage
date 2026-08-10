@@ -1,13 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import {
-  BookmarkIcon,
-  KeyRoundIcon,
-  LogOutIcon,
-  UserRoundIcon,
-} from "lucide-react";
+import { LogOutIcon } from "lucide-react";
 
 import { Link, usePathname, useRouter } from "@/lib/i18n/navigation";
 import { Button } from "@/components/ui/button";
@@ -15,14 +10,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
 /**
  * 导航管理员入口：
  * - 游客：显示「登录」按钮（指向 /login）
- * - 已登录：显示「管理员」菜单（想法速记 / 退出登录）
+ * - 已登录：显示「速记」单列入口 +「我的空间」菜单（仅权限类操作，
+ *   如退出登录；后续网站管理/权限管理等放此处，勿放功能入口）
  * 登录态来源：挂载/路径变化时请求 /api/auth/me，并监听 owner-auth-changed
  * 事件（登录/登出后广播，登出时路径可能不变，仅靠 pathname 无法感知）。
  * 查询期间渲染同尺寸占位，避免导航栏布局跳动。
@@ -70,38 +65,52 @@ export function OwnerNavItem({ className }: { className?: string }) {
   }
 
   if (owner === null) {
-    // 占位：与按钮同尺寸，避免布局跳动
-    return <span aria-hidden className="size-9" />;
+    // 占位：覆盖两个按钮的总宽度，避免布局跳动
+    return (
+      <span aria-hidden className="flex items-center gap-1">
+        <span className="size-9" />
+        <span className="size-9" />
+      </span>
+    );
   }
 
   if (owner) {
     return (
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={t("owner")}
-              className={className}
-            >
-              <UserRoundIcon data-icon="default" />
-              {t("owner")}
-            </Button>
-          }
-        />
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem render={<Link href="/admin/ideas" />}>
-            <BookmarkIcon data-icon="default" />
-            {t("ideas")}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}>
-            <LogOutIcon data-icon="default" />
-            {t("logout")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Fragment>
+        {/* 高频功能：单列入口（纯文字，与顶部其他导航项一致） */}
+        <Button
+          variant="ghost"
+          size="sm"
+          render={<Link href="/admin/ideas" />}
+          aria-label={t("ideas")}
+          className={className}
+        >
+          {t("ideas")}
+        </Button>
+
+        {/* 我的空间：仅权限类操作 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={t("owner")}
+                className={className}
+              >
+                {t("owner")}
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end">
+            {/* 预留：网站管理、权限管理等权限类操作入口 */}
+            <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}>
+              <LogOutIcon data-icon="default" />
+              {t("logout")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </Fragment>
     );
   }
 
@@ -113,7 +122,6 @@ export function OwnerNavItem({ className }: { className?: string }) {
       aria-label={t("login")}
       className={className}
     >
-      <KeyRoundIcon data-icon="default" />
       {t("login")}
     </Button>
   );

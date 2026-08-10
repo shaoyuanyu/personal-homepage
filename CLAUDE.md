@@ -38,7 +38,9 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - **代码分层**：`lib/auth/`（totp / session / owner / rate-limit / recovery）。
   - 页面守卫：`requireOwner()`（未登录 redirect /login）；API 守卫：`isOwner()` 返回 401（**API 勿用 requireOwner，会得到 redirect 语义**）。
   - 登录态查询：`GET /api/auth/me` → `{owner: bool}`。
-- **UI 命名**（勿改回）：登录页「管理登录 / Admin Login」→ 导航「管理员 / Admin」菜单（速记 / 退出登录）。内部函数名 `isOwner()/requireOwner()` 不变。
+- **UI 命名**（勿改回）：登录页「管理登录 / Admin Login」；导航「我的 / Me」菜单（仅权限类操作：退出登录，预留网站管理/权限管理等）。
+- **功能入口分级**：高频重要功能在顶部栏单列入口（如「速记」）；低频功能放「更多工具」下拉菜单（有需要时再建）。**新增专属功能时先与用户确认入口位置**。
+- **游客隔离**：所有专属功能对游客不可见（无入口），且路由层用 `requireOwner()` 守卫（无法直接通过 URL 访问）。
 - **导航登录态刷新**：`OwnerNavItem` 监听 `owner-auth-changed` 自定义事件（登录/登出后广播）。登出时 pathname 不变，仅靠路由变化刷新会失效。新增管理员 UI 时沿用。
 
 ## 想法速记（管理员专属）

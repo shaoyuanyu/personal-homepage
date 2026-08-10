@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
-import { KeyRoundIcon } from "lucide-react";
+import { InfoIcon, KeyRoundIcon } from "lucide-react";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { isOwner } from "@/lib/auth/owner";
@@ -35,6 +35,11 @@ export default async function LoginPage({
         </div>
         <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{t("description")}</p>
+        {/* 游客提示：消除访客困惑（本页为管理员专属入口） */}
+        <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
+          <InfoIcon className="size-3.5 shrink-0" />
+          {t("guestHint")}
+        </p>
       </div>
       <Card className="p-6 sm:p-8">
         <CardContent className="p-0">
