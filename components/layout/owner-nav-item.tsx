@@ -81,7 +81,7 @@ export function OwnerNavItem({ className }: { className?: string }) {
         <Button
           variant="ghost"
           size="sm"
-          render={<Link href="/admin/ideas" />}
+          render={<Link href="/ideas" />}
           aria-label={t("ideas")}
           className={className}
         >

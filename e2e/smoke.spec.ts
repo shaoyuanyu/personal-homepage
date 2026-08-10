@@ -235,8 +235,8 @@ test.describe("主人登录（TOTP）", () => {
 test.describe("Idea 速记（主人专属）", () => {
   test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
 
-  test("游客访问 /admin/ideas 被重定向到登录页", async ({ page }) => {
-    await page.goto("/admin/ideas");
+  test("游客访问 /ideas 被重定向到登录页", async ({ page }) => {
+    await page.goto("/ideas");
     await expect(page).toHaveURL(/\/login/);
   });
 
@@ -248,14 +248,14 @@ test.describe("Idea 速记（主人专属）", () => {
   test("登录后页面 200 + 速记表单可见", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
-    await expectPageOk(page, "/admin/ideas", "Idea 速记");
+    await expectPageOk(page, "/ideas", "Idea 速记");
     await expect(page.getByLabel(/记录一个 Idea/)).toBeVisible();
   });
 
   test("创建 → 标记完成 → 编辑 → 删除", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
-    await page.goto("/admin/ideas");
+    await page.goto("/ideas");
 
     const marker = String(Date.now());
     const origin = `E2E 测试 Idea ${marker}：对比学习中的灾难性遗忘`;
