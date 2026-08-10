@@ -21,6 +21,9 @@ services:
       - TOTP_SECRET=${TOTP_SECRET}
       - AUTH_SECRET=${AUTH_SECRET}
       - RECOVERY_CODES=${RECOVERY_CODES}
+    volumes:
+      # 主人私有数据（想法速记等），挂载宿主机目录便于直接查看/备份
+      - ./data:/app/data
     networks:
       - web
 

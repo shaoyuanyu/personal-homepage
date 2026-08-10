@@ -29,6 +29,25 @@ function collectPageErrors(page: Page) {
   return errors;
 }
 
+// 测试密钥：优先取环境变量（CI 注入），否则读本地 .env
+// CI 未注入时跳过——登录/主人功能由本地 E2E 与人工验证覆盖
+const totpSecret = (() => {
+  if (process.env.TOTP_SECRET) return process.env.TOTP_SECRET;
+  try {
+    const env = readFileSync(join(process.cwd(), ".env"), "utf8");
+    return env.match(/^TOTP_SECRET=(.+)$/m)?.[1]?.trim() ?? null;
+  } catch {
+    return null;
+  }
+})();
+
+/** 用 TOTP 码登录，成功后落在首页 */
+async function loginWithCode(page: Page, code: string) {
+  await page.goto("/login");
+  await page.locator("#auth-code").fill(code);
+  await expect(page).toHaveURL(/\/$/);
+}
+
 test.describe("页面可达性", () => {
   test("首页：200 + 中文内容", async ({ page }) => {
     await expectPageOk(page, "/", "YU Shaoyuan");
@@ -146,30 +165,14 @@ test.describe("关键资源", () => {
 });
 
 test.describe("主人登录（TOTP）", () => {
-  // 测试密钥：优先取环境变量（CI 注入），否则读本地 .env
-  // CI 未注入时跳过——登录流程由本地 E2E 与人工验证覆盖
-  const totpSecret = (() => {
-    if (process.env.TOTP_SECRET) return process.env.TOTP_SECRET;
-    try {
-      const env = readFileSync(join(process.cwd(), ".env"), "utf8");
-      return env.match(/^TOTP_SECRET=(.+)$/m)?.[1]?.trim() ?? null;
-    } catch {
-      return null;
-    }
-  })();
   test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
-
-  async function loginWithCode(page: Page, code: string) {
-    await page.goto("/login");
-    await page.locator("#auth-code").fill(code);
-    await expect(page).toHaveURL(/\/$/);
-  }
 
   test("登录页 200 + 表单可见", async ({ page }) => {
     await expectPageOk(page, "/login");
     await expect(page.locator("#auth-code")).toBeVisible();
+    // 限定在表单内：导航栏也有游客态「登录」入口
     await expect(
-      page.getByRole("button", { name: /登录|Sign in/ }),
+      page.locator("form").getByRole("button", { name: /登录|Sign in/ }),
     ).toBeVisible();
   });
 
@@ -201,5 +204,57 @@ test.describe("主人登录（TOTP）", () => {
     await page.request.post("/api/auth/logout");
     const cookies = await page.context().cookies();
     expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
+  });
+});
+
+test.describe("想法速记（主人专属）", () => {
+  test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
+
+  test("游客访问 /admin/ideas 被重定向到登录页", async ({ page }) => {
+    await page.goto("/admin/ideas");
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test("游客调用 ideas API 返回 401", async ({ request }) => {
+    const res = await request.get("/api/ideas");
+    expect(res.status()).toBe(401);
+  });
+
+  test("登录后页面 200 + 速记表单可见", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    await expectPageOk(page, "/admin/ideas", "想法速记");
+    await expect(page.getByLabel(/记录一个想法/)).toBeVisible();
+  });
+
+  test("创建 → 标记完成 → 编辑 → 删除", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    await page.goto("/admin/ideas");
+
+    const marker = String(Date.now());
+    const origin = `E2E 测试想法 ${marker}：对比学习中的灾难性遗忘`;
+    const edited = `E2E 测试想法 ${marker}（已编辑）：换个研究方向`;
+
+    // 创建
+    await page.getByLabel(/记录一个想法/).fill(origin);
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText(origin)).toBeVisible();
+
+    // 标记完成 → 出现「已完成」徽标
+    await page.getByRole("button", { name: "标记为已完成" }).click();
+    await expect(page.getByText(origin).locator("..")).toContainText("已完成");
+
+    // 行内编辑：改内容后保存（保存按钮在列表项内，避免与顶部表单按钮歧义）
+    await page.getByRole("button", { name: "编辑" }).first().click();
+    const editBox = page.locator("textarea").last();
+    await editBox.fill(edited);
+    await page.locator("li").getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText(edited)).toBeVisible();
+
+    // 删除（确认弹窗 → 接受）→ 条目消失
+    page.once("dialog", (d) => void d.accept());
+    await page.getByRole("button", { name: "删除" }).first().click();
+    await expect(page.getByText(edited)).toHaveCount(0);
   });
 });

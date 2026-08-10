@@ -15,7 +15,9 @@
     "projects": "Projects",
     "blog": "Blog",
     "nav": "Links",
-    "menu": "Menu"
+    "menu": "Menu",
+    "ideas": "Scratchpad",
+    "login": "Sign in"
   },
   "login": {
     "title": "Admin Login",
@@ -133,6 +135,32 @@
   "footer": {
     "icp": "苏ICP备2026008270号-2",
     "copyright": "© {year} Yu Shaoyuan. All rights reserved."
+  },
+  "ideas": {
+    "title": "Idea Scratchpad",
+    "description": "Capture research ideas anytime, visible only to you",
+    "placeholder": "Jot down an idea… (Enter to save, Shift+Enter for newline)",
+    "hint": "Enter to save, Shift+Enter for newline",
+    "add": "Save",
+    "filters": {
+      "all": "All",
+      "open": "Open",
+      "done": "Done"
+    },
+    "empty": "No ideas yet",
+    "emptyFiltered": "No ideas match this filter",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this idea?",
+    "markDone": "Mark as done",
+    "restore": "Reopen",
+    "logout": "Sign out",
+    "error": {
+      "save": "Failed to save, please retry",
+      "delete": "Failed to delete, please retry"
+    }
   },
   "misc": {
     "soon": "Coming Soon",

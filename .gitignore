@@ -45,6 +45,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# 主人私有数据（想法速记 data/ideas.json 等），仅存本地与 VPS，不入库
+/data/
+
 # vercel
 .vercel
 
