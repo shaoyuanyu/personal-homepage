@@ -7,6 +7,7 @@ import { KeyRoundIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OWNER_AUTH_CHANGED_EVENT } from "@/components/layout/owner-nav-item";
 
 /**
  * 管理登录表单：输入 6 位 TOTP 验证码（或 16 位恢复码）。
@@ -30,6 +31,7 @@ export function LoginForm() {
         body: JSON.stringify({ code: value }),
       });
       if (res.ok) {
+        window.dispatchEvent(new Event(OWNER_AUTH_CHANGED_EVENT));
         router.push("/");
         router.refresh();
         return;
