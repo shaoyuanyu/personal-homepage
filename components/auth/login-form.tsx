@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 /**
- * 主人登录表单：输入 6 位 TOTP 验证码（或 16 位恢复码）。
+ * 管理登录表单：输入 6 位 TOTP 验证码（或 16 位恢复码）。
  * 输满即自动提交；提交结果由 API 返回，成功跳转首页。
  */
 export function LoginForm() {
