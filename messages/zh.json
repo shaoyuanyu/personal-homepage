@@ -17,6 +17,19 @@
     "nav": "导航",
     "menu": "菜单"
   },
+  "login": {
+    "title": "主人登录",
+    "description": "输入验证器应用中的 6 位验证码",
+    "codeLabel": "验证码",
+    "codePlaceholder": "6 位验证码或 16 位恢复码",
+    "submit": "登录",
+    "submitting": "验证中…",
+    "error": {
+      "invalid": "验证码无效，请重试",
+      "rateLimited": "尝试次数过多，请 15 分钟后再试",
+      "network": "网络错误，请重试"
+    }
+  },
   "hero": {
     "hello": "你好，我是",
     "intro": "硕士生，正在学习中。"

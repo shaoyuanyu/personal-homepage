@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { TOTP } from "otpauth";
 
 /**
  * 全站冒烟测试：核心页面 200 + 关键内容渲染 + 旧链接 301 + 关键资源可用。
@@ -139,5 +142,64 @@ test.describe("关键资源", () => {
     const errors = collectPageErrors(page);
     await expectPageOk(page, "/");
     expect(errors, `首页控制台错误: ${errors.join("; ")}`).toEqual([]);
+  });
+});
+
+test.describe("主人登录（TOTP）", () => {
+  // 测试密钥：优先取环境变量（CI 注入），否则读本地 .env
+  // CI 未注入时跳过——登录流程由本地 E2E 与人工验证覆盖
+  const totpSecret = (() => {
+    if (process.env.TOTP_SECRET) return process.env.TOTP_SECRET;
+    try {
+      const env = readFileSync(join(process.cwd(), ".env"), "utf8");
+      return env.match(/^TOTP_SECRET=(.+)$/m)?.[1]?.trim() ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
+
+  async function loginWithCode(page: Page, code: string) {
+    await page.goto("/login");
+    await page.locator("#auth-code").fill(code);
+    await expect(page).toHaveURL(/\/$/);
+  }
+
+  test("登录页 200 + 表单可见", async ({ page }) => {
+    await expectPageOk(page, "/login");
+    await expect(page.locator("#auth-code")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /登录|Sign in/ }),
+    ).toBeVisible();
+  });
+
+  test("错误验证码被拒绝且不设会话", async ({ page }) => {
+    await page.goto("/login");
+    await page.locator("#auth-code").fill("000000");
+    await expect(page.getByRole("alert")).toBeVisible();
+    const cookies = await page.context().cookies();
+    expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
+  });
+
+  test("正确 TOTP 码登录成功并设置会话", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    const cookies = await page.context().cookies();
+    expect(cookies.some((c) => c.name === "owner_session")).toBe(true);
+  });
+
+  test("已登录访问 /login 重定向回首页", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    await page.goto("/login");
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("登出后会话被清除", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    await page.request.post("/api/auth/logout");
+    const cookies = await page.context().cookies();
+    expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
   });
 });

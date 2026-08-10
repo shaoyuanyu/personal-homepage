@@ -12,6 +12,7 @@
     "fetch:favicons": "node scripts/fetch-favicons.mjs",
     "fetch:publications": "node scripts/fetch-publications.mjs",
     "fetch:ccf-dblp": "node scripts/fetch-ccf-dblp.mjs",
+    "totp:setup": "node scripts/totp-setup.mjs",
     "test:e2e": "playwright test",
     "test:e2e:local": "bash scripts/e2e-local.sh"
   },
@@ -29,6 +30,7 @@
     "next": "15.5.22",
     "next-intl": "^4.13.4",
     "next-themes": "^0.4.6",
+    "otpauth": "^9.5.1",
     "react": "19.1.9",
     "react-dom": "19.1.9",
     "tailwind-merge": "^3.6.0",
@@ -41,10 +43,12 @@
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.22",
+    "qrcode": "^1.5.4",
     "shadcn": "^4.16.1",
     "tailwindcss": "^4",
     "typescript": "^5"
