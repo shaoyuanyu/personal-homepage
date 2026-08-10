@@ -206,16 +206,16 @@ test.describe("主人登录（TOTP）", () => {
     expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
   });
 
-  test("主人菜单：通过导航退出登录", async ({ page }) => {
+  test("管理员菜单：通过导航退出登录", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
 
-    // 导航栏出现主人菜单（桌面视口）
+    // 导航栏出现管理员菜单（桌面视口）
     await page.setViewportSize({ width: 1280, height: 800 });
-    await expect(page.getByRole("button", { name: "主人" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "管理员" })).toBeVisible();
 
     // 菜单含「速记」入口与「退出登录」项（nav.ideas 文案为「速记」）
-    await page.getByRole("button", { name: "主人" }).click();
+    await page.getByRole("button", { name: "管理员" }).click();
     await expect(page.getByRole("menuitem", { name: /速记/ })).toBeVisible();
     await page.getByRole("menuitem", { name: /退出登录/ }).click();
 
