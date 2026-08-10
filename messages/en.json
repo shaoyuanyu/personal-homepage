@@ -18,7 +18,7 @@
     "menu": "Menu"
   },
   "login": {
-    "title": "Owner Login",
+    "title": "Admin Login",
     "description": "Enter the 6-digit code from your authenticator app",
     "codeLabel": "Verification code",
     "codePlaceholder": "6-digit code or 16-digit recovery code",

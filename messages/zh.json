@@ -18,7 +18,7 @@
     "menu": "菜单"
   },
   "login": {
-    "title": "主人登录",
+    "title": "管理登录",
     "description": "输入验证器应用中的 6 位验证码",
     "codeLabel": "验证码",
     "codePlaceholder": "6 位验证码或 16 位恢复码",
