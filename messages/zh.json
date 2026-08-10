@@ -15,7 +15,9 @@
     "projects": "项目",
     "blog": "博客",
     "nav": "导航",
-    "menu": "菜单"
+    "menu": "菜单",
+    "ideas": "速记",
+    "login": "登录"
   },
   "login": {
     "title": "管理登录",
@@ -133,6 +135,32 @@
   "footer": {
     "icp": "苏ICP备2026008270号-2",
     "copyright": "© {year} Yu Shaoyuan. 保留所有权利。"
+  },
+  "ideas": {
+    "title": "想法速记",
+    "description": "随时记录科研灵感，仅自己可见",
+    "placeholder": "记录一个想法…（回车保存，Shift+Enter 换行）",
+    "hint": "回车保存，Shift+Enter 换行",
+    "add": "保存",
+    "filters": {
+      "all": "全部",
+      "open": "进行中",
+      "done": "已完成"
+    },
+    "empty": "还没有想法",
+    "emptyFiltered": "没有符合条件的想法",
+    "edit": "编辑",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "deleteConfirm": "确定删除这条想法？",
+    "markDone": "标记为已完成",
+    "restore": "恢复为进行中",
+    "logout": "退出登录",
+    "error": {
+      "save": "保存失败，请重试",
+      "delete": "删除失败，请重试"
+    }
   },
   "misc": {
     "soon": "即将上线",

@@ -31,6 +31,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs
 
+# 主人数据目录（想法速记 data/ideas.json 等）：compose 绑定挂载 ./data:/app/data
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
+import { OwnerNavItem } from "@/components/layout/owner-nav-item";
 
 /* Y-Fork 图标：与浏览器标签页 favicon（app/icon.svg）保持同一图形 */
 function YForkIcon() {
@@ -57,6 +58,7 @@ export function SiteHeader() {
               {t(item.key)}
             </Button>
           ))}
+          <OwnerNavItem />
         </nav>
 
         <div className="flex items-center gap-1">
@@ -77,6 +79,7 @@ export function SiteHeader() {
                     {t(item.key)}
                   </Button>
                 ))}
+                <OwnerNavItem />
               </nav>
             </SheetContent>
           </Sheet>
