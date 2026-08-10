@@ -17,6 +17,19 @@
     "nav": "Links",
     "menu": "Menu"
   },
+  "login": {
+    "title": "Owner Login",
+    "description": "Enter the 6-digit code from your authenticator app",
+    "codeLabel": "Verification code",
+    "codePlaceholder": "6-digit code or 16-digit recovery code",
+    "submit": "Sign in",
+    "submitting": "Verifying…",
+    "error": {
+      "invalid": "Invalid code, please try again",
+      "rateLimited": "Too many attempts, please try again in 15 minutes",
+      "network": "Network error, please try again"
+    }
+  },
   "hero": {
     "hello": "Hi, I'm",
     "intro": "M.S. student, currently learning."

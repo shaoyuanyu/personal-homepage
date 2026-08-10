@@ -17,6 +17,10 @@ services:
       - "127.0.0.1:3000:3000" # 仅本机回环：Nginx proxy_pass http://127.0.0.1:3000
     environment:
       - NODE_ENV=production
+      # 主人登录（TOTP）密钥：由 pnpm totp:setup 生成，从 .env 读取
+      - TOTP_SECRET=${TOTP_SECRET}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - RECOVERY_CODES=${RECOVERY_CODES}
     networks:
       - web
 
