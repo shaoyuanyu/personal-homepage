@@ -160,7 +160,6 @@
     "deleteConfirm": "Delete this idea?",
     "markDone": "Mark as done",
     "restore": "Reopen",
-    "logout": "Sign out",
     "error": {
       "save": "Failed to save, please retry",
       "delete": "Failed to delete, please retry"

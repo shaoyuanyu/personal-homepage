@@ -25,7 +25,7 @@ pnpm build           # 类型检查 + 构建（同步生成 velite 内容层）
 pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 个用例）
 ```
 
-- E2E 覆盖：页面可达性、301 跳转、SEO 资源、登录（TOTP 正确/错误码、限流）、管理员菜单登出、想法速记 CRUD、控制台无错误。
+- E2E 覆盖：页面可达性、301 跳转、SEO 资源、登录（TOTP 正确/错误码、限流）、管理员菜单登出、Idea 速记 CRUD、控制台无错误。
 - **测试前清空 3000 端口**：`fuser -k 3000/tcp`。残留 standalone 进程会让测试跑在旧代码上；脚本结束后有时残留 node 子进程，重跑前先清理。
 - 测试密钥：`e2e/smoke.spec.ts` 读取环境变量或本地 `.env` 的 `TOTP_SECRET`，未配置时登录相关用例自动跳过。
 
@@ -43,7 +43,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - **游客隔离**：所有专属功能对游客不可见（无入口），且路由层用 `requireOwner()` 守卫（无法直接通过 URL 访问）。
 - **导航登录态刷新**：`OwnerNavItem` 监听 `owner-auth-changed` 自定义事件（登录/登出后广播）。登出时 pathname 不变，仅靠路由变化刷新会失效。新增管理员 UI 时沿用。
 
-## 想法速记（管理员专属）
+## Idea 速记（管理员专属）
 
 - **路由**：`/admin/ideas`（`requireOwner` 守卫）；API：`GET/POST /api/ideas`、`PATCH/DELETE /api/ideas/[id]`（游客一律 401）。
 - **存储**：单文件 JSON `data/ideas.json`（`lib/ideas/store.ts`），原子写入（tmp + rename），零依赖。容器内 `/app/data` 由 compose 绑定挂载到 VPS 宿主机 `~/personal-homepage/data/`。
@@ -86,7 +86,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - Base UI `ToggleGroup` 的 `value` 恒为数组（单选也传 `[value]`），onValueChange 取 `v[0]`。
 - VS Code 集成浏览器对部分元素点击会因稳定性检查超时（如 DropdownMenu trigger）：用 Playwright `evaluate(el => el.click())` 或直接跑 E2E 验证，勿误判为代码问题。
 - standalone 构建会把 `.env` 复制到 `.next/standalone/.env` 并被 server.js 加载（本地 standalone 读取密钥的原因）；VPS 密钥来自 compose 的 environment 注入。
-- 登录/登出 E2E 会真实写入会话与想法数据，用例内自清理；跑完可检查 `data/ideas.json` 应为 `[]`。
+- 登录/登出 E2E 会真实写入会话与 Idea 数据，用例内自清理；跑完可检查 `data/ideas.json` 应为 `[]`。
 
 ## 常用命令速查
 

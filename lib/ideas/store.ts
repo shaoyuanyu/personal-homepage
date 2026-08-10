@@ -48,12 +48,12 @@ function writeAll(ideas: Idea[]): void {
   renameSync(tmp, IDEAS_FILE);
 }
 
-/** 全部想法，按创建时间倒序（最新在前） */
+/** 全部 Idea，按创建时间倒序（最新在前） */
 export function listIdeas(): Idea[] {
   return readAll().sort((a, b) => b.createdAt - a.createdAt);
 }
 
-/** 新建想法 */
+/** 新建 Idea */
 export function createIdea(content: string): Idea {
   const idea: Idea = {
     id: randomUUID(),
@@ -68,7 +68,7 @@ export function createIdea(content: string): Idea {
   return idea;
 }
 
-/** 更新想法（content / status），不存在返回 null */
+/** 更新 Idea（content / status），不存在返回 null */
 export function updateIdea(
   id: string,
   patch: { content?: string; status?: IdeaStatus },
@@ -83,7 +83,7 @@ export function updateIdea(
   return idea;
 }
 
-/** 删除想法，返回是否删除了条目 */
+/** 删除 Idea，返回是否删除了条目 */
 export function deleteIdea(id: string): boolean {
   const all = readAll();
   const next = all.filter((i) => i.id !== id);

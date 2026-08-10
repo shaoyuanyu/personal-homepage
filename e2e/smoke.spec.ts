@@ -181,7 +181,8 @@ test.describe("主人登录（TOTP）", () => {
   test("错误验证码被拒绝且不设会话", async ({ page }) => {
     await page.goto("/login");
     await page.locator("#auth-code").fill("000000");
-    await expect(page.getByRole("alert")).toBeVisible();
+    // 限定在表单内：避免命中 Next.js 路由播报器（role=alert，shadow root）
+    await expect(page.locator("form").getByRole("alert")).toBeVisible();
     const cookies = await page.context().cookies();
     expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
   });
@@ -222,15 +223,16 @@ test.describe("主人登录（TOTP）", () => {
     await expect(page.getByRole("menuitem", { name: /退出登录/ })).toBeVisible();
     await page.getByRole("menuitem", { name: /退出登录/ }).click();
 
-    // 回到首页且会话被清除，导航恢复为「登录」
+    // 等导航刷新为「登录」（= 登出请求完成 + 登录态查询完成），再断言会话清除，
+    // 避免登出 fetch 与 cookie 读取之间的竞态
+    await expect(page.getByRole("button", { name: "登录" })).toBeVisible();
     await expect(page).toHaveURL(/\/$/);
     const cookies = await page.context().cookies();
     expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
-    await expect(page.getByRole("button", { name: "登录" })).toBeVisible();
   });
 });
 
-test.describe("想法速记（主人专属）", () => {
+test.describe("Idea 速记（主人专属）", () => {
   test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
 
   test("游客访问 /admin/ideas 被重定向到登录页", async ({ page }) => {
@@ -246,8 +248,8 @@ test.describe("想法速记（主人专属）", () => {
   test("登录后页面 200 + 速记表单可见", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
-    await expectPageOk(page, "/admin/ideas", "想法速记");
-    await expect(page.getByLabel(/记录一个想法/)).toBeVisible();
+    await expectPageOk(page, "/admin/ideas", "Idea 速记");
+    await expect(page.getByLabel(/记录一个 Idea/)).toBeVisible();
   });
 
   test("创建 → 标记完成 → 编辑 → 删除", async ({ page }) => {
@@ -256,11 +258,11 @@ test.describe("想法速记（主人专属）", () => {
     await page.goto("/admin/ideas");
 
     const marker = String(Date.now());
-    const origin = `E2E 测试想法 ${marker}：对比学习中的灾难性遗忘`;
-    const edited = `E2E 测试想法 ${marker}（已编辑）：换个研究方向`;
+    const origin = `E2E 测试 Idea ${marker}：对比学习中的灾难性遗忘`;
+    const edited = `E2E 测试 Idea ${marker}（已编辑）：换个研究方向`;
 
     // 创建
-    await page.getByLabel(/记录一个想法/).fill(origin);
+    await page.getByLabel(/记录一个 Idea/).fill(origin);
     await page.getByRole("button", { name: "保存" }).click();
     await expect(page.getByText(origin)).toBeVisible();
 
