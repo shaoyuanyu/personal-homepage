@@ -170,6 +170,8 @@ test.describe("主人登录（TOTP）", () => {
   test("登录页 200 + 表单可见", async ({ page }) => {
     await expectPageOk(page, "/login");
     await expect(page.locator("#auth-code")).toBeVisible();
+    // 游客提示：无需登录
+    await expect(page.getByText("游客无需登录")).toBeVisible();
     // 限定在表单内：导航栏也有游客态「登录」入口
     await expect(
       page.locator("form").getByRole("button", { name: /登录|Sign in/ }),
@@ -206,17 +208,18 @@ test.describe("主人登录（TOTP）", () => {
     expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
   });
 
-  test("管理员菜单：通过导航退出登录", async ({ page }) => {
+  test("我的菜单：通过导航退出登录", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
 
-    // 导航栏出现管理员菜单（桌面视口）
+    // 桌面视口下：高频功能「速记」单列入口 +「我的」菜单
     await page.setViewportSize({ width: 1280, height: 800 });
-    await expect(page.getByRole("button", { name: "管理员" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "速记" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "我的" })).toBeVisible();
 
-    // 菜单含「速记」入口与「退出登录」项（nav.ideas 文案为「速记」）
-    await page.getByRole("button", { name: "管理员" }).click();
-    await expect(page.getByRole("menuitem", { name: /速记/ })).toBeVisible();
+    // 菜单仅含「退出登录」（权限类操作）
+    await page.getByRole("button", { name: "我的" }).click();
+    await expect(page.getByRole("menuitem", { name: /退出登录/ })).toBeVisible();
     await page.getByRole("menuitem", { name: /退出登录/ }).click();
 
     // 回到首页且会话被清除，导航恢复为「登录」

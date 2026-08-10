@@ -18,7 +18,7 @@
     "menu": "Menu",
     "ideas": "Scratchpad",
     "login": "Sign in",
-    "owner": "Admin",
+    "owner": "Me",
     "logout": "Sign out"
   },
   "login": {
@@ -28,6 +28,7 @@
     "codePlaceholder": "6-digit code or 16-digit recovery code",
     "submit": "Sign in",
     "submitting": "Verifying…",
+    "guestHint": "Visitors don't need to sign in — admin only",
     "recoveryHint": "Code not working? Use a 16-digit recovery code generated during setup",
     "error": {
       "invalid": "Invalid code, please try again",

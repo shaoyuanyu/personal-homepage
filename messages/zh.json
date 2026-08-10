@@ -18,7 +18,7 @@
     "menu": "菜单",
     "ideas": "速记",
     "login": "登录",
-    "owner": "管理员",
+    "owner": "我的",
     "logout": "退出登录"
   },
   "login": {
@@ -28,6 +28,7 @@
     "codePlaceholder": "6 位验证码或 16 位恢复码",
     "submit": "登录",
     "submitting": "验证中…",
+    "guestHint": "游客无需登录，此页面仅供网站管理员使用",
     "recoveryHint": "验证码无效？可使用设置时生成的 16 位恢复码",
     "error": {
       "invalid": "验证码无效，请重试",
