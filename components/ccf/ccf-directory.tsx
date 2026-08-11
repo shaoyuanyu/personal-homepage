@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useOwnerPreferences } from "@/lib/preferences/use-owner-preferences";
 import { ccf, type CcfEntry } from "@/lib/data";
 
 type TypeFilter = "all" | "conf" | "jour";
@@ -64,7 +65,7 @@ for (const e of [...ccf.conferences, ...ccf.journals]) {
 /* 合法领域名集合（校验 localStorage 恢复数据） */
 const ALL_FIELDS = new Set(KEY_TO_FIELD.values());
 
-/* localStorage 记忆键：从导航/论文页无参数进入时恢复上次筛选 */
+/* 偏好持久化 key：游客存 localStorage（键名即此 key），主人存服务器（跨设备同步） */
 const STORAGE_KEY = "ccf:filters";
 
 type SavedFilters = {
@@ -201,6 +202,8 @@ export function CcfDirectory() {
   const locale = useLocale();
   const isZh = locale === "zh";
 
+  const { ready, prefs, setPref } = useOwnerPreferences();
+
   const [query, setQuery] = useState("");
   const [type, setType] = useState<TypeFilter>("all");
   const [level, setLevel] = useState<LevelFilter>("all");
@@ -288,9 +291,12 @@ export function CcfDirectory() {
     setSelectedFields([]);
   };
 
-  // 首次挂载恢复筛选状态：URL 查询参数优先（可分享/可刷新），
-  // 无参数时回退到 localStorage 的上次记忆（导航页/论文页入口进入也不丢）
+  // 首次恢复筛选状态：URL 查询参数优先（可分享/可刷新）；
+  // 无参数时恢复持久化偏好（主人：服务器同步 / 游客：localStorage 记忆）。
+  // ready 前不恢复——偏好尚未加载完（主人需拉取服务器），避免用默认值覆盖。
+  const restored = useRef(false);
   useEffect(() => {
+    if (restored.current) return;
     const p = new URLSearchParams(window.location.search);
     const t = p.get("type");
     const l = p.get("level");
@@ -306,28 +312,27 @@ export function CcfDirectory() {
           .map((k) => KEY_TO_FIELD.get(k))
           .filter((f): f is string => Boolean(f)),
       );
-    } else {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const saved = JSON.parse(raw) as SavedFilters;
-          setQuery(saved.q ?? "");
-          if (saved.type === "conf" || saved.type === "jour") setType(saved.type);
-          if (saved.level === "A" || saved.level === "B" || saved.level === "C")
-            setLevel(saved.level);
-          setSelectedFields(
-            (saved.fields ?? []).filter((f) => ALL_FIELDS.has(f)),
-          );
-        }
-      } catch {
-        // localStorage 不可用或数据损坏时静默忽略
-      }
+      restored.current = true;
+      return;
     }
-  }, []);
+    if (!ready) return; // 偏好加载中，等加载完成再恢复
 
-  // 筛选状态变化时同步：URL（可分享）+ localStorage（记忆上次筛选）。
+    restored.current = true;
+    const saved = prefs[STORAGE_KEY] as SavedFilters | undefined;
+    if (saved) {
+      setQuery(saved.q ?? "");
+      if (saved.type === "conf" || saved.type === "jour") setType(saved.type);
+      if (saved.level === "A" || saved.level === "B" || saved.level === "C")
+        setLevel(saved.level);
+      setSelectedFields(
+        (saved.fields ?? []).filter((f) => ALL_FIELDS.has(f)),
+      );
+    }
+  }, [ready, prefs]);
+
+  // 筛选状态变化时同步：URL（可分享）+ 偏好持久化（主人服务器 / 游客 localStorage）。
   // 跳过首次渲染：客户端导航可能重复挂载组件，若首次就用默认 state 写入，
-  // 会覆盖 localStorage 里的记忆，导致恢复失效。
+  // 会覆盖已保存的偏好，导致恢复失效。
   const hasPersisted = useRef(false);
   useEffect(() => {
     if (!hasPersisted.current) {
@@ -351,20 +356,13 @@ export function CcfDirectory() {
       : window.location.pathname;
     window.history.replaceState(null, "", url);
 
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          fields: selectedFields,
-          type,
-          level,
-          q,
-        } satisfies SavedFilters),
-      );
-    } catch {
-      // 隐私模式等场景下写入失败时静默忽略
-    }
-  }, [type, level, selectedFields, query]);
+    setPref(STORAGE_KEY, {
+      fields: selectedFields,
+      type,
+      level,
+      q,
+    } satisfies SavedFilters);
+  }, [type, level, selectedFields, query, setPref]);
 
   return (
     <div className="flex flex-col gap-8">

@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { LogOutIcon } from "lucide-react";
 
 import { Link, usePathname, useRouter } from "@/lib/i18n/navigation";
+import { OWNER_AUTH_CHANGED_EVENT } from "@/lib/auth/events";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -22,7 +23,6 @@ import {
  * 事件（登录/登出后广播，登出时路径可能不变，仅靠 pathname 无法感知）。
  * 查询期间渲染同尺寸占位，避免导航栏布局跳动。
  */
-export const OWNER_AUTH_CHANGED_EVENT = "owner-auth-changed";
 
 export function OwnerNavItem({ className }: { className?: string }) {
   const t = useTranslations("nav");

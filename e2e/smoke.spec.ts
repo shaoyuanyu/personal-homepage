@@ -283,3 +283,82 @@ test.describe("Idea 速记（主人专属）", () => {
     await expect(page.getByText(edited)).toHaveCount(0);
   });
 });
+
+test.describe("主人偏好持久化（服务器）", () => {
+  test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
+
+  test("游客访问偏好 API 返回 401", async ({ request }) => {
+    const get = await request.get("/api/preferences");
+    expect(get.status()).toBe(401);
+    const patch = await request.patch("/api/preferences", {
+      data: { "ccf:filters": {} },
+    });
+    expect(patch.status()).toBe(401);
+  });
+
+  test("登录后：未知 key 与非法值被拒绝", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    const unknown = await page.request.patch("/api/preferences", {
+      data: { "unknown:key": 1 },
+    });
+    expect(unknown.status()).toBe(400);
+
+    const invalid = await page.request.patch("/api/preferences", {
+      data: { "ccf:filters": { level: "X" } },
+    });
+    expect(invalid.status()).toBe(400);
+  });
+
+  test("登录后：写入 → 读取 → 删除", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    const payload = {
+      "ccf:filters": { fields: ["人工智能"], type: "conf", level: "A", q: "" },
+    };
+    const r = await page.request.patch("/api/preferences", { data: payload });
+    expect(r.status()).toBe(200);
+    const body = (await r.json()) as { preferences: Record<string, unknown> };
+    expect(body.preferences["ccf:filters"]).toEqual(payload["ccf:filters"]);
+
+    // 读取验证
+    const g = await page.request.get("/api/preferences");
+    const got = (await g.json()) as { preferences: Record<string, unknown> };
+    expect(got.preferences["ccf:filters"]).toEqual(payload["ccf:filters"]);
+
+    // 删除（null）后 key 不存在
+    const d = await page.request.patch("/api/preferences", {
+      data: { "ccf:filters": null },
+    });
+    const after = (await d.json()) as { preferences: Record<string, unknown> };
+    expect(after.preferences["ccf:filters"]).toBeUndefined();
+  });
+
+  test("登录后 CCF 页面从服务器恢复领域筛选", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    // 服务器写入「人工智能 + A 级会议」偏好（模拟另一台设备的选择）
+    const payload = {
+      "ccf:filters": { fields: ["人工智能"], type: "conf", level: "A", q: "" },
+    };
+    const r = await page.request.patch("/api/preferences", { data: payload });
+    expect(r.status()).toBe(200);
+
+    // 无 URL 参数访问 /ccf：应恢复服务器偏好，只显示人工智能分组
+    await page.goto("/ccf");
+    await expect(
+      page.getByRole("heading", { name: "人工智能", level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "计算机体系结构", level: 2 }),
+    ).toHaveCount(0);
+
+    // 清理服务器偏好（用例自清理，保持本地数据干净）
+    await page.request.patch("/api/preferences", {
+      data: { "ccf:filters": null },
+    });
+  });
+});
