@@ -11,7 +11,7 @@ import { OwnerNavItem } from "@/components/layout/owner-nav-item";
 /* Y-Fork 图标：与浏览器标签页 favicon（app/icon.svg）保持同一图形 */
 function YForkIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="size-4 shrink-0">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5 shrink-0">
       <g
         fill="none"
         stroke="currentColor"
@@ -37,18 +37,17 @@ const navItems = [
 
 export function SiteHeader() {
   const t = useTranslations("nav");
-  const s = useTranslations("site");
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
-        {/* Logo：Y-Fork 图标 + 标语 */}
+        {/* Logo：Y-Fork 图标 + 域名（品牌标识，不分语言） */}
         <Link
           href="/"
           className="flex items-center gap-1.5 font-mono text-sm font-semibold tracking-tight"
         >
           <YForkIcon />
-          {s("tagline")}
+          shaoyuanyu.cn
         </Link>
 
         {/* Desktop nav */}
