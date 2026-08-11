@@ -51,6 +51,17 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - **注意**：本地 standalone 数据在 `.next/standalone/data/`（cwd 为 standalone 目录），dev 模式在项目根 `data/`，均被 gitignore。
 - 后续管理员专属功能沿用**顶级路径**（如 `/ideas`、`/settings`）+ `requireOwner()`，不用 `/admin/*` 前缀（单作者站无多管理员语义）。
 
+## 主人偏好持久化（登录用户跨设备同步）
+
+- **场景**：登录后偏好/状态在服务器端持久化（跨设备），游客回退 localStorage，登录后自动迁移。
+- **存储**：单文件 JSON `data/preferences.json`（`lib/preferences/store.ts`，与 ideas.json 同款原子写入）。
+- **API**：`GET/PATCH /api/preferences`（owner 专属，游客 401；PATCH body `{key: value|null}`，null 删除；未知 key / 非法值 → 400）。
+- **注册表**：`lib/preferences/registry.ts` 集中注册 key + sanitize 校验（只做结构校验，非法返回 null）。**新增偏好功能必须在此注册**；key 同时作为游客 localStorage 键名。
+- **客户端 hook**：`lib/preferences/use-owner-preferences.ts` 的 `useOwnerPreferences()` → `{ ready, isOwner, prefs, setPref }`。owner 防抖 500ms PATCH 服务器；游客写 localStorage；UI 恢复状态前先等 `ready`（避免默认值覆盖已存偏好）。
+- **已接入**：CCF 目录页筛选（key `ccf:filters`，登录时把游客期 localStorage 数据迁移上传一次）。
+- **备份**：**无需备份**（低价值数据，丢失后重新设置即可）；`backup-ideas.sh` 只备份 ideas.json。
+- **限制**：单用户低并发；会话内不轮询，跨设备需刷新页面感知。
+
 ## 部署（GitHub Actions → GHCR → VPS）
 
 ### 流水线
