@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { isOwner } from "@/lib/auth/owner";
+import { CALENDAR_CACHE_TTL_MS, calendarCache } from "@/lib/caldav/cache";
 import { CALDAV_COLLECTION_NAME, getCalDavConfig } from "@/lib/caldav/store";
-import { parseIcsText, type ParsedIcsEvent } from "@/lib/ical";
+import { parseIcsText } from "@/lib/ical";
 
 /**
  * GET /api/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD — 读取站主 CalDAV 日历事件（主人专属）。
@@ -11,12 +12,9 @@ import { parseIcsText, type ParsedIcsEvent } from "@/lib/ical";
  * 解析 multistatus 响应中的 iCal 数据后返回。凭证优先使用网站内设置（data/caldav.json），
  * 未设置时回退环境变量（CALDAV_URL / CALDAV_USER / CALDAV_PASSWORD，compose 注入）。
  *
- * 简单内存缓存 30 秒（月视图翻页会重复请求同一范围）。
+ * 简单内存缓存 30 秒（月视图翻页会重复请求同一范围）；缓存实现见 lib/caldav/cache.ts，
+ * 写入/删除事件后由 invalidateCalendarCache() 失效。
  */
-
-type Cached = { expires: number; events: ParsedIcsEvent[] };
-const cache = new Map<string, Cached>();
-const CACHE_TTL_MS = 30_000;
 
 const REPORT_XML = (start: string, end: string) => `<?xml version="1.0" encoding="utf-8"?>
 <C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
@@ -88,8 +86,9 @@ export async function GET(req: Request) {
   }
   const { baseUrl, user, password } = cfg;
 
-  const cacheKey = `${start}|${end}`;
-  const hit = cache.get(cacheKey);
+  // cacheKey 含 v 参数：前端刷新按钮传新 v 即可绕过 30s 缓存
+  const cacheKey = `${start}|${end}|${searchParams.get("v") ?? ""}`;
+  const hit = calendarCache.get(cacheKey);
   if (hit && hit.expires > Date.now()) {
     return NextResponse.json({ events: hit.events });
   }
@@ -131,6 +130,6 @@ export async function GET(req: Request) {
   const xml = await res.text().catch(() => "");
   const events = extractCalendarData(xml).flatMap((ics) => parseIcsText(ics));
 
-  cache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, events });
+  calendarCache.set(cacheKey, { expires: Date.now() + CALENDAR_CACHE_TTL_MS, events });
   return NextResponse.json({ events });
 }
