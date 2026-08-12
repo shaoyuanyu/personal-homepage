@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { isOwner } from "@/lib/auth/owner";
+import { getCalDavConfig } from "@/lib/caldav/store";
 import { buildIcsText } from "@/lib/ical";
 
 /**
  * POST /api/deadlines/caldav — 把会议 deadline 事件写入站主专属 CalDAV 日历（主人专属）。
  *
- * 凭证来自环境变量（VPS compose 注入，勿入库）：
- *   CALDAV_URL      compose 网络内 http://radicale:5232（本地测试用 http://127.0.0.1:5232）
- *   CALDAV_USER     如 caladmin（scripts/setup-calendar-vps.sh 创建）
- *   CALDAV_PASSWORD 同上
+ * 凭证优先使用网站内设置（data/caldav.json，站主在「日历」页面配置），
+ * 未设置时回退环境变量（CALDAV_URL / CALDAV_USER / CALDAV_PASSWORD，compose 注入）。
  *
  * 事件 UID 稳定（会议-年份-类型），重复添加幂等覆盖，不产生重复事件。
  */
@@ -43,12 +42,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const baseUrl = process.env.CALDAV_URL;
-  const user = process.env.CALDAV_USER;
-  const password = process.env.CALDAV_PASSWORD;
-  if (!baseUrl || !user || !password) {
+  const cfg = getCalDavConfig();
+  if (!cfg) {
     return NextResponse.json({ error: "CalDAV 服务未配置" }, { status: 503 });
   }
+  const { baseUrl, user, password } = cfg;
   const auth = `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}`;
 
   const body = (await req.json().catch(() => null)) as CalDavBody | null;

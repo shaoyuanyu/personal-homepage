@@ -99,7 +99,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 ### 会议卡片 → 站主 CalDAV（一键添加）
 
 - **入口**：卡片右下角日历菜单，登录后多出「添加到我的 CalDAV 日历」（`useOwnerPreferences().isOwner` 控制）。
-- **API**：`POST /api/deadlines/caldav`（`isOwner` 守卫）→ 用环境变量凭证（`CALDAV_URL`/`CALDAV_USER`/`CALDAV_PASSWORD`，compose 注入）向 Radicale `MKCOL`（标准 XML）+ `PUT` 事件（稳定 UID `会议-年份-类型`，**幂等覆盖**不产生重复事件）。**防抖按 UID**（同一事件 5 秒内限一次，防连点；不同会议之间不限流——全局限流会误伤正常批量添加）。
+- **API**：`POST /api/deadlines/caldav`（`isOwner` 守卫）→ 用运行时凭证（`getCalDavConfig()`：网站内设置的文件凭证优先，环境变量回退，见下方「CalDAV 凭证设置」）向 Radicale `MKCOL`（标准 XML）+ `PUT` 事件（稳定 UID `会议-年份-类型`，**幂等覆盖**不产生重复事件）。**防抖按 UID**（同一事件 5 秒内限一次，防连点；不同会议之间不限流——全局限流会误伤正常批量添加）。
 - **iCal 构造**：`lib/ical.ts`（`buildIcsText`/`toIcsUtc`）客户端 .ics 下载与 CalDAV API 共用。
 - **⚠ Base UI 迁移陷阱**：Base UI 1.x 的 `MenuItem` 用 **`onClick`**（非 Radix 的 `onSelect`）——`onSelect` 会被静默忽略且不报错，曾致日历菜单三个动作全部失效。项目内 DropdownMenuItem 一律用 `onClick`。
 - **⚠ 菜单项事件冒泡**：Base UI 菜单默认渲染在卡片组件树内（Portal 仅影响 DOM 树），菜单项 `click` 会按 **React 组件树**冒泡到卡片触发其 `onClick`（如打开详情 Dialog）。凡卡片内嵌 DropdownMenu，菜单项 `onClick` 必须 `e.stopPropagation()`。
@@ -114,6 +114,21 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - **⚠ Base UI Select 在 Dialog 内 Popup 定位失败**：Dialog 内嵌 `Select` 时其浮动 Popup 会测出 0×0（anchor 宽度测量异常，`w-(--anchor-width)`=0，选项不可点），`key` 重挂载也无法修复。**跳转选择器因此用自绘 Popover 浮层**（relative 容器 + fixed inset-0 遮罩 + absolute 面板），浮层内 Select 正常。同理 Caption 需移除 rdp 内置 `Nav`（其 absolute 全宽层拦截 Select 点击）+ `relative z-10`。
 - **官方 Calendar 组件**：`components/ui/calendar.tsx`（react-day-picker 封装，`--cell-radius` 变量在 globals.css）。月份/年份选择通过自定义 `MonthCaption` 用 shadcn Select 实现（替代原生 dropdown，v10 中组件名为 `MonthCaption` 非 `Caption`）。
 - **注意**：本地验证需 `CALDAV_*` 环境变量注入（standalone 不自动加载 `.env`，`.env` 的 `RECOVERY_CODES` 含逗号无法 `source`）——`export CALDAV_URL=... CALDAV_USER=... CALDAV_PASSWORD=...` 后启动。Radicale 集合不存在时 REPORT 返回 404，按空日历处理（不报错）。
+
+### CalDAV 凭证设置（站主在「日历」页面配置）
+
+- **用途**：站主无需改 VPS `.env`，直接在 `/calendar` 工具栏「设置」里管理凭证：**查看账号/密码明文、修改用户名密码、一键随机重置密码**。适合初始化时尚未部署 env 凭证的场景。
+- **存储**：`lib/caldav/store.ts` 读写 `data/caldav.json`（与 ideas.json 同款原子写入 + **chmod 600** 收紧权限；`/data/` 已在 .gitignore，凭证不入库）。**只存用户名+密码**，服务器地址由部署环境决定（环境变量 `CALDAV_URL`），不在网站内配置。
+- **读取优先级**：`getCalDavConfig()` = 文件凭证（用户名/密码）> 环境变量（`CALDAV_URL`/`CALDAV_USER`/`CALDAV_PASSWORD`，compose 注入作为回退）。`GET /api/calendar` 与 `POST /api/deadlines/caldav` 均走此函数。
+- **API**：`GET/PUT/DELETE/POST /api/calendar/credentials`（`isOwner` 守卫；游客 401）。
+  - GET 返回 `{configured, source(file/env), user, password, pending}`——**含密码明文**（仅站主会话可访问，单站主场景无泄露面）
+  - PUT 校验 user 必填/密码限长，密码留空保留原值（首次必填）；**密码变更时登记重置队列**
+  - POST 随机重置：`randomBytes(24).toString("base64url")` 生成强随机密码 → 更新网站侧 + 登记队列 → 返回 `{user, password}`
+  - DELETE 清除文件凭证回退环境变量
+- **密码同步 Radicale（VPS crontab）**：网站侧密码变更（PUT 改密 / POST 重置）会原子写入 `data/caldav-reset.json` 队列；VPS crontab 每分钟执行 `scripts/apply-calendar-reset.sh` → `openssl passwd -5` 生成 sha256 hash → 更新/追加 `radicale/users` → 删除队列文件。Radicale 配置 `htpasswd cache: False`，改文件立即生效无需重启。**部署时须安装 crontab**（setup-calendar-vps.sh 自动安装；手动：`* * * * * ~/personal-homepage/scripts/apply-calendar-reset.sh`）。
+- **UI**：`components/calendar/calendar-settings.tsx`——工具栏「设置」齿轮按钮 → Dialog（当前账号+密码明文展示、待同步 pending 提示、用户名/密码表单、随机重置按钮、新密码高亮展示），保存/重置成功 toast 并 `onSaved` 触发日历刷新。
+- **默认账号**：setup 脚本 `CALDAV_USER` 默认 `ysy`（与部署用户同名）。
+- **E2E**：凭证用例自清理（保存后 DELETE + 删除队列文件），失败残留时会写入 standalone data 的 caldav.json / caldav-reset.json；重跑前可 `rm -f .next/standalone/data/caldav.json .next/standalone/data/caldav-reset.json`。
 
 ### 关键经验
 

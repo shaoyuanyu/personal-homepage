@@ -539,4 +539,125 @@ test.describe("我的日历（主人专属）", () => {
       page.getByRole("heading", { name: "本月及未来事件" }),
     ).toBeVisible();
   });
+
+  test("游客调用凭证 API 返回 401", async ({ request }) => {
+    const r = await request.get("/api/calendar/credentials");
+    expect(r.status()).toBe(401);
+    const r2 = await request.put("/api/calendar/credentials", {
+      data: { user: "hacker", password: "x" },
+    });
+    expect(r2.status()).toBe(401);
+  });
+
+  test("登录后可在日历页设置 CalDAV 凭证", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    await page.goto("/calendar");
+
+    // 工具栏有设置入口
+    await page.getByRole("button", { name: "设置" }).click();
+    await expect(
+      page.getByRole("heading", { name: "CalDAV 日历设置" }),
+    ).toBeVisible();
+
+    // 填写用户名 / 密码并保存（服务器地址由部署环境决定，不在网站内配置）
+    await page.getByLabel("用户名").fill("caladmin");
+    await page.getByLabel("密码").fill("testpass123");
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("凭证已保存")).toBeVisible();
+
+    // 状态查询：configured + 用户名 + 密码明文（站主专属接口，无泄露面）
+    const r = await page.request.get("/api/calendar/credentials");
+    expect(r.status()).toBe(200);
+    const data = (await r.json()) as {
+      configured: boolean;
+      source: string;
+      user: string | null;
+      password: string | null;
+      pending: boolean;
+    };
+    expect(data.configured).toBe(true);
+    expect(data.source).toBe("file");
+    expect(data.user).toBe("caladmin");
+    expect(data.password).toBe("testpass123");
+    // 保存的密码变更已登记重置队列（VPS crontab 待应用到 Radicale）
+    expect(data.pending).toBe(true);
+
+    // 凭证不合法校验：用户名缺失 → 400
+    const bad = await page.request.put("/api/calendar/credentials", {
+      data: { user: "", password: "x" },
+    });
+    expect(bad.status()).toBe(400);
+
+    // 清理：删除网站内凭证，回退环境变量（用例自清理，保持本地数据干净）
+    const del = await page.request.delete("/api/calendar/credentials");
+    expect(del.status()).toBe(200);
+    const after = await page.request.get("/api/calendar/credentials");
+    const afterData = (await after.json()) as {
+      configured: boolean;
+      source: string | null;
+    };
+    // 文件凭证已删除（是否可用取决于服务器是否配置了环境变量）
+    expect(afterData.source).not.toBe("file");
+  });
+
+  test("游客调用凭证重置 API 返回 401", async ({ request }) => {
+    const r = await request.post("/api/calendar/credentials");
+    expect(r.status()).toBe(401);
+  });
+
+  test("随机重置密码：生成强随机密码并登记同步队列", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    // 先保存凭证（用户名 caladmin）
+    const put = await page.request.put("/api/calendar/credentials", {
+      data: { user: "caladmin", password: "oldpass123" },
+    });
+    expect(put.status()).toBe(200);
+
+    // 随机重置：返回新密码（与旧密码不同、长度足够）
+    const reset = await page.request.post("/api/calendar/credentials");
+    expect(reset.status()).toBe(200);
+    const resetData = (await reset.json()) as {
+      user: string;
+      password: string;
+    };
+    expect(resetData.user).toBe("caladmin");
+    expect(resetData.password).not.toBe("oldpass123");
+    expect(resetData.password.length).toBeGreaterThanOrEqual(24);
+
+    // 网站侧凭证已更新为新密码
+    const status = await page.request.get("/api/calendar/credentials");
+    const statusData = (await status.json()) as {
+      password: string;
+      pending: boolean;
+    };
+    expect(statusData.password).toBe(resetData.password);
+    expect(statusData.pending).toBe(true);
+
+    // 重置队列文件已写入（VPS crontab 每分钟读取并应用到 Radicale）
+    const fs = await import("node:fs");
+    const queue = (() => {
+      try {
+        return fs.readFileSync(
+          "/home/ysy/Projects/ysy-personal-homepage/.next/standalone/data/caldav-reset.json",
+          "utf8",
+        );
+      } catch {
+        return null;
+      }
+    })();
+    expect(queue).not.toBeNull();
+    const queueData = JSON.parse(queue!) as { user: string; password: string };
+    expect(queueData.user).toBe("caladmin");
+    expect(queueData.password).toBe(resetData.password);
+
+    // 清理：删除网站凭证与队列文件
+    await page.request.delete("/api/calendar/credentials");
+    fs.rmSync(
+      "/home/ysy/Projects/ysy-personal-homepage/.next/standalone/data/caldav-reset.json",
+      { force: true },
+    );
+  });
 });

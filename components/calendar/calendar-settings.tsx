@@ -1,0 +1,274 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
+import { KeyRoundIcon, ShuffleIcon, Trash2Icon } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/toast";
+
+type CredStatus = {
+  configured: boolean;
+  source: "file" | "env" | null;
+  user: string | null;
+  password: string | null;
+  pending: boolean;
+};
+
+/**
+ * CalDAV 凭证设置（站主专属，挂在「我的日历」工具栏）：
+ * 查看账号/密码、修改用户名密码、一键随机重置。保存后运行时优先使用
+ * 文件凭证（data/caldav.json），未设置时回退服务器环境变量。
+ * 密码变更会登记重置队列，VPS crontab 每分钟同步到 Radicale（页面显示 pending 提示）。
+ * 服务器地址由部署环境决定（环境变量 CALDAV_URL），不在网站内配置。
+ */
+export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
+  const t = useTranslations("calendar");
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<CredStatus | null>(null);
+  const [user, setUser] = useState("");
+  const [password, setPassword] = useState("");
+  // 随机重置后返回的新密码（高亮展示一次，之后可随时在状态区查看）
+  const [freshPassword, setFreshPassword] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // 打开时拉取当前状态（含密码明文，仅站主可访问该接口），预填用户名
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setError(null);
+    setFreshPassword(null);
+    fetch("/api/calendar/credentials")
+      .then((r) => r.json().catch(() => null))
+      .then((data: CredStatus | null) => {
+        if (!cancelled && data) {
+          setStatus(data);
+          setUser(data.user ?? "");
+          setPassword("");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError(t("settingsLoadFailed"));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, t]);
+
+  async function handleSave() {
+    if (saving) return;
+    const trimmedUser = user.trim();
+    if (!trimmedUser) {
+      setError(t("settingsUserRequired"));
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/calendar/credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user: trimmedUser,
+          password: password || undefined,
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      toast.add({ title: t("settingsSaved"), type: "success" });
+      setOpen(false);
+      onSaved?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("settingsSaveFailed"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleReset() {
+    if (resetting || !window.confirm(t("settingsResetConfirm"))) return;
+    setResetting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/calendar/credentials", { method: "POST" });
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+        user?: string;
+        password?: string;
+      } | null;
+      if (!res.ok || !data?.password) {
+        throw new Error(data?.error ?? `HTTP ${res.status}`);
+      }
+      // 更新展示状态：新密码高亮显示，等待 VPS 同步到 Radicale
+      setStatus({
+        configured: true,
+        source: "file",
+        user: data.user ?? null,
+        password: data.password,
+        pending: true,
+      });
+      setFreshPassword(data.password);
+      setUser(data.user ?? "");
+      setPassword("");
+      onSaved?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("settingsSaveFailed"));
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  async function handleClear() {
+    if (clearing || !window.confirm(t("settingsClearConfirm"))) return;
+    setClearing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/calendar/credentials", { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast.add({ title: t("settingsCleared"), type: "success" });
+      setStatus(null);
+      setUser("");
+      setPassword("");
+      onSaved?.();
+    } catch {
+      setError(t("settingsSaveFailed"));
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen(true)}
+        aria-label={t("settings")}
+      >
+        <KeyRoundIcon data-icon="default" />
+        <span className="hidden sm:inline">{t("settings")}</span>
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("settingsDialogTitle")}</DialogTitle>
+            <DialogDescription>{t("settingsDialogDescription")}</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4">
+            {/* 当前状态：账号 + 密码明文（仅站主可见）+ 待同步提示 */}
+            {status?.configured && (
+              <div className="flex flex-col gap-1 rounded-lg border bg-muted/40 px-3 py-2 text-xs">
+                <p className="text-muted-foreground">
+                  {status.source === "file"
+                    ? t("settingsConfigured", { user: status.user ?? "" })
+                    : t("settingsUsingEnv", { user: status.user ?? "" })}
+                </p>
+                <p className="flex items-center gap-1.5 font-mono text-sm text-foreground">
+                  <span>{t("settingsPasswordLabel")}:</span>
+                  <span className="break-all">{status.password ?? "—"}</span>
+                </p>
+                {status.pending && (
+                  <p className="text-amber-600 dark:text-amber-400">
+                    {t("settingsPending")}
+                  </p>
+                )}
+              </div>
+            )}
+            {!status?.configured && (
+              <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                <p>{t("settingsNotConfigured")}</p>
+              </div>
+            )}
+
+            {/* 随机重置后的新密码：高亮展示一次 */}
+            {freshPassword && (
+              <div className="flex flex-col gap-1 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                <p className="font-semibold text-primary">{t("settingsResetDone")}</p>
+                <p className="break-all font-mono text-sm text-foreground">{freshPassword}</p>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="caldav-user">{t("settingsUser")}</Label>
+              <Input
+                id="caldav-user"
+                value={user}
+                onChange={(e) => setUser(e.target.value)}
+                placeholder="caladmin"
+                autoComplete="username"
+                maxLength={200}
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="caldav-password">{t("settingsPassword")}</Label>
+              <Input
+                id="caldav-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={
+                  status?.configured
+                    ? t("settingsPasswordKeep")
+                    : t("settingsPasswordRequired")
+                }
+                autoComplete="new-password"
+                maxLength={200}
+              />
+            </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </div>
+
+          <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
+            {status?.configured && status.source === "file" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClear}
+                disabled={clearing}
+              >
+                <Trash2Icon data-icon="default" />
+                {t("settingsClear")}
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReset}
+                disabled={resetting || !status?.configured}
+              >
+                <ShuffleIcon data-icon="default" />
+                {t("settingsReset")}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+                {t("close")}
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {t("settingsSave")}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
