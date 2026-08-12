@@ -86,12 +86,16 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 ### CalDAV 会议日历（站主专属）
 
 - **用途**：站主个人日历客户端（Apple 日历/Outlook 等）通过 CalDAV 接入，私有会议安排不入公网。
-- **架构**：`docker-compose.yml` 的 `radicale` 服务（官方镜像 `kozea/radicale`，`command: --config /data/config`）仅绑定回环 `127.0.0.1:5232`；Nginx 反代 `calendar.shaoyuanyu.cn`（HTTPS）。**不是公开服务**——用户要求仅站主可访问。
+- **架构**：`docker-compose.yml` 的 `radicale` 服务（官方镜像 `kozea/radicale`，`command: --config /data/config`）仅绑定回环 `127.0.0.1:5232`；Nginx 反代 `calendar.shaoyuanyu.cn`（HTTPS，**全量反代无前缀改写**）。**不是公开服务**——用户要求仅站主可访问。
+- **路径模型**：Radicale **URL 即存储路径**（`collections/collection-root/<用户名>/<集合名>/`），无虚拟路径概念；路径第一段必须是对应用户名（`owner_only` 权限按此判定归属），集合名任意（本站统一 `conference-ddl`）。客户端填根路径 `https://calendar.shaoyuanyu.cn/` 自动发现即可，无需任何 URL 前缀。
 - **认证**：Radicale `htpasswd`（sha256 加密）+ 认证延迟 1s 防爆破；`owner_only` 权限（各账号仅能访问自己的集合）。用户文件 `radicale/users`（gitignored，VPS 生成）。
-- **初始化**：VPS 上执行 `bash scripts/setup-calendar-vps.sh`（生成随机强密码 + htpasswd + 启动容器 + 输出 Nginx/certbot 指引）。客户端 CalDAV 地址：`https://calendar.shaoyuanyu.cn/conference-ddl/`（Nginx 把 `/conference-ddl/` 前缀重写到后端 `/<用户名>/calendar/`，**用户名不出现在公网 URL**——CalDAV 协议不要求用户名入 URL；另配 `/.well-known/caldav` 301 供客户端自动发现）。
+- **初始化**：VPS 上执行 `bash scripts/setup-calendar-vps.sh`（生成随机强密码 + htpasswd + 启动容器 + 自动 MKCOL 建集合并设置 displayname + 输出 Nginx/certbot 指引）。客户端服务器地址：`https://calendar.shaoyuanyu.cn/`（根路径，自动发现；另配 `/.well-known/caldav` 301 → 根）。
 - **关键经验**：
   - 镜像选择 `kozea/radicale`（`tomasz1986/radicale` 在 Docker Hub 已不存在）。
   - MKCOL 创建集合需标准 CalDAV XML（`resourcetype` 含 `calendar`），空 body 会 400。
+  - **客户端显示的日历名 = Radicale 集合的 `displayname`**，未设置时回退为内部路径（如 `ysy/conference-ddl`）；显式 `PROPPATCH` displayname（setup 脚本已自动执行；改后客户端需重新同步——下拉刷新或关闭重开账户）。
+  - **VPS Nginx < 1.25.1 不支持 `http2 on;` 指令**，443 必须写 `listen 443 ssl http2;`，否则 `nginx -t` 失败、整份配置不生效（曾致手机客户端「无法连接至服务器」）；根路径 `location /` 直通 Radicale 供 principal 自动发现。
+  - **集合路径改动需三处同步**：Radicale 存储目录（停容器后 `mv collections/collection-root/<用户>/<旧名> <新名>`，displayname 随目录迁移）、网站代码 `lib/caldav/store.ts` 的 `CALDAV_COLLECTION_NAME` 常量、客户端重新添加账户（客户端存的是发现后的真实路径）。
   - 本地 `docker compose config` 会因 `.env` 中 `RECOVERY_CODES` 含逗号解析失败，校验语法用 `docker compose --env-file /dev/null config`。
   - 本地测试认证流程：`openssl passwd -5` 生成 htpasswd，curl 验证 401/201/403。
   - Radicale 3.4+ 存储结构带 `collection-root` 前缀（`collections/collection-root/<user>/<collection>/`）。

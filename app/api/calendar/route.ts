@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isOwner } from "@/lib/auth/owner";
-import { getCalDavConfig } from "@/lib/caldav/store";
+import { CALDAV_COLLECTION_NAME, getCalDavConfig } from "@/lib/caldav/store";
 import { parseIcsText, type ParsedIcsEvent } from "@/lib/ical";
 
 /**
@@ -94,7 +94,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ events: hit.events });
   }
 
-  const collectionUrl = `${baseUrl.replace(/\/$/, "")}/${encodeURIComponent(user)}/calendar/`;
+  const collectionUrl = `${baseUrl.replace(/\/$/, "")}/${encodeURIComponent(user)}/${CALDAV_COLLECTION_NAME}/`;
   const auth = `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}`;
 
   let res: Response;
