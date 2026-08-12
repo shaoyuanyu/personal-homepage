@@ -10,8 +10,8 @@
 #   3. 输出 Nginx 反代配置（/conference-ddl/ 前缀重写到用户目录）与 certbot 签发命令（需 sudo，自行执行）
 #
 # 客户端接入（Apple 日历 / Outlook / Google Calendar 等）：
-#   CalDAV 地址：https://cal.shaoyuanyu.cn/conference-ddl/calendar/
-#   （Nginx 把 /conference-ddl/ 重写为后端 /<用户名>/，用户名不出现在公网 URL）
+#   CalDAV 地址：https://calendar.shaoyuanyu.cn/conference-ddl/
+#   （Nginx 把 /conference-ddl/ 重写为后端 /<用户名>/calendar/，用户名不出现在公网 URL）
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -52,15 +52,15 @@ fi
 # 3. Nginx 与证书指引
 cat <<EOF
 
-===== Nginx 反代（需 sudo，请自行创建 /etc/nginx/sites-enabled/cal.shaoyuanyu.cn.conf）=====
-# 自定义 URL 前缀 /conference-ddl/ → 后端 /<用户名>/（用户名不出现在公网 URL；
+===== Nginx 反代（需 sudo，请自行创建 /etc/nginx/sites-enabled/calendar.shaoyuanyu.cn.conf）=====
+# 自定义 URL 前缀 /conference-ddl/ → 后端 /<用户名>/calendar/（用户名不出现在公网 URL；
 # CalDAV 协议不要求用户名入 URL，此重写由 Nginx 完成，Radicale 内部无感知）
 server {
     listen 80;
-    server_name cal.shaoyuanyu.cn;
+    server_name calendar.shaoyuanyu.cn;
 
     location /conference-ddl/ {
-        proxy_pass http://127.0.0.1:5232/${USERNAME}/;
+        proxy_pass http://127.0.0.1:5232/${USERNAME}/calendar/;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -69,14 +69,14 @@ server {
 
     # CalDAV 客户端自动发现（Apple 日历等会先请求 /.well-known/caldav）
     location = /.well-known/caldav {
-        return 301 https://cal.shaoyuanyu.cn/conference-ddl/calendar/;
+        return 301 https://calendar.shaoyuanyu.cn/conference-ddl/;
     }
 }
 
 # 签发并启用 HTTPS：
-#   sudo certbot --nginx -d cal.shaoyuanyu.cn
+#   sudo certbot --nginx -d calendar.shaoyuanyu.cn
 
 ===== 日历客户端接入 =====
-CalDAV 地址：https://cal.shaoyuanyu.cn/conference-ddl/calendar/
+CalDAV 地址：https://calendar.shaoyuanyu.cn/conference-ddl/
 （Apple 日历 / Outlook / Google Calendar 均可通过「添加日历账户」接入）
 EOF

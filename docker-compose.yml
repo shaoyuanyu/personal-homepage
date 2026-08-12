@@ -69,7 +69,7 @@ services:
     # 显式指定为宿主 uid 使容器直接读写 radicale/ 下文件（600 的 users 也能读），无需 chown
     user: "${CALDAV_UID:-1000}:${CALDAV_GID:-1000}"
     ports:
-      - "127.0.0.1:5232:5232" # 仅本机回环：Nginx 反代 cal.shaoyuanyu.cn
+      - "127.0.0.1:5232:5232" # 仅本机回环：Nginx 反代 calendar.shaoyuanyu.cn
     volumes:
       # 配置 + 用户文件 + 日历集合（私有勿入库；VPS 上运行 scripts/setup-calendar-vps.sh 初始化）
       - ./radicale:/data
