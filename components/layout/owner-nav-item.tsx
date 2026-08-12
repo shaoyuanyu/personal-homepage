@@ -65,9 +65,10 @@ export function OwnerNavItem({ className }: { className?: string }) {
   }
 
   if (owner === null) {
-    // 占位：覆盖两个按钮的总宽度，避免布局跳动
+    // 占位：覆盖三个按钮的总宽度，避免布局跳动
     return (
       <span aria-hidden className="flex items-center gap-1">
+        <span className="size-9" />
         <span className="size-9" />
         <span className="size-9" />
       </span>
@@ -88,21 +89,32 @@ export function OwnerNavItem({ className }: { className?: string }) {
           {t("ideas")}
         </Button>
 
-        {/* 我的空间：仅权限类操作 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={t("owner")}
-                className={className}
-              >
-                {t("owner")}
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="end">
+      {/* 我的日历：单列入口（主人专属，月视图展示 CalDAV 事件） */}
+      <Button
+        variant="ghost"
+        size="sm"
+        render={<Link href="/calendar" />}
+        aria-label={t("calendar")}
+        className={className}
+      >
+        {t("calendar")}
+      </Button>
+
+      {/* 我的空间：仅权限类操作 */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t("owner")}
+              className={className}
+            >
+              {t("owner")}
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end">
             {/* 预留：网站管理、权限管理等权限类操作入口 */}
             <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}>
               <LogOutIcon data-icon="default" />

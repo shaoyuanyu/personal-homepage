@@ -59,7 +59,7 @@ test.describe("页面可达性", () => {
   });
 
   test("核心子页面：200", async ({ page }) => {
-    for (const path of ["/publications", "/talks", "/projects", "/blog", "/ccf", "/nav"]) {
+    for (const path of ["/publications", "/talks", "/projects", "/blog", "/ccf", "/nav", "/deadlines"]) {
       await expectPageOk(page, path);
     }
   });
@@ -360,5 +360,183 @@ test.describe("主人偏好持久化（服务器）", () => {
     await page.request.patch("/api/preferences", {
       data: { "ccf:filters": null },
     });
+  });
+});
+
+test.describe("Deadline 手动同步（主人专属）", () => {
+  test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
+
+  test("游客访问 /deadlines：无同步按钮", async ({ page }) => {
+    await page.goto("/deadlines");
+    await expect(
+      page.getByRole("button", { name: "立即同步" }),
+    ).toHaveCount(0);
+  });
+
+  test("登录后访问 /deadlines：同步按钮可见", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    await page.goto("/deadlines");
+    await expect(
+      page.getByRole("button", { name: "立即同步" }),
+    ).toBeVisible();
+  });
+
+  test("游客调用 CalDAV API 返回 401", async ({ request }) => {
+    const r = await request.post("/api/deadlines/caldav", {
+      data: {
+        a: "TEST",
+        n: "Test",
+        year: 2027,
+        label: "Paper",
+        utc: 1759363199000,
+      },
+    });
+    expect(r.status()).toBe(401);
+  });
+
+  test("卡片日历菜单：游客无 CalDAV 项，登录后可见", async ({ page }) => {
+    const openMenu = async () => {
+      await page
+        .locator(".grid.grid-cols-1 [data-slot=card]")
+        .first()
+        .getByRole("button", { name: "加入日历" })
+        .click();
+    };
+
+    await page.goto("/deadlines");
+    await openMenu();
+    await expect(
+      page.getByRole("menuitem", { name: "添加到我的日历" }),
+    ).toHaveCount(0);
+
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    await page.goto("/deadlines");
+    await openMenu();
+    await expect(
+      page.getByRole("menuitem", { name: "添加到我的日历" }),
+    ).toBeVisible();
+    // 点击菜单项不应打开会议详情 Dialog（React 合成事件按组件树冒泡，需 stopPropagation）
+    await page.getByRole("menuitem", { name: "添加到我的日历" }).click();
+    await expect(page.locator("[data-slot=dialog-title]")).toHaveCount(0);
+  });
+});
+
+test.describe("我的日历（主人专属）", () => {
+  test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
+
+  test("游客访问 /calendar 被重定向到登录页", async ({ page }) => {
+    await page.goto("/calendar");
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test("游客调用日历 API 返回 401", async ({ request }) => {
+    const r = await request.get("/api/calendar?start=2026-01-01&end=2026-02-01");
+    expect(r.status()).toBe(401);
+  });
+
+  test("登录后顶部导航显示「日历」入口", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(page.getByRole("button", { name: "速记" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "日历" })).toBeVisible();
+    // 未登录时导航栏无「日历」入口
+  });
+
+  test("游客导航栏无「日历」入口", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "日历" })).toHaveCount(0);
+  });
+
+  test("登录后访问 /calendar：页面 200 + 月视图可见", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    const res = await page.goto("/calendar", { waitUntil: "domcontentloaded" });
+    expect(res?.status()).toBe(200);
+    await expect(page.getByRole("heading", { name: "我的日历", level: 1 })).toBeVisible();
+    // 月视图工具栏：跳转按钮 + 月份标题 + 周表头
+    await expect(page.getByRole("button", { name: "今日" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "本月" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "上个月" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "下个月" })).toBeVisible();
+    // 周表头（zh 从周一开始）——限定在月视图网格内（下方事件列表日期块也有「周一」字样）
+    await expect(
+      page.locator(".grid.grid-cols-7").first().getByText("周一", { exact: true }),
+    ).toBeVisible();
+  });
+
+  test("点击日期格聚焦：下方联动显示当天事件，可返回总览", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    await page.goto("/calendar");
+
+    // 默认未聚焦：下方显示本月及未来事件总览
+    await expect(
+      page.getByRole("heading", { name: "本月及未来事件" }),
+    ).toBeVisible();
+
+    // 点击当月 20 号日期格（聚焦）
+    await page.evaluate(() => {
+      const cells = Array.from(
+        document.querySelectorAll(".grid.grid-cols-7 > div"),
+      );
+      const cell = cells.find(
+        (x) =>
+          x.querySelector("span.size-6")?.textContent === "20" &&
+          !x.className.includes("bg-muted/20"),
+      );
+      cell?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+
+    // 下方切换为当天事件 + 显示全部按钮（双向联动）
+    await expect(
+      page.getByRole("heading", { name: /2026年8月20日/ }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "显示全部" })).toBeVisible();
+
+    // 再次点击同一日期格 → 取消聚焦，回到总览
+    await page.evaluate(() => {
+      const cells = Array.from(
+        document.querySelectorAll(".grid.grid-cols-7 > div"),
+      );
+      const cell = cells.find(
+        (x) =>
+          x.querySelector("span.size-6")?.textContent === "20" &&
+          !x.className.includes("bg-muted/20"),
+      );
+      cell?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+    await expect(
+      page.getByRole("heading", { name: "本月及未来事件" }),
+    ).toBeVisible();
+
+    // 「显示全部」按钮同样可返回总览
+    await page.evaluate(() => {
+      const cells = Array.from(
+        document.querySelectorAll(".grid.grid-cols-7 > div"),
+      );
+      const cell = cells.find(
+        (x) =>
+          x.querySelector("span.size-6")?.textContent === "20" &&
+          !x.className.includes("bg-muted/20"),
+      );
+      cell?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+    await page.getByRole("button", { name: "显示全部" }).click();
+    await expect(
+      page.getByRole("heading", { name: "本月及未来事件" }),
+    ).toBeVisible();
   });
 });

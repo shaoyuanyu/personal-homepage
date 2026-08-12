@@ -7,6 +7,7 @@ import { Providers } from "@/components/providers";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { NavFab } from "@/components/layout/nav-fab";
+import { Toaster } from "@/components/ui/toast";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -37,6 +38,7 @@ export default async function LocaleLayout({
             <NavFab />
           </main>
           <SiteFooter />
+          <Toaster />
         </Providers>
       </div>
     </NextIntlClientProvider>

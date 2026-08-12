@@ -186,6 +186,46 @@ const navLinks = defineCollection({
   }),
 });
 
+// ---------- Deadlines Overrides (会议 deadline 覆盖层) ----------
+const deadlinesOverrides = defineCollection({
+  name: "DeadlinesOverrides",
+  pattern: "deadlines-overrides.yaml",
+  single: true,
+  schema: s.object({
+    conferences: s
+      .array(
+        s.object({
+          a: s.string().min(1),
+          n: s.string().min(1),
+          l: s.enum(["A", "B", "C"]).optional(),
+          f: s.string().optional(),
+          d: s.string().optional(),
+          years: s
+            .array(
+              s.object({
+                y: s.number().int().min(2000).max(2100),
+                link: s.string().optional(),
+                tz: s.string().default("UTC"),
+                date: s.string().optional(),
+                place: s.string().optional(),
+                timeline: s
+                  .array(
+                    s.object({
+                      t: s.string().min(1),
+                      c: s.string().optional(),
+                      k: s.enum(["abstract", "paper"]).optional(),
+                    }),
+                  )
+                  .min(1),
+              }),
+            )
+            .min(1),
+        }),
+      )
+      .default([]),
+  }),
+});
+
 export default defineConfig({
   root: "content",
   strict: true,
@@ -200,5 +240,6 @@ export default defineConfig({
     talks,
     projects,
     navLinks,
+    deadlinesOverrides,
   },
 });

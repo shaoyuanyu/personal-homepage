@@ -65,11 +65,11 @@ groups:
         desc:
           zh: CCF 会议与期刊目录（站内版）
           en: CCF recommended venues & journals (local)
-      - name: AI Deadlines
-        url: "https://paperswithcode.co/ai-deadlines"
+      - name: 会议 Deadline 日历
+        url: "/deadlines"
         desc:
-          zh: AI 顶会投稿截止时间
-          en: AI conference deadlines
+          zh: CCF 会议投稿截止时间（站内版）
+          en: CCF conference deadlines (local)
   - group:
       zh: 开源平台
       en: Open-source Platforms

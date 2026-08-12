@@ -2,16 +2,15 @@ import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { requireOwner } from "@/lib/auth/owner";
-import { listIdeas } from "@/lib/ideas/store";
-import { IdeasManager } from "@/components/ideas/ideas-manager";
+import { CalendarView } from "@/components/calendar/calendar-view";
 
 export const metadata: Metadata = {
-  title: "Idea Scratchpad",
+  title: "My Calendar",
   robots: { index: false, follow: false },
 };
 
-/** Idea 速记：主人专属页面，未登录重定向到登录页 */
-export default async function IdeasPage({
+/** 我的日历：主人专属页面（展示站主 CalDAV 日历事件），未登录重定向到登录页 */
+export default async function CalendarPage({
   params,
 }: {
   params: Promise<{ locale: string }>;
@@ -21,8 +20,7 @@ export default async function IdeasPage({
 
   await requireOwner();
 
-  const t = await getTranslations("ideas");
-  const ideas = listIdeas();
+  const t = await getTranslations("calendar");
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6">
@@ -31,7 +29,7 @@ export default async function IdeasPage({
         <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
         <p className="text-muted-foreground">{t("description")}</p>
       </div>
-      <IdeasManager initialIdeas={ideas} />
+      <CalendarView />
     </div>
   );
 }

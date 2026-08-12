@@ -1,0 +1,28 @@
+# Radicale 3.x 配置（站主专属 CalDAV）
+# 挂载于容器 /data；用户文件 /data/users（htpasswd，VPS 生成，勿入库）
+#
+# 安全设计：
+#   - 仅绑定回环端口，由宿主机 Nginx 反代 HTTPS 子域名
+#   - htpasswd + sha256 加密 + 认证延迟，防爆破
+#   - owner_only 权限：每个账号只能访问自己的日历集合
+
+[server]
+hosts = 0.0.0.0:5232
+max_connections = 20
+timeout = 30
+
+[auth]
+type = htpasswd
+htpasswd_filename = /data/users
+htpasswd_encryption = sha256
+delay = 1
+
+[rights]
+# 站主专属：任何账号无法读写他人集合
+type = owner_only
+
+[storage]
+filesystem_folder = /data/collections
+
+[logging]
+level = info
