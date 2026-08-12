@@ -22,11 +22,17 @@ if [[ ! -f "$QUEUE" ]]; then
   exit 0
 fi
 
-# 队列文件损坏/非法：删除避免死循环（网站侧凭证不受影响，仅 Radicale 未同步）
+# 队列文件不可读（权限问题）：保留队列等待下次运行，绝不删除（删除会丢密码变更）
+if [[ ! -r "$QUEUE" ]]; then
+  echo "[$(date '+%F %T')] 队列文件不可读，保留等待: $QUEUE" >> apply-calendar-reset.log
+  exit 1
+fi
+
+# 队列内容损坏/非法：删除避免死循环（网站侧凭证不受影响，仅 Radicale 未同步）
 USER="$(python3 -c "import json,sys;print(json.load(open('$QUEUE'))['user'])" 2>/dev/null || echo "")"
 PASSWORD="$(python3 -c "import json,sys;print(json.load(open('$QUEUE'))['password'])" 2>/dev/null || echo "")"
 if [[ -z "$USER" || -z "$PASSWORD" ]]; then
-  echo "[$(date '+%F %T')] 队列文件非法，移除: $QUEUE" >> apply-calendar-reset.log
+  echo "[$(date '+%F %T')] 队列文件内容非法，移除: $QUEUE" >> apply-calendar-reset.log
   rm -f "$QUEUE"
   exit 1
 fi
