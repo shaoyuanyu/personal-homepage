@@ -21,6 +21,10 @@ services:
       - TOTP_SECRET=${TOTP_SECRET}
       - AUTH_SECRET=${AUTH_SECRET}
       - RECOVERY_CODES=${RECOVERY_CODES}
+      # CalDAV（站主专属日历）写入凭证：compose 网络内访问 radicale 服务
+      - CALDAV_URL=http://radicale:5232
+      - CALDAV_USER=${CALDAV_USER}
+      - CALDAV_PASSWORD=${CALDAV_PASSWORD}
     volumes:
       # 主人私有数据（想法速记等），挂载宿主机目录便于直接查看/备份
       - ./data:/app/data
@@ -53,6 +57,19 @@ services:
       - POSTGRES_DB=umami
     volumes:
       - umami-db:/var/lib/postgresql/data
+    networks:
+      - web
+
+  radicale:
+    # 站主专属 CalDAV 会议日历（仅回环 + htpasswd 强密码认证，Nginx 反代子域名）
+    image: kozea/radicale:latest
+    restart: unless-stopped
+    command: ["--config", "/data/config"]
+    ports:
+      - "127.0.0.1:5232:5232" # 仅本机回环：Nginx 反代 cal.shaoyuanyu.cn
+    volumes:
+      # 配置 + 用户文件 + 日历集合（私有勿入库；VPS 上运行 scripts/setup-calendar-vps.sh 初始化）
+      - ./radicale:/data
     networks:
       - web
 

@@ -47,6 +47,8 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* 官方 Calendar 组件（react-day-picker）使用的格子圆角 */
+  --cell-radius: var(--radius-lg);
 }
 
 :root {
@@ -130,7 +132,7 @@
   }
 }
 
-/* ---- CCF 目录页：分段式筛选控件（segmented control）---- */
+/* ---- 分段式筛选控件（segmented control，CCF 目录页 / Deadline 日历页共用）---- */
 .ccf-segmented {
   display: inline-flex;
   align-items: center;

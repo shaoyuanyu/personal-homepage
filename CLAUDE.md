@@ -62,6 +62,16 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - **备份**：**无需备份**（低价值数据，丢失后重新设置即可）；`backup-ideas.sh` 只备份 ideas.json。
 - **限制**：单用户低并发；会话内不轮询，跨设备需刷新页面感知。
 
+## 会议 Deadline 日历（公开功能）
+
+- **路由**：`/deadlines`（公开页面，`force-dynamic` 动态渲染）；入口：学术导航页「会议 Deadline 日历」链接（未加入顶部导航）。
+- **数据流**：`scripts/fetch-deadlines.mjs`（零依赖行级 YAML 解析）每 12 小时从 ccfddl/ccf-deadlines 的 `allconf.yml` 拉取 → 归一化时区 → 只保留当年+次年 → 写入 `lib/data/deadlines.json`（提交入库）。同步命令：`pnpm fetch:deadlines`；工作流 `sync-deadlines.yml`（每 12 小时，有变化提交 PR）。
+- **手动立即同步（主人专属）**：`/deadlines` 页面登录后显示「立即同步」按钮 → `POST /api/deadlines/sync`（`isOwner` 守卫，60 秒限流）拉取最新数据并合并覆盖层 → 原子写入运行时文件 `data/deadlines.json`（`DATA_DIR` 或 cwd/data，VPS 上即 compose 挂载的 `./data`，持久化）。页面动态渲染优先读该文件（缺失/损坏回退构建时数据），刷新即生效，无需等待部署。同步按钮 UI 在 `deadlines-list.tsx`（`useOwnerPreferences().isOwner` 控制显示）。
+- **覆盖层**：`content/deadlines-overrides.yaml`（velite 校验）按缩写整体替换/新增会议（非 CCF 会议、修正错误数据用；字段 l/f/d 缺省时沿用自动数据）。合并逻辑 `mergeDeadlines()` 在 `lib/data/index.ts`，构建时与手动同步共用（保证规则一致）。
+- **时区约定**：fetch 时归一化为 IANA 名（AoE→`Etc/GMT+12`、PT/PST→`America/Los_Angeles`、UTC±X→`Etc/GMT∓X` 注意符号反转）；UI 用 `Intl.DateTimeFormat(timeZone)` 转访客本地时间，零依赖。
+- **UI**：`components/deadlines/deadlines-list.tsx`——等级 A/B/C/未收录 + 时间范围（30/90 天）+ 领域多选筛选、倒计时、详情 Dialog、Google 日历 / .ics 导出。领域词表与 CCF 目录一致（官方中文名，短键取 `/` 前段）。
+- **注意**：allconf.yml 缩进风格不统一（数组项可与父键同级），解析器按内容模式驱动而非绝对缩进；若解析结果为空会直接报错退出（防提交空数据）。数据源（ccfddl.com）偶发连接超时，脚本内置 3 次重试；可用 `DEADLINES_URL` 环境变量覆盖源地址（CLI 另支持 `--url`）。
+
 ## 部署（GitHub Actions → GHCR → VPS）
 
 ### 流水线
@@ -71,6 +81,39 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 | `ci.yml` | push/PR 到 main | lint、typecheck、构建、本地 standalone 冒烟 |
 | `deploy.yml` | push 到 main | 构建推 GHCR → SSH 到 VPS pull + `docker compose up -d --no-deps web` → 对生产跑冒烟 |
 | `sync-papers.yml` | 定时 | 每周同步 arXiv 论文 |
+| `sync-deadlines.yml` | 定时 | 每 12 小时同步 CCF 会议 deadline（ccfddl） |
+
+### CalDAV 会议日历（站主专属）
+
+- **用途**：站主个人日历客户端（Apple 日历/Outlook 等）通过 CalDAV 接入，私有会议安排不入公网。
+- **架构**：`docker-compose.yml` 的 `radicale` 服务（官方镜像 `kozea/radicale`，`command: --config /data/config`）仅绑定回环 `127.0.0.1:5232`；Nginx 反代 `cal.shaoyuanyu.cn`（HTTPS）。**不是公开服务**——用户要求仅站主可访问。
+- **认证**：Radicale `htpasswd`（sha256 加密）+ 认证延迟 1s 防爆破；`owner_only` 权限（各账号仅能访问自己的集合）。用户文件 `radicale/users`（gitignored，VPS 生成）。
+- **初始化**：VPS 上执行 `bash scripts/setup-calendar-vps.sh`（生成随机强密码 + htpasswd + 启动容器 + 输出 Nginx/certbot 指引）。客户端 CalDAV 地址：`https://cal.shaoyuanyu.cn/conference-ddl/calendar/`（Nginx 把 `/conference-ddl/` 前缀重写到后端 `/<用户名>/`，**用户名不出现在公网 URL**——CalDAV 协议不要求用户名入 URL；另配 `/.well-known/caldav` 301 供客户端自动发现）。
+- **关键经验**：
+  - 镜像选择 `kozea/radicale`（`tomasz1986/radicale` 在 Docker Hub 已不存在）。
+  - MKCOL 创建集合需标准 CalDAV XML（`resourcetype` 含 `calendar`），空 body 会 400。
+  - 本地 `docker compose config` 会因 `.env` 中 `RECOVERY_CODES` 含逗号解析失败，校验语法用 `docker compose --env-file /dev/null config`。
+  - 本地测试认证流程：`openssl passwd -5` 生成 htpasswd，curl 验证 401/201/403。
+  - Radicale 3.4+ 存储结构带 `collection-root` 前缀（`collections/collection-root/<user>/<collection>/`）。
+
+### 会议卡片 → 站主 CalDAV（一键添加）
+
+- **入口**：卡片右下角日历菜单，登录后多出「添加到我的 CalDAV 日历」（`useOwnerPreferences().isOwner` 控制）。
+- **API**：`POST /api/deadlines/caldav`（`isOwner` 守卫）→ 用环境变量凭证（`CALDAV_URL`/`CALDAV_USER`/`CALDAV_PASSWORD`，compose 注入）向 Radicale `MKCOL`（标准 XML）+ `PUT` 事件（稳定 UID `会议-年份-类型`，**幂等覆盖**不产生重复事件）。**防抖按 UID**（同一事件 5 秒内限一次，防连点；不同会议之间不限流——全局限流会误伤正常批量添加）。
+- **iCal 构造**：`lib/ical.ts`（`buildIcsText`/`toIcsUtc`）客户端 .ics 下载与 CalDAV API 共用。
+- **⚠ Base UI 迁移陷阱**：Base UI 1.x 的 `MenuItem` 用 **`onClick`**（非 Radix 的 `onSelect`）——`onSelect` 会被静默忽略且不报错，曾致日历菜单三个动作全部失效。项目内 DropdownMenuItem 一律用 `onClick`。
+- **⚠ 菜单项事件冒泡**：Base UI 菜单默认渲染在卡片组件树内（Portal 仅影响 DOM 树），菜单项 `click` 会按 **React 组件树**冒泡到卡片触发其 `onClick`（如打开详情 Dialog）。凡卡片内嵌 DropdownMenu，菜单项 `onClick` 必须 `e.stopPropagation()`。
+
+### 我的日历（站主专属，`/calendar`）
+
+- **用途**：站主浏览器内查看 CalDAV 日历的月视图（会议 Deadline + 个人事件）；**仅供站主**（`requireOwner` 守卫，未登录重定向 `/login`），顶部导航登录后显示「日历」一级入口（`owner-nav-item.tsx` 中与「速记」并列）。
+- **API**：`GET /api/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD`（`isOwner` 守卫；参数不合法 400；CalDAV 未配置 503；网络失败 502）→ CalDAV `REPORT`（calendar-query + `time-range`）查询 Radicale → 解析 multistatus XML 中的 `calendar-data` → `parseIcsText` 解析事件。30 秒内存缓存（`?v=` 参数绕过）。**⚠ time-range 的 end 是排他**（不含当天），结束日期需 +1 天（`toRangeEndExclusive`），否则 start==end 时区间为空（曾致聚焦某天显示「当天暂无事件」）。
+- **双向联动**：网格点击日期格聚焦（再次点击取消；非当月格自动跳月）→ 下方 `DayEventsList` 按需加载当天事件（跨天事件每天可查）；未聚焦（`selectedDate === null`，初始默认）→ 下方 `UpcomingEventsList` 显示本月+未来 7 个月事件总览，点击跳转对应月份并聚焦。
+- **iCal 解析**：`lib/ical.ts` 的 `parseIcsText`（与写入共用文件）——支持行折叠、UTC（Z 结尾）、全天（`VALUE=DATE`，`DTEND` 不含结束日）、浮时；TZID 事件降级为浮时（按访客本地解释）。UTC 事件客户端按浏览器本地时区显示（如上海 UTC+8）。
+- **UI**：`components/calendar/calendar-view.tsx`——月视图（6 行卡片式网格、zh 周一起 / en 周日起、今天高亮、每格最多 3 个事件块（蓝色实底，超出显示「还有 N 个」）、跨天事件逐日显示、点击事件打开详情 Dialog、非当月格仅淡显日期、空月份显示提示）。工具栏为 `‹ 月份 › | 今天 | 刷新`（月份标题点击弹出跳转选择器）。
+- **⚠ Base UI Select 在 Dialog 内 Popup 定位失败**：Dialog 内嵌 `Select` 时其浮动 Popup 会测出 0×0（anchor 宽度测量异常，`w-(--anchor-width)`=0，选项不可点），`key` 重挂载也无法修复。**跳转选择器因此用自绘 Popover 浮层**（relative 容器 + fixed inset-0 遮罩 + absolute 面板），浮层内 Select 正常。同理 Caption 需移除 rdp 内置 `Nav`（其 absolute 全宽层拦截 Select 点击）+ `relative z-10`。
+- **官方 Calendar 组件**：`components/ui/calendar.tsx`（react-day-picker 封装，`--cell-radius` 变量在 globals.css）。月份/年份选择通过自定义 `MonthCaption` 用 shadcn Select 实现（替代原生 dropdown，v10 中组件名为 `MonthCaption` 非 `Caption`）。
+- **注意**：本地验证需 `CALDAV_*` 环境变量注入（standalone 不自动加载 `.env`，`.env` 的 `RECOVERY_CODES` 含逗号无法 `source`）——`export CALDAV_URL=... CALDAV_USER=... CALDAV_PASSWORD=...` 后启动。Radicale 集合不存在时 REPORT 返回 404，按空日历处理（不报错）。
 
 ### 关键经验
 
@@ -98,6 +141,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - VS Code 集成浏览器对部分元素点击会因稳定性检查超时（如 DropdownMenu trigger）：用 Playwright `evaluate(el => el.click())` 或直接跑 E2E 验证，勿误判为代码问题。
 - standalone 构建会把 `.env` 复制到 `.next/standalone/.env` 并被 server.js 加载（本地 standalone 读取密钥的原因）；VPS 密钥来自 compose 的 environment 注入。
 - 登录/登出 E2E 会真实写入会话与 Idea 数据，用例内自清理；跑完可检查 `data/ideas.json` 应为 `[]`。
+- **E2E 勿开 fullyParallel**：所有用例共享同一 standalone 服务器的 `preferences.json`/`ideas.json`，多 worker 并行写会互相覆盖导致随机失败（曾致偏好恢复用例间歇红）。playwright.config.ts 保持默认单文件串行（27 用例约 12 秒）。
 
 ## 常用命令速查
 
@@ -110,4 +154,5 @@ E2E_BASE_URL=https://shaoyuanyu.cn pnpm exec playwright test  # 对生产跑冒�
 pnpm totp:setup          # 生成/重生成 TOTP 密钥与恢复码
 pnpm fetch:publications  # 同步 Semantic Scholar 论文
 pnpm fetch:ccf-dblp      # 同步 CCF 目录（DBLP）
+pnpm fetch:deadlines     # 同步会议 deadline（ccfddl）
 ```

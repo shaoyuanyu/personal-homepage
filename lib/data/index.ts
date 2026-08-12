@@ -79,3 +79,81 @@ export const ccf = ccfData as {
   conferences: CcfEntry[];
   journals: CcfEntry[];
 };
+
+// ---- 会议 deadline 日历（自动同步自 ccfddl + 本地覆盖层合并）----
+import deadlineData from "./deadlines.json";
+import { deadlinesOverrides as rawDeadlinesOverrides } from "@velite/index";
+
+export type DeadlineTimelineEntry = {
+  /** 截止时间 "YYYY-MM-DD HH:mm:ss" */
+  t: string;
+  /** 轮次备注（如 "first round"） */
+  c?: string;
+  /** "abstract" = 摘要截止；"paper" / 缺省 = 全文截止 */
+  k?: "abstract" | "paper";
+};
+
+export type DeadlineYear = {
+  y: number;
+  link?: string;
+  /** 归一化 IANA 时区（fetch 脚本已处理 AoE/UTC±X/缩写） */
+  tz: string;
+  date?: string;
+  place?: string;
+  timeline: DeadlineTimelineEntry[];
+};
+
+export type DeadlineConf = {
+  /** 缩写 */
+  a: string;
+  /** 全称 */
+  n: string;
+  /** CCF 等级 A/B/C；"" = 未收录 */
+  l: "A" | "B" | "C" | "";
+  /** 领域（CCF 官方中文名，与 ccf 数据同词表） */
+  f: string;
+  /** DBLP 链接 */
+  d?: string;
+  years: DeadlineYear[];
+};
+
+type OverrideConf = NonNullable<typeof rawDeadlinesOverrides>["conferences"][number];
+
+/** 覆盖层原始数据（API 手动同步时与最新拉取数据重新合并） */
+export const deadlinesOverrides: OverrideConf[] =
+  rawDeadlinesOverrides?.conferences ?? [];
+
+const rawDeadlines = deadlineData as {
+  fetchedAt: string;
+  source: string;
+  conferences: DeadlineConf[];
+};
+
+/**
+ * 合并：覆盖层按缩写整体替换自动数据（大小写不敏感）。
+ * 构建时合并一次得到静态 `deadlines`；手动同步 API 拉取最新数据后
+ * 用同一函数重新合并，保证运行时数据与覆盖层规则一致。
+ */
+export function mergeDeadlines(
+  raw: DeadlineConf[],
+  overrides: OverrideConf[],
+): DeadlineConf[] {
+  const map = new Map<string, DeadlineConf>();
+  for (const c of raw) map.set(c.a.toLowerCase(), c);
+  for (const o of overrides) {
+    const base = map.get(o.a.toLowerCase());
+    map.set(o.a.toLowerCase(), {
+      ...(base ?? { a: o.a, n: "", l: "", f: "" }),
+      ...o,
+      l: o.l ?? base?.l ?? "",
+      f: o.f ?? base?.f ?? "",
+    });
+  }
+  return [...map.values()].sort((x, y) => x.a.localeCompare(y.a));
+}
+
+export const deadlines: DeadlineConf[] = mergeDeadlines(
+  rawDeadlines.conferences,
+  deadlinesOverrides,
+);
+export const deadlinesFetchedAt = rawDeadlines.fetchedAt;

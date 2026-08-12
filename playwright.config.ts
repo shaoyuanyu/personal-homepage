@@ -8,7 +8,9 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
-  fullyParallel: true,
+  // 注意：保持默认（非 fullyParallel）——所有用例共享同一个 standalone 服务器
+  // 状态（preferences.json / ideas.json），多 worker 并行写入会互相覆盖导致
+  // 随机失败（如偏好恢复用例读到被其他 worker 覆盖的默认值）。单文件内串行执行。
   reporter: [["list"]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",

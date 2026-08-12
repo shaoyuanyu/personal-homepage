@@ -31,6 +31,10 @@
 # 构建时生成的导航页站点图标（由 scripts/fetch-favicons.mjs 生成）
 /public/favicons/
 
+# CalDAV（Radicale）私有数据：用户文件与日历集合（VPS 生成，不入库）
+/radicale/users
+/radicale/collections/
+
 # misc
 .DS_Store
 *.pem
