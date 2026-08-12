@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 
 import { isOwner } from "@/lib/auth/owner";
+import { getCalDavConfig } from "@/lib/caldav/store";
 import { parseIcsText, type ParsedIcsEvent } from "@/lib/ical";
 
 /**
  * GET /api/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD — 读取站主 CalDAV 日历事件（主人专属）。
  *
  * 通过 CalDAV REPORT（calendar-query + time-range）向 Radicale 查询指定时间范围的事件，
- * 解析 multistatus 响应中的 iCal 数据后返回。凭证来自环境变量（VPS compose 注入）：
- *   CALDAV_URL / CALDAV_USER / CALDAV_PASSWORD
+ * 解析 multistatus 响应中的 iCal 数据后返回。凭证优先使用网站内设置（data/caldav.json），
+ * 未设置时回退环境变量（CALDAV_URL / CALDAV_USER / CALDAV_PASSWORD，compose 注入）。
  *
  * 简单内存缓存 30 秒（月视图翻页会重复请求同一范围）。
  */
@@ -81,12 +82,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "参数不合法" }, { status: 400 });
   }
 
-  const baseUrl = process.env.CALDAV_URL;
-  const user = process.env.CALDAV_USER;
-  const password = process.env.CALDAV_PASSWORD;
-  if (!baseUrl || !user || !password) {
+  const cfg = getCalDavConfig();
+  if (!cfg) {
     return NextResponse.json({ error: "CalDAV 服务未配置" }, { status: 503 });
   }
+  const { baseUrl, user, password } = cfg;
 
   const cacheKey = `${start}|${end}`;
   const hit = cache.get(cacheKey);

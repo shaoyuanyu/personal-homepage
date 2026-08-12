@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { CalendarSettings } from "@/components/calendar/calendar-settings";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Select,
@@ -446,6 +447,8 @@ export function CalendarView() {
             <RefreshCwIcon data-icon="default" className={loading ? "animate-spin" : ""} />
             <span className="hidden sm:inline">{t("refresh")}</span>
           </Button>
+          {/* CalDAV 凭证设置：保存/清除后自动用新凭证刷新日历 */}
+          <CalendarSettings onSaved={refresh} />
         </div>
       </div>
 

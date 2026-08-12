@@ -17,7 +17,8 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
 
-USERNAME="${CALDAV_USER:-caladmin}"
+# 默认账号：与宿主机部署用户同名（ysy）；可用 CALDAV_USER 环境变量覆盖
+USERNAME="${CALDAV_USER:-ysy}"
 
 # 1. 账号：首次运行生成强随机密码；已存在则跳过
 if [[ ! -f radicale/users ]]; then
@@ -27,15 +28,26 @@ if [[ ! -f radicale/users ]]; then
   printf '%s:%s\n' "$USERNAME" "$HASH" > radicale/users
   chmod 600 radicale/users
   echo "✔ CalDAV 账号已创建：$USERNAME"
-  echo "  密码（仅显示一次，请立即妥善保存）：$PASSWORD"
+  echo "  初始密码：$PASSWORD"
+  echo "  后续可在网站「我的日历 → 设置」里查看账号密码或随机重置（无需再登录 VPS）"
 else
   echo "ℹ radicale/users 已存在，跳过账号创建"
+  echo "  账号密码请在网站「我的日历 → 设置」里查看或重置"
 fi
 
 # 2. 数据目录与容器启动
 mkdir -p radicale/collections
 docker compose up -d radicale
 echo "✔ radicale 已启动：http://127.0.0.1:5232（仅回环）"
+
+# 2.5 安装「密码重置应用」定时任务：每分钟把网站发起的密码变更同步到 Radicale
+CRON_JOB="$DIR/scripts/apply-calendar-reset.sh > /dev/null 2>&1"
+if crontab -l 2>/dev/null | grep -q apply-calendar-reset; then
+  echo "ℹ crontab 已存在，跳过安装"
+else
+  (crontab -l 2>/dev/null; echo "* * * * * $CRON_JOB") | crontab -
+  echo "✔ 已安装 crontab：每分钟应用网站发起的 CalDAV 密码重置"
+fi
 
 # 3. Nginx 与证书指引
 cat <<EOF
