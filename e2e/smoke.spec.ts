@@ -437,6 +437,21 @@ test.describe("我的日历（主人专属）", () => {
     expect(r.status()).toBe(401);
   });
 
+  test("游客删除日历事件返回 401", async ({ request }) => {
+    const r = await request.delete("/api/calendar/events/test-uid-401");
+    expect(r.status()).toBe(401);
+  });
+
+  test("登录后未配置凭证时删除日历事件返回 503", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    const r = await page.request.delete("/api/calendar/events/test-uid-503");
+    // 本地 e2e 无凭证 → 503（CalDAV 服务未配置）；
+    // 生产冒烟有凭证 → 按 UID 查无此事件 → 404（删除流程走到位）
+    expect([503, 404]).toContain(r.status());
+  });
+
   test("登录后顶部导航显示「日历」入口", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);

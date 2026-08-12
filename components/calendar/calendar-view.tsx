@@ -10,6 +10,7 @@ import {
   ExternalLinkIcon,
   HouseIcon,
   RefreshCwIcon,
+  Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react";
 
@@ -33,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { enUS, zhCN } from "react-day-picker/locale";
 import type { ParsedIcsEvent } from "@/lib/ical";
@@ -152,6 +154,10 @@ export function CalendarView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<ParsedIcsEvent | null>(null);
+  // 事件删除：两步确认（首次点击进入确认态，5 秒内再点执行）
+  const [deleting, setDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 聚焦的选中日期；null = 未聚焦（下方显示本月及未来事件总览）
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   // 选中日期的当天事件（聚焦时按需加载，双向联动）
@@ -325,6 +331,49 @@ export function CalendarView() {
     setSelectedDate(null);
   };
   const refresh = () => setReloadKey((k) => k + 1);
+
+  // 关闭详情/卸载时复位删除确认态并清理定时器
+  useEffect(() => {
+    return () => {
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    };
+  }, []);
+  const resetDeleteState = () => {
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    setConfirmingDelete(false);
+  };
+
+  // 两步确认后从 CalDAV 删除事件；成功关闭详情并刷新（API 侧已清缓存）
+  const handleDelete = async () => {
+    if (!selected) return;
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      confirmTimer.current = setTimeout(() => setConfirmingDelete(false), 5000);
+      return;
+    }
+    resetDeleteState();
+    setDeleting(true);
+    try {
+      const res = await fetch(
+        `/api/calendar/events/${encodeURIComponent(selected.uid)}`,
+        { method: "DELETE" },
+      );
+      if (res.status === 404) {
+        // 事件已被其他客户端删除：同样视为成功，刷新即可
+      } else if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast.add({ title: data?.error ?? t("deleteFailed"), type: "error" });
+        return;
+      }
+      toast.add({ title: t("deleted"), type: "success" });
+      setSelected(null);
+      refresh();
+    } catch {
+      toast.add({ title: t("deleteFailed"), type: "error" });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const inCurrentMonth = (d: Date) => d.getMonth() === viewDate.getMonth();
   // 分段按钮状态高亮：viewDate 为当前月 / 聚焦今天
@@ -618,7 +667,15 @@ export function CalendarView() {
       )}
 
       {/* 事件详情 Dialog */}
-      <Dialog open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
+      <Dialog
+        open={selected !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetDeleteState();
+            setSelected(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -632,7 +689,23 @@ export function CalendarView() {
           {selected && (
             <EventDetails event={selected} locale={locale} />
           )}
-          <DialogFooter>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              variant={confirmingDelete ? "destructive" : "outline"}
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <Spinner className="size-4" />
+              ) : (
+                <Trash2Icon data-icon="default" className="size-4" />
+              )}
+              {deleting
+                ? t("deleting")
+                : confirmingDelete
+                  ? t("deleteConfirm")
+                  : t("deleteEvent")}
+            </Button>
             <Button variant="outline" onClick={() => setSelected(null)}>
               {t("close")}
             </Button>
