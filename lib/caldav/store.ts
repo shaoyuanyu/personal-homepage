@@ -21,6 +21,11 @@ import { join } from "node:path";
  * VPS crontab（scripts/apply-calendar-reset.sh，每分钟）检测到后更新 htpasswd 并删除队列。
  */
 
+/** CalDAV 集合名（Radicale 存储路径第二段）：/<用户名>/<集合名>/。
+ * 与公网语义一致（conference-ddl = 会议 Deadline）；Radicale URL 即存储路径，
+ * 改名需同步移动服务器端目录（collections/collection-root/<用户>/<集合名>/）。 */
+export const CALDAV_COLLECTION_NAME = "conference-ddl";
+
 export interface CalDavCredentials {
   user: string;
   password: string;

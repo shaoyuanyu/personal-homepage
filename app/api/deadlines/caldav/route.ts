@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isOwner } from "@/lib/auth/owner";
-import { getCalDavConfig } from "@/lib/caldav/store";
+import { CALDAV_COLLECTION_NAME, getCalDavConfig } from "@/lib/caldav/store";
 import { buildIcsText } from "@/lib/ical";
 
 /**
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "操作过于频繁，请稍后再试" }, { status: 429 });
   }
 
-  const collectionUrl = `${baseUrl.replace(/\/$/, "")}/${encodeURIComponent(user)}/calendar/`;
+  const collectionUrl = `${baseUrl.replace(/\/$/, "")}/${encodeURIComponent(user)}/${CALDAV_COLLECTION_NAME}/`;
 
   // 确保日历集合存在（已存在时 MKCOL 返回 409，忽略）
   await fetch(collectionUrl, {
