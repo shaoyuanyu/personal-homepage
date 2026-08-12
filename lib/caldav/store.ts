@@ -136,6 +136,8 @@ export function getCalDavStatus(): CalDavStatus {
 /**
  * 登记密码变更到重置队列（供 VPS crontab 应用到 Radicale htpasswd）。
  * 同时原子写入 data/caldav-reset.json；覆盖式写（同一时刻只有一个待应用变更）。
+ * 队列文件权限 644：容器属主(1001) 写入，VPS 部署用户（crontab 以 ysy 运行）需要读取——
+ * 若为 600 会导致 crontab 读不到而被误删（曾致密码不同步、日历 401）。
  */
 export function queueCalDavPasswordReset(user: string, password: string): void {
   mkdirSync(DATA_DIR, { recursive: true });
@@ -145,6 +147,6 @@ export function queueCalDavPasswordReset(user: string, password: string): void {
     `${JSON.stringify({ user, password, requestedAt: Date.now() }, null, 2)}\n`,
     "utf8",
   );
-  chmodSync(tmp, 0o600);
+  chmodSync(tmp, 0o644);
   renameSync(tmp, RESET_QUEUE);
 }
