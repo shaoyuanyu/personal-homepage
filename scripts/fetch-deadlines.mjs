@@ -276,6 +276,8 @@ export async function fetchDeadlines(url = DEFAULT_URL) {
       console.log(`拉取会议数据（${attempt}/${MAX_ATTEMPTS}）: ${url}`);
       const res = await fetch(url, {
         headers: { "User-Agent": USER_AGENT },
+        // 30s 超时：避免网络卡死时挂起过久（Node 22 原生支持）
+        signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
       const text = await res.text();
