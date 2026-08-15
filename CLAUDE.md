@@ -42,7 +42,8 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - **功能入口分级**：高频重要功能在顶部栏单列入口（如「速记」）；低频功能放「更多工具」下拉菜单（有需要时再建）。**新增专属功能时先与用户确认入口位置**。
 - **游客隔离**：所有专属功能对游客不可见（无入口），且路由层用 `requireOwner()` 守卫（无法直接通过 URL 访问）。
 - **导航登录态刷新**：`OwnerNavItem` 监听 `owner-auth-changed` 自定义事件（登录/登出后广播）。登出时 pathname 不变，仅靠路由变化刷新会失效。新增管理员 UI 时沿用。
-- **「导航」按钮位置（勿改回）**：「导航」不在 `site-header.tsx` 的 `navItems` 数组中，由 `OwnerNavItem` 统一渲染——保证其始终紧跟最右侧入口（我的/登录）左侧（从右往左第二个），无论是否登录。已登录顺序：`首页 论文 报告 项目 博客 速记 日历 导航 我的`；游客：`… 博客 导航 登录`。
+- **「导航」按钮位置（勿改回）**：「导航」不在 `site-header.tsx` 的 `navItems` 数组中，由 `OwnerNavItem` 统一渲染，位于桌面 nav 内最右侧（「导航」左侧有分隔线、右侧即 nav 边界，与工具栏拉开距离）。「登录/我的」账号区由 `OwnerAccountItem` 渲染在右侧工具栏最左侧（贴深色模式切换）。**组件拆分**（`owner-nav-item.tsx`）：`OwnerNavItem` = 速记/日历（owner-only span）+ 分隔线 + 导航按钮（含登录态同步逻辑 useEffect）；`OwnerAccountItem` = 登录（guest-only）/ 我的（owner-only，纯双布局渲染，登出逻辑内联）。两者均在移动端 Sheet 内再渲染一份（`w-full justify-start`，sep 移动端隐藏）提供移动端入口。
+- **特殊入口视觉标识（勿改回）**：「导航」带 `MapIcon` 图标、「我的」带 `UserRoundIcon` 图标、「登录」带 `LogInIcon` 图标，且「导航」左侧有一条分隔竖线 + 间距（`sep`，`owner-nav-item.tsx` 内、nav 中固定渲染，不影响零跳变机制；移动端 Sheet 隐藏）——与左侧功能导航区（博客/日历）分隔，与其余 ghost 纯文字导航项区分——「导航」是游客最需要的功能入口、「我的」是站主管理入口（唯一带下拉交互的入口）。布局：登录态 nav `… 博客 速记 日历 │ 导航` + 工具栏 `我的 🌓 🌐 ≡`；游客态 nav `… 博客 │ 导航` + 工具栏 `登录 🌓 🌐 ≡`。勿用 outline/secondary 等按钮样式做标识（曾试过，视觉突兀已弃用）；图标加 `data-icon="default"`（尺寸由 Button 的 `[&_svg]` CSS 控制）；E2E 按 role/文本断言不受影响。
 
 ## Idea 速记（管理员专属）
 

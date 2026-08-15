@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
-import { OwnerNavItem } from "@/components/layout/owner-nav-item";
+import {
+  OwnerAccountItem,
+  OwnerNavItem,
+} from "@/components/layout/owner-nav-item";
 
 /* Y-Fork 图标：与浏览器标签页 favicon（app/icon.svg）保持同一图形 */
 function YForkIcon() {
@@ -26,8 +29,9 @@ function YForkIcon() {
   );
 }
 
-// 注意：「导航」不在数组中——由 OwnerNavItem 统一渲染，保证其始终位于
-// 最右侧入口（我的/登录）的紧左侧（从右往左第二个），无论是否登录。
+// 注意：「导航」不在数组中——由 OwnerNavItem 统一渲染（带地图图标 + 左侧
+// 分隔线），位于 nav 内最右侧；「登录/我的」账号区由 OwnerAccountItem 渲染
+// 在右侧工具栏（贴深色模式切换左侧，移动端由 Sheet 提供入口）。
 const navItems = [
   { href: "/", key: "home" },
   { href: "/publications", key: "publications" },
@@ -62,6 +66,11 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-1">
+          {/* 账号区（登录/我的）：桌面显示、贴深色模式切换左侧；
+              移动端隐藏——入口由下方移动端 Sheet 内的同名组件提供 */}
+          <div className="hidden md:block">
+            <OwnerAccountItem />
+          </div>
           <ThemeToggle />
           <LocaleSwitcher />
           {/* Mobile nav */}
@@ -80,6 +89,7 @@ export function SiteHeader() {
                   </Button>
                 ))}
                 <OwnerNavItem className="w-full justify-start" />
+                <OwnerAccountItem className="w-full justify-start" />
               </nav>
             </SheetContent>
           </Sheet>
