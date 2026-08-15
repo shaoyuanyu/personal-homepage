@@ -55,7 +55,10 @@ export default async function LocaleLayout({
       <div className="flex min-h-svh flex-col">
         <Providers>
           <SiteHeader />
-          {/* flex-col：让页面根节点（如登录页 flex-1）可撑满 header/footer 之间的空间 */}
+          {/* flex-col：让页面根节点（如登录页 flex-1）可撑满 header/footer 之间的空间。
+              ⚠ 陷阱：main 成为 flex 容器后，子元素的 mx-auto 会禁用交叉轴 stretch 拉伸，
+              宽度会收缩为内容宽度。各页面根容器必须带 w-full（width:100% + max-w + mx-auto 居中，
+              与 block 行为等价）。新增页面时沿用 `w-full mx-auto max-w-5xl` 模式。 */}
           <main className="flex flex-1 flex-col">
             {children}
             <NavFab />

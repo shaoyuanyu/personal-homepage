@@ -62,7 +62,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 sm:px-6">
+    <div className="w-full mx-auto max-w-5xl px-4 sm:px-6">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(personJsonLd) }}

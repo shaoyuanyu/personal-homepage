@@ -24,7 +24,7 @@ export default function TalksPage() {
   const sorted = [...talks].sort((a, b) => b.date.localeCompare(a.date));
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6">
+    <div className="w-full mx-auto max-w-5xl px-4 py-12 sm:px-6">
       <div className="mb-8 flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
         <p className="text-muted-foreground">{t("description")}</p>
