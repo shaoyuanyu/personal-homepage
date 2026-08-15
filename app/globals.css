@@ -156,6 +156,37 @@ html.owner-logged-in .owner-only {
   display: inline-flex;
 }
 
+/* ---- 移动端 Sheet 内导航（sheet-nav / sheet-stack）----
+   桌面 nav/工具栏中的 guest-only/owner-only 为 inline-flex 横排（按钮并排）；
+   移动端 Sheet 中需纵向堆叠全宽 + 触控字号。双布局可见性仍由上方 html
+   class 规则控制（游客显 guest、登录显 owner），此处仅覆盖「可见时的布局」，
+   规则带 html class 前缀且 specificity 更高，两种状态互斥生效、不破坏隐藏。
+   注：sheet-stack 与 guest-only/owner-only 在同一 span 上（并列类）。 */
+html:not(.owner-logged-in) .guest-only.sheet-stack,
+html.owner-logged-in .owner-only.sheet-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  gap: 0.125rem; /* gap-0.5，纵向列表比桌面横排稍紧凑 */
+}
+/* 触控适配：全宽行 + 左对齐 + 16px 字号 + h-10 行高（覆盖桌面 sm 的
+   justify-center / 0.8rem / h-7）。「导航」按钮不在 span 内也由此覆盖。
+   注：「我的」按钮是 DropdownMenuTrigger 渲染，Base UI 会把其 data-slot
+   覆盖为 dropdown-menu-trigger（非 button），须一并匹配。 */
+.sheet-nav [data-slot="button"],
+.sheet-nav [data-slot="dropdown-menu-trigger"] {
+  font-size: 1rem;
+  height: 2.5rem;
+  width: 100%;
+  justify-content: flex-start;
+}
+.sheet-nav [data-slot="button"] svg,
+.sheet-nav [data-slot="dropdown-menu-trigger"] svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
 /* ---- 分段式筛选控件（segmented control，CCF 目录页 / Deadline 日历页共用）---- */
 .ccf-segmented {
   display: inline-flex;

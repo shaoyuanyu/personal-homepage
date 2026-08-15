@@ -80,16 +80,20 @@ export function SiteHeader() {
             >
               <MenuIcon data-icon="default" />
             </SheetTrigger>
-            <SheetContent side="right" className="w-64">
+            <SheetContent side="right" className="w-72">
               <SheetTitle className="sr-only">{t("menu")}</SheetTitle>
-              <nav className="flex flex-col gap-1 pt-4">
+              {/* sheet-nav：移动端触控适配（字号放大、全宽行），见 globals.css */}
+              <nav className="sheet-nav flex flex-col gap-1 pt-4">
                 {navItems.map((item) => (
                   <Button key={item.key} variant="ghost" size="sm" className="justify-start" render={<Link href={item.href} />}>
                     {t(item.key)}
                   </Button>
                 ))}
-                <OwnerNavItem className="w-full justify-start" />
-                <OwnerAccountItem className="w-full justify-start" />
+                {/* sheet-stack：双布局 span 在 Sheet 内改为纵向堆叠全宽；
+                    mobile：移动端「我的」点击后内联展开子项（如退出登录），
+                    不用下拉气泡 */}
+                <OwnerNavItem className="sheet-stack" />
+                <OwnerAccountItem className="sheet-stack" mobile />
               </nav>
             </SheetContent>
           </Sheet>
