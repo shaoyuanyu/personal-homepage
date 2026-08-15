@@ -19,6 +19,11 @@
     "owner": "我的",
     "logout": "退出登录"
   },
+  "meta": {
+    "defaultTitle": "硕士生",
+    "titleTemplate": "%s | Yu Shaoyuan",
+    "description": "南方科技大学计算机科学与工程系硕士生，正在学习中。"
+  },
   "login": {
     "title": "管理登录",
     "description": "输入验证器应用中的 6 位验证码",
@@ -270,6 +275,10 @@
       "save": "保存失败，请重试",
       "delete": "删除失败，请重试"
     }
+  },
+  "notFound": {
+    "title": "页面未找到",
+    "message": "页面不存在"
   },
   "misc": {
     "soon": "即将上线",

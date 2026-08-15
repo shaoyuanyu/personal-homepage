@@ -1,21 +1,23 @@
-import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { requireOwner } from "@/lib/auth/owner";
 import { listIdeas } from "@/lib/ideas/store";
 import { IdeasManager } from "@/components/ideas/ideas-manager";
+import { pageMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = {
-  title: "Idea Scratchpad",
-  robots: { index: false, follow: false },
+type Props = {
+  params: Promise<{ locale: string }>;
 };
 
+export async function generateMetadata({ params }: Props) {
+  return {
+    ...(await pageMetadata(params, "ideas")),
+    robots: { index: false, follow: false },
+  };
+}
+
 /** Idea 速记：主人专属页面，未登录重定向到登录页 */
-export default async function IdeasPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}) {
+export default async function IdeasPage({ params }: Props) {
   const { locale } = await params;
   setRequestLocale(locale);
 

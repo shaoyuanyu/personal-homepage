@@ -1,16 +1,19 @@
-import type { Metadata } from "next";
 import { useLocale, useTranslations } from "next-intl";
 import { ExternalLinkIcon, FolderGit2Icon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
+import { pageMetadata } from "@/lib/i18n/metadata";
 import { projects } from "@/lib/data";
 
-export const metadata: Metadata = {
-  title: "Projects",
-  description: "Research and open-source projects",
+type Props = {
+  params: Promise<{ locale: string }>;
 };
+
+export async function generateMetadata({ params }: Props) {
+  return pageMetadata(params, "projects");
+}
 
 export default function ProjectsPage() {
   const t = useTranslations("projects");

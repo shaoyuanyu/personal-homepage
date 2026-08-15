@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { InfoIcon, KeyRoundIcon } from "lucide-react";
@@ -6,17 +5,20 @@ import { InfoIcon, KeyRoundIcon } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
 import { isOwner } from "@/lib/auth/owner";
 import { Card, CardContent } from "@/components/ui/card";
+import { pageMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = {
-  title: "Admin Login",
-  robots: { index: false, follow: false },
+type Props = {
+  params: Promise<{ locale: string }>;
 };
 
-export default async function LoginPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}) {
+export async function generateMetadata({ params }: Props) {
+  return {
+    ...(await pageMetadata(params, "login")),
+    robots: { index: false, follow: false },
+  };
+}
+
+export default async function LoginPage({ params }: Props) {
   const { locale } = await params;
   setRequestLocale(locale);
 

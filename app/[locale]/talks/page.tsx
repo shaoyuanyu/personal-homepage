@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { useLocale, useTranslations } from "next-intl";
 import { CalendarIcon, DownloadIcon, ExternalLinkIcon, MapPinIcon, PresentationIcon } from "lucide-react";
 
@@ -6,13 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
+import { pageMetadata } from "@/lib/i18n/metadata";
 import { formatDate } from "@/lib/utils/format";
 import { talks } from "@/lib/data";
 
-export const metadata: Metadata = {
-  title: "Talks",
-  description: "Invited talks, conferences, and seminars",
+type Props = {
+  params: Promise<{ locale: string }>;
 };
+
+export async function generateMetadata({ params }: Props) {
+  return pageMetadata(params, "talks");
+}
 
 export default function TalksPage() {
   const t = useTranslations("talks");
