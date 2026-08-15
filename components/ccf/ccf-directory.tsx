@@ -113,7 +113,7 @@ function EntryRow({ entry, type }: { entry: CcfEntry; type: "conf" | "jour" }) {
         aria-hidden
         className={`absolute inset-y-1 left-0 w-[3px] rounded-r-full opacity-0 transition-opacity group-hover:opacity-100 ${LEVEL_STYLE[entry.l].bar}`}
       />
-      <span className="w-28 shrink-0 truncate font-mono text-[13px] font-semibold tracking-tight sm:w-32">
+      <span className="w-16 shrink-0 truncate font-mono text-[13px] font-semibold tracking-tight sm:w-32">
         {entry.a}
       </span>
       <span
@@ -136,7 +136,7 @@ function EntryRow({ entry, type }: { entry: CcfEntry; type: "conf" | "jour" }) {
           rel="noopener noreferrer"
           aria-label={`${entry.a} on DBLP`}
           title="DBLP"
-          className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-primary focus-visible:text-primary"
+          className="-m-1 hidden shrink-0 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-primary focus-visible:text-primary sm:flex"
         >
           <ExternalLinkIcon className="size-3.5" aria-hidden />
         </a>

@@ -79,7 +79,7 @@ export function LoginForm() {
           autoFocus
           disabled={loading}
           aria-invalid={error != null}
-          className="h-12 text-center font-mono text-xl tracking-[0.5em]"
+          className="h-12 text-center font-mono text-xl tracking-[0.5em] max-sm:text-base max-sm:tracking-[0.1em]"
         />
         {error && (
           <p role="alert" className="text-sm text-destructive">
