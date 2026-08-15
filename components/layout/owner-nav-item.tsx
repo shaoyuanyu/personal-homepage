@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { LogOutIcon } from "lucide-react";
+import { LogInIcon, LogOutIcon, MapIcon, UserRoundIcon } from "lucide-react";
 
 import { Link, usePathname, useRouter } from "@/lib/i18n/navigation";
 import { OWNER_AUTH_CHANGED_EVENT } from "@/lib/auth/events";
@@ -15,12 +15,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 /**
- * 导航栏右侧区块（登录态感知）：
- * - 游客：显示「导航」+「登录」按钮（指向 /login）
- * - 已登录：显示「速记」单列入口 +「日历」单列入口 +「导航」+「我的空间」
- *   菜单（仅权限类操作，如退出登录；后续网站管理/权限管理等放此处）
- * 其中「导航」由本组件统一渲染，保证无论是否登录都紧跟最右侧入口
- * （我的/登录）左侧，即固定在从右往左第二个位置。
+ * 顶部导航右侧区块（登录态感知），拆为两个组件：
+ * - OwnerNavItem（渲染在 <nav> 内）：「导航」链接（带地图图标 + 左侧分隔
+ *   竖线，与功能导航区分隔）——游客/登录布局下内容相同，直接渲染；
+ *   「速记」「日历」为主人专属单列入口（owner-only span，仅登录态显示）。
+ * - OwnerAccountItem（渲染在右侧工具栏，贴深色模式切换左侧）：游客「登录」
+ *   按钮（LogInIcon）/ 登录态「我的空间」菜单（UserRoundIcon，仅权限类操作，
+ *   如退出登录；后续网站管理/权限管理等放此处）。移动端工具栏隐藏该区，
+ *   入口由移动端 Sheet 内的同名组件提供。
  *
  * 双布局机制（刷新零跳变的关键）：
  * - 游客布局与登录布局在 SSR 都渲染（结构固定 → 无 hydration mismatch），
@@ -28,24 +30,25 @@ import {
  *   display:none 的布局不占宽，故首帧宽度即最终宽度；
  * - app/layout.tsx 的内联 script 在首帧 paint 前读 localStorage 设置
  *   <html>.owner-logged-in，登录用户刷新时首帧即登录布局，无需等待网络往返；
- * - 本组件只负责挂载后同步 html class 与缓存（读缓存恢复、/api/auth/me
+ * - OwnerNavItem 挂载后同步 html class 与缓存（读缓存恢复、/api/auth/me
  *   后台校验、owner-auth-changed 事件驱动），保证与服务器状态一致
- *   （会话过期/跨设备时以服务器为准）。
+ *   （会话过期/跨设备时以服务器为准）；OwnerAccountItem 的可见性同样由
+ *   html class 驱动，登出时调用共享的 syncOwnerClass。
  */
 
 // 登录态缓存（与 app/layout.tsx 内联 script 共用键名）与 html class 名
 const OWNER_CACHE_KEY = "owner:auth";
 const OWNER_CLASS = "owner-logged-in";
 
+// 同步 html class（与 CSS 可见性规则联动；OwnerNavItem 后台校验与
+// OwnerAccountItem 登出共用）
+function syncOwnerClass(next: boolean) {
+  document.documentElement.classList.toggle(OWNER_CLASS, next);
+}
+
 export function OwnerNavItem({ className }: { className?: string }) {
   const t = useTranslations("nav");
   const pathname = usePathname();
-  const router = useRouter();
-
-  // 同步 html class（与 CSS 可见性规则联动）
-  function syncClass(next: boolean) {
-    document.documentElement.classList.toggle(OWNER_CLASS, next);
-  }
 
   // 挂载/路径变化时：恢复缓存登录态 → 后台校验 → 订阅登录/登出事件
   useEffect(() => {
@@ -55,8 +58,8 @@ export function OwnerNavItem({ className }: { className?: string }) {
     // 1. 同步恢复上次登录态（与首帧内联 script 同源，正常情况下无变化）
     try {
       const v = window.localStorage.getItem(OWNER_CACHE_KEY);
-      if (v === "1") syncClass(true);
-      else if (v === "0") syncClass(false);
+      if (v === "1") syncOwnerClass(true);
+      else if (v === "0") syncOwnerClass(false);
     } catch {
       // localStorage 不可用（隐私模式等），跳过缓存恢复
     }
@@ -70,7 +73,7 @@ export function OwnerNavItem({ className }: { className?: string }) {
         .then((data: { owner?: boolean } | null) => {
           if (!cancelled && id === requestId) {
             const next = data?.owner === true;
-            syncClass(next);
+            syncOwnerClass(next);
             try {
               window.localStorage.setItem(OWNER_CACHE_KEY, next ? "1" : "0");
             } catch {
@@ -92,6 +95,60 @@ export function OwnerNavItem({ className }: { className?: string }) {
     };
   }, [pathname]);
 
+  // 分隔竖线 + 间距：把「导航」与左侧功能导航区（博客/日历）分隔。
+  // 移动端 Sheet 中隐藏（纵向列表无需分隔）。
+  const sep = (
+    <span aria-hidden="true" className="mx-1.5 hidden h-4 w-px bg-border/60 md:block" />
+  );
+
+  return (
+    <Fragment>
+      {/* 速记/日历：主人专属单列入口（owner-only，SSR 渲染；游客时
+          display:none 不占宽，登录态由 html.owner-logged-in 控制） */}
+      <span className={`owner-only ${className ?? ""}`}>
+        <Button
+          variant="ghost"
+          size="sm"
+          render={<Link href="/ideas" />}
+          aria-label={t("ideas")}
+        >
+          {t("ideas")}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          render={<Link href="/calendar" />}
+          aria-label={t("calendar")}
+        >
+          {t("calendar")}
+        </Button>
+      </span>
+
+      {sep}
+
+      {/* 「导航」：游客/登录布局内容相同，直接渲染（带地图图标，与普通
+          纯文字导航项区分——游客最需要的功能入口） */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className={className ?? undefined}
+        render={<Link href="/nav" />}
+        aria-label={t("nav")}
+      >
+        <MapIcon data-icon="default" />
+        {t("nav")}
+      </Button>
+    </Fragment>
+  );
+}
+
+/** 右侧工具栏账号区：游客「登录」/ 登录态「我的空间」菜单（贴深色模式切换
+ *  左侧；移动端工具栏隐藏，入口由移动端 Sheet 内的同名组件提供） */
+export function OwnerAccountItem({ className }: { className?: string }) {
+  const t = useTranslations("nav");
+  const router = useRouter();
+
   async function handleLogout() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
@@ -103,92 +160,51 @@ export function OwnerNavItem({ className }: { className?: string }) {
     } catch {
       // 忽略
     }
-    syncClass(false);
+    syncOwnerClass(false);
     window.dispatchEvent(new Event(OWNER_AUTH_CHANGED_EVENT));
     router.push("/");
     router.refresh();
   }
 
-  // 「导航」链接：始终紧跟最右侧入口（我的/登录）左侧（从右往左第二个）
-  const navButton = (
-    <Button
-      variant="ghost"
-      size="sm"
-      render={<Link href="/nav" />}
-      aria-label={t("nav")}
-    >
-      {t("nav")}
-    </Button>
-  );
-
-  // 游客布局：导航 + 登录（SSR 渲染，默认可见；className 供移动端 Sheet 传 w-full）
-  const guestLayout = (
-    <span className={`guest-only ${className ?? ""}`}>
-      {navButton}
-      <Button
-        variant="ghost"
-        size="sm"
-        render={<Link href="/login" />}
-        aria-label={t("login")}
-      >
-        {t("login")}
-      </Button>
-    </span>
-  );
-
-  // 登录布局：速记 + 日历 + 导航 + 我的（SSR 渲染，html.owner-logged-in 时可见）
-  const ownerLayout = (
-    <span className={`owner-only ${className ?? ""}`}>
-      {/* 高频功能：单列入口（纯文字，与顶部其他导航项一致） */}
-      <Button
-        variant="ghost"
-        size="sm"
-        render={<Link href="/ideas" />}
-        aria-label={t("ideas")}
-      >
-        {t("ideas")}
-      </Button>
-
-      {/* 我的日历：单列入口（主人专属，月视图展示 CalDAV 事件） */}
-      <Button
-        variant="ghost"
-        size="sm"
-        render={<Link href="/calendar" />}
-        aria-label={t("calendar")}
-      >
-        {t("calendar")}
-      </Button>
-
-      {navButton}
-
-      {/* 我的空间：仅权限类操作 */}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={t("owner")}
-            >
-              {t("owner")}
-            </Button>
-          }
-        />
-        <DropdownMenuContent align="end">
-          {/* 预留：网站管理、权限管理等权限类操作入口 */}
-          <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}>
-            <LogOutIcon data-icon="default" />
-            {t("logout")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </span>
-  );
-
   return (
     <Fragment>
-      {guestLayout}
-      {ownerLayout}
+      {/* 游客：登录（guest-only；登录态时 display:none 不占宽） */}
+      <span className={`guest-only ${className ?? ""}`}>
+        <Button
+          variant="ghost"
+          size="sm"
+          render={<Link href="/login" />}
+          aria-label={t("login")}
+        >
+          <LogInIcon data-icon="default" />
+          {t("login")}
+        </Button>
+      </span>
+
+      {/* 登录态：我的空间（owner-only；仅权限类操作入口） */}
+      <span className={`owner-only ${className ?? ""}`}>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={t("owner")}
+              >
+                <UserRoundIcon data-icon="default" />
+                {t("owner")}
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end">
+            {/* 预留：网站管理、权限管理等权限类操作入口 */}
+            <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}>
+              <LogOutIcon data-icon="default" />
+              {t("logout")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </span>
     </Fragment>
   );
 }
