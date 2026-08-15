@@ -26,13 +26,14 @@ function YForkIcon() {
   );
 }
 
+// 注意：「导航」不在数组中——由 OwnerNavItem 统一渲染，保证其始终位于
+// 最右侧入口（我的/登录）的紧左侧（从右往左第二个），无论是否登录。
 const navItems = [
   { href: "/", key: "home" },
   { href: "/publications", key: "publications" },
   { href: "/talks", key: "talks" },
   { href: "/projects", key: "projects" },
   { href: "/blog", key: "blog" },
-  { href: "/nav", key: "nav" },
 ] as const;
 
 export function SiteHeader() {

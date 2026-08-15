@@ -42,6 +42,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - **功能入口分级**：高频重要功能在顶部栏单列入口（如「速记」）；低频功能放「更多工具」下拉菜单（有需要时再建）。**新增专属功能时先与用户确认入口位置**。
 - **游客隔离**：所有专属功能对游客不可见（无入口），且路由层用 `requireOwner()` 守卫（无法直接通过 URL 访问）。
 - **导航登录态刷新**：`OwnerNavItem` 监听 `owner-auth-changed` 自定义事件（登录/登出后广播）。登出时 pathname 不变，仅靠路由变化刷新会失效。新增管理员 UI 时沿用。
+- **「导航」按钮位置（勿改回）**：「导航」不在 `site-header.tsx` 的 `navItems` 数组中，由 `OwnerNavItem` 统一渲染——保证其始终紧跟最右侧入口（我的/登录）左侧（从右往左第二个），无论是否登录。已登录顺序：`首页 论文 报告 项目 博客 速记 日历 导航 我的`；游客：`… 博客 导航 登录`。
 
 ## Idea 速记（管理员专属）
 
@@ -162,6 +163,8 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - standalone 构建会把 `.env` 复制到 `.next/standalone/.env` 并被 server.js 加载（本地 standalone 读取密钥的原因）；VPS 密钥来自 compose 的 environment 注入。
 - 登录/登出 E2E 会真实写入会话与 Idea 数据，用例内自清理；跑完可检查 `data/ideas.json` 应为 `[]`。
 - **E2E 勿开 fullyParallel**：所有用例共享同一 standalone 服务器的 `preferences.json`/`ideas.json`，多 worker 并行写会互相覆盖导致随机失败（曾致偏好恢复用例间歇红）。playwright.config.ts 保持默认单文件串行（27 用例约 12 秒）。
+- **顶部栏跳转横向抖动**：两个叠加根因——(1) `OwnerNavItem` 曾每次路由变化先 `setOwner(null)` 回退占位态（3×36px≈116px）再异步查询恢复（游客仅「登录」≈46px），nav 居中布局下所有链接左右横移；修复为**保留上次登录态、后台静默刷新**（登录/登出由 `owner-auth-changed` 事件驱动，此时宽度变化属合理反馈）。(2) 长/短页面切换时滚动条消失/出现使视口宽度变化，居中内容偏移约 7.5px；已用 `html { scrollbar-gutter: stable }` 恒定预留滚动条空间。验证方法：Playwright 1ms 高频采样目标链接 `getBoundingClientRect().x` + MutationObserver 观察 nav 子节点替换。
+- **本地 E2E 日历用例需要 Radicale 容器在跑**：`.env` 已含 `CALDAV_*`（指向 `http://127.0.0.1:5232`、账号 caladmin），容器 `ysy-personal-homepage-radicale-1` 停止时——「删除事件返回 503」变 502（连接失败）、「/calendar 月视图/日期格聚焦」失败（页面显示「日历服务未配置」不渲染网格）。跑日历用例前 `docker start ysy-personal-homepage-radicale-1`；若仅跑非日历用例可临时注释 `.env` 的 `CALDAV_*`。
 
 ## 常用命令速查
 

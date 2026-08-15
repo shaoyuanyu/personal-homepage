@@ -129,6 +129,9 @@
   }
   html {
     @apply font-sans;
+    /* 恒定预留滚动条空间：避免长/短页面切换时滚动条消失/出现，
+       导致视口宽度变化、居中内容（含 sticky 顶部栏）横向抖动 */
+    scrollbar-gutter: stable;
   }
 }
 
