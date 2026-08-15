@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { LogOutIcon } from "lucide-react";
 
@@ -21,51 +21,56 @@ import {
  *   菜单（仅权限类操作，如退出登录；后续网站管理/权限管理等放此处）
  * 其中「导航」由本组件统一渲染，保证无论是否登录都紧跟最右侧入口
  * （我的/登录）左侧，即固定在从右往左第二个位置。
- * 登录态来源：挂载/路径变化时请求 /api/auth/me，并监听 owner-auth-changed
- * 事件（登录/登出后广播，登出时路径可能不变，仅靠 pathname 无法感知）。
- * 刷新场景：SSR 直出游客布局（与真实游客布局一致，无 hydration mismatch），
- * 挂载后先同步读 localStorage 缓存恢复上次登录态（无网络等待），再后台校验。
+ *
+ * 双布局机制（刷新零跳变的关键）：
+ * - 游客布局与登录布局在 SSR 都渲染（结构固定 → 无 hydration mismatch），
+ *   可见性由 CSS 类控制（.guest-only/.owner-only，见 globals.css），
+ *   display:none 的布局不占宽，故首帧宽度即最终宽度；
+ * - app/layout.tsx 的内联 script 在首帧 paint 前读 localStorage 设置
+ *   <html>.owner-logged-in，登录用户刷新时首帧即登录布局，无需等待网络往返；
+ * - 本组件只负责挂载后同步 html class 与缓存（读缓存恢复、/api/auth/me
+ *   后台校验、owner-auth-changed 事件驱动），保证与服务器状态一致
+ *   （会话过期/跨设备时以服务器为准）。
  */
 
-// 登录态缓存：刷新时在 effect 周期内（约 1 帧）恢复上次登录态，避免每次刷新
-// 都经历「占位方块 → 网络往返 → 真实按钮」的可见跳变。仅作初始猜测，随后台
-// /api/auth/me 校验校正（会话过期/跨设备时最终以服务器为准）。
+// 登录态缓存（与 app/layout.tsx 内联 script 共用键名）与 html class 名
 const OWNER_CACHE_KEY = "owner:auth";
+const OWNER_CLASS = "owner-logged-in";
 
 export function OwnerNavItem({ className }: { className?: string }) {
   const t = useTranslations("nav");
   const pathname = usePathname();
   const router = useRouter();
-  // 初始即游客布局（SSR 直出，与游客真实渲染完全一致）：游客刷新全程零跳变，
-  // 登录用户也在 effect 内快速恢复，不再有几百 ms 的占位方块等待期。
-  const [owner, setOwner] = useState<boolean>(false);
 
-  // 重新查询登录态（事件触发或路径变化）
+  // 同步 html class（与 CSS 可见性规则联动）
+  function syncClass(next: boolean) {
+    document.documentElement.classList.toggle(OWNER_CLASS, next);
+  }
+
+  // 挂载/路径变化时：恢复缓存登录态 → 后台校验 → 订阅登录/登出事件
   useEffect(() => {
     let cancelled = false;
     let requestId = 0;
 
-    // 1. 先同步恢复上次登录态（读 localStorage，无网络等待，首帧内完成）
+    // 1. 同步恢复上次登录态（与首帧内联 script 同源，正常情况下无变化）
     try {
       const v = window.localStorage.getItem(OWNER_CACHE_KEY);
-      if (v === "1") setOwner(true);
-      else if (v === "0") setOwner(false);
+      if (v === "1") syncClass(true);
+      else if (v === "0") syncClass(false);
     } catch {
       // localStorage 不可用（隐私模式等），跳过缓存恢复
     }
 
     const refresh = () => {
-      // 保留上次已知登录态渲染，不先回退到占位：若每次路由切换都先
-      // setOwner(null) 再异步恢复，导航项宽度会来回跳变，nav 居中布局
-      // 下所有链接随之横向抖动。登录/登出由事件驱动刷新，此时宽度变化
-      // 属合理反馈。
+      // 保留当前可见布局，后台静默刷新：结果与缓存一致时无任何视觉变化。
+      // 登录/登出由事件驱动刷新，此时布局切换属合理反馈。
       const id = ++requestId;
       fetch("/api/auth/me")
         .then((r) => r.json().catch(() => null))
         .then((data: { owner?: boolean } | null) => {
           if (!cancelled && id === requestId) {
             const next = data?.owner === true;
-            setOwner(next);
+            syncClass(next);
             try {
               window.localStorage.setItem(OWNER_CACHE_KEY, next ? "1" : "0");
             } catch {
@@ -74,8 +79,7 @@ export function OwnerNavItem({ className }: { className?: string }) {
           }
         })
         .catch(() => {
-          // 网络异常时保持游客展示，但不写缓存（避免覆盖可能有效的登录缓存）
-          if (!cancelled && id === requestId) setOwner(false);
+          // 网络异常：保持当前布局，不写缓存（避免覆盖可能有效的登录缓存）
         });
     };
 
@@ -99,6 +103,7 @@ export function OwnerNavItem({ className }: { className?: string }) {
     } catch {
       // 忽略
     }
+    syncClass(false);
     window.dispatchEvent(new Event(OWNER_AUTH_CHANGED_EVENT));
     router.push("/");
     router.refresh();
@@ -111,25 +116,38 @@ export function OwnerNavItem({ className }: { className?: string }) {
       size="sm"
       render={<Link href="/nav" />}
       aria-label={t("nav")}
-      className={className}
     >
       {t("nav")}
     </Button>
   );
 
-  if (owner) {
-    return (
-      <Fragment>
-        {/* 高频功能：单列入口（纯文字，与顶部其他导航项一致） */}
-        <Button
-          variant="ghost"
-          size="sm"
-          render={<Link href="/ideas" />}
-          aria-label={t("ideas")}
-          className={className}
-        >
-          {t("ideas")}
-        </Button>
+  // 游客布局：导航 + 登录（SSR 渲染，默认可见；className 供移动端 Sheet 传 w-full）
+  const guestLayout = (
+    <span className={`guest-only ${className ?? ""}`}>
+      {navButton}
+      <Button
+        variant="ghost"
+        size="sm"
+        render={<Link href="/login" />}
+        aria-label={t("login")}
+      >
+        {t("login")}
+      </Button>
+    </span>
+  );
+
+  // 登录布局：速记 + 日历 + 导航 + 我的（SSR 渲染，html.owner-logged-in 时可见）
+  const ownerLayout = (
+    <span className={`owner-only ${className ?? ""}`}>
+      {/* 高频功能：单列入口（纯文字，与顶部其他导航项一致） */}
+      <Button
+        variant="ghost"
+        size="sm"
+        render={<Link href="/ideas" />}
+        aria-label={t("ideas")}
+      >
+        {t("ideas")}
+      </Button>
 
       {/* 我的日历：单列入口（主人专属，月视图展示 CalDAV 事件） */}
       <Button
@@ -137,7 +155,6 @@ export function OwnerNavItem({ className }: { className?: string }) {
         size="sm"
         render={<Link href="/calendar" />}
         aria-label={t("calendar")}
-        className={className}
       >
         {t("calendar")}
       </Button>
@@ -152,36 +169,26 @@ export function OwnerNavItem({ className }: { className?: string }) {
               variant="ghost"
               size="sm"
               aria-label={t("owner")}
-              className={className}
             >
               {t("owner")}
             </Button>
           }
         />
         <DropdownMenuContent align="end">
-            {/* 预留：网站管理、权限管理等权限类操作入口 */}
-            <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}>
-              <LogOutIcon data-icon="default" />
-              {t("logout")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </Fragment>
-    );
-  }
+          {/* 预留：网站管理、权限管理等权限类操作入口 */}
+          <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}>
+            <LogOutIcon data-icon="default" />
+            {t("logout")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  );
 
   return (
     <Fragment>
-      {navButton}
-      <Button
-        variant="ghost"
-        size="sm"
-        render={<Link href="/login" />}
-        aria-label={t("login")}
-        className={className}
-      >
-        {t("login")}
-      </Button>
+      {guestLayout}
+      {ownerLayout}
     </Fragment>
   );
 }
