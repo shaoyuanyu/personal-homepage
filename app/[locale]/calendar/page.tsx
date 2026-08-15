@@ -25,7 +25,7 @@ export default async function CalendarPage({ params }: Props) {
   const t = await getTranslations("calendar");
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6">
+    <div className="w-full mx-auto max-w-5xl px-4 py-12 sm:px-6">
       {/* 标准页头排版（与论文/导航等页面一致） */}
       <div className="mb-8 flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
