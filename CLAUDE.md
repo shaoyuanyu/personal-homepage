@@ -167,7 +167,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - standalone 构建会把 `.env` 复制到 `.next/standalone/.env` 并被 server.js 加载（本地 standalone 读取密钥的原因）；VPS 密钥来自 compose 的 environment 注入。
 - 登录/登出 E2E 会真实写入会话与 Idea 数据，用例内自清理；跑完可检查 `data/ideas.json` 应为 `[]`。
 - **E2E 勿开 fullyParallel**：所有用例共享同一 standalone 服务器的 `preferences.json`/`ideas.json`，多 worker 并行写会互相覆盖导致随机失败（曾致偏好恢复用例间歇红）。playwright.config.ts 保持默认单文件串行（27 用例约 12 秒）。
-- **顶部栏跳转横向抖动**：两个叠加根因——(1) `OwnerNavItem` 曾每次路由变化先 `setOwner(null)` 回退占位态（3×36px≈116px）再异步查询恢复（游客仅「登录」≈46px），nav 居中布局下所有链接左右横移；修复为**保留上次登录态、后台静默刷新**（登录/登出由 `owner-auth-changed` 事件驱动，此时宽度变化属合理反馈）。(2) 长/短页面切换时滚动条消失/出现使视口宽度变化，居中内容偏移约 7.5px；已用 `html { scrollbar-gutter: stable }` 恒定预留滚动条空间。验证方法：Playwright 1ms 高频采样目标链接 `getBoundingClientRect().x` + MutationObserver 观察 nav 子节点替换。
+- **顶部栏跳转横向抖动**：三个叠加根因——(1) `OwnerNavItem` 曾每次路由变化先 `setOwner(null)` 回退占位态（3×36px≈116px）再异步查询恢复（游客仅「登录」≈46px），nav 居中布局下所有链接左右横移；修复为**保留上次登录态、后台静默刷新**（登录/登出由 `owner-auth-changed` 事件驱动，此时宽度变化属合理反馈）。(2) **刷新页面时的占位跳变**：组件重挂载后 `owner=null` 渲染 4 个 `size-9` 占位方块，真实按钮要等 `/api/auth/me` 网络往返（dev 数百 ms），刷新必现「入口消失→出现」的抽搐。修复为**移除占位、SSR 直出游客布局**（与游客真实渲染一致，无 hydration mismatch）→ 游客刷新全程零跳变；登录态用 localStorage 缓存（`owner:auth`）在 effect 周期内同步恢复（无网络等待），再后台校验校正（会话过期/跨设备以服务器为准；fetch 失败不写缓存防覆盖有效值）。(3) 长/短页面切换时滚动条消失/出现使视口宽度变化，居中内容偏移约 7.5px；已用 `html { scrollbar-gutter: stable }` 恒定预留滚动条空间。验证方法：Playwright 1ms 高频采样目标链接 `getBoundingClientRect().x` + MutationObserver 观察 nav 子节点替换。
 - **本地 E2E 日历用例需要 Radicale 容器在跑**：`.env` 已含 `CALDAV_*`（指向 `http://127.0.0.1:5232`、账号 caladmin），容器 `ysy-personal-homepage-radicale-1` 停止时——「删除事件返回 503」变 502（连接失败）、「/calendar 月视图/日期格聚焦」失败（页面显示「日历服务未配置」不渲染网格）。跑日历用例前 `docker start ysy-personal-homepage-radicale-1`；若仅跑非日历用例可临时注释 `.env` 的 `CALDAV_*`。
 
 ## 常用命令速查
