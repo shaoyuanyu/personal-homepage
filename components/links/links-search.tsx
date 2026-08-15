@@ -78,7 +78,8 @@ export function LinksSearch({ groups }: { groups: NavLinkGroup[] }) {
         ...g,
         links: g.links.filter(
           (l) =>
-            l.name.toLowerCase().includes(q) ||
+            l.name.zh.toLowerCase().includes(q) ||
+            l.name.en.toLowerCase().includes(q) ||
             (l.desc?.[lang] ?? "").toLowerCase().includes(q),
         ),
       }))
@@ -109,7 +110,7 @@ export function LinksSearch({ groups }: { groups: NavLinkGroup[] }) {
           <h2 className="text-lg font-semibold tracking-tight">{group.group[lang]}</h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {group.links.map((link) => (
-              <Card key={link.name} className="group transition-colors hover:border-primary/40">
+              <Card key={link.url} className="group transition-colors hover:border-primary/40">
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-sm font-medium">
                     <LinkIcon link={link} />
@@ -118,7 +119,7 @@ export function LinksSearch({ groups }: { groups: NavLinkGroup[] }) {
                         href={link.url}
                         className="truncate underline-offset-4 group-hover:underline"
                       >
-                        {link.name}
+                        {link.name[lang]}
                       </Link>
                     ) : (
                       <a
@@ -127,7 +128,7 @@ export function LinksSearch({ groups }: { groups: NavLinkGroup[] }) {
                         rel="noopener noreferrer"
                         className="truncate group-hover:underline"
                       >
-                        {link.name}
+                        {link.name[lang]}
                       </a>
                     )}
                   </CardTitle>
