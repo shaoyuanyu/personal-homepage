@@ -1,8 +1,14 @@
 "use client";
 
-import { Fragment, useEffect } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { LogInIcon, LogOutIcon, MapIcon, UserRoundIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  LogInIcon,
+  LogOutIcon,
+  MapIcon,
+  UserRoundIcon,
+} from "lucide-react";
 
 import { Link, usePathname, useRouter } from "@/lib/i18n/navigation";
 import { OWNER_AUTH_CHANGED_EVENT } from "@/lib/auth/events";
@@ -144,10 +150,19 @@ export function OwnerNavItem({ className }: { className?: string }) {
 }
 
 /** 右侧工具栏账号区：游客「登录」/ 登录态「我的空间」菜单（贴深色模式切换
- *  左侧；移动端工具栏隐藏，入口由移动端 Sheet 内的同名组件提供） */
-export function OwnerAccountItem({ className }: { className?: string }) {
+ *  左侧；移动端工具栏隐藏，入口由移动端 Sheet 内的同名组件提供）。
+ *  mobile 模式（移动端 Sheet 内）：登录态为可展开的「我的」——点击后内联
+ *  展开子项列表（非浮动气泡，符合移动端惯例），便于后续继续追加子项。 */
+export function OwnerAccountItem({
+  className,
+  mobile = false,
+}: {
+  className?: string
+  mobile?: boolean
+}) {
   const t = useTranslations("nav");
   const router = useRouter();
+  const [open, setOpen] = useState(false);
 
   async function handleLogout() {
     try {
@@ -183,27 +198,59 @@ export function OwnerAccountItem({ className }: { className?: string }) {
 
       {/* 登录态：我的空间（owner-only；仅权限类操作入口） */}
       <span className={`owner-only ${className ?? ""}`}>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
+        {mobile ? (
+          /* 移动端：点击「我的」内联展开子项（不用下拉气泡） */
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setOpen((v) => !v)}
+              aria-label={t("owner")}
+              aria-expanded={open}
+            >
+              <UserRoundIcon data-icon="default" />
+              {t("owner")}
+              <ChevronDownIcon
+                data-icon="default"
+                className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+              />
+            </Button>
+            {open && (
               <Button
-                variant="ghost"
+                variant="destructive"
                 size="sm"
-                aria-label={t("owner")}
+                onClick={() => void handleLogout()}
+                aria-label={t("logout")}
+                className="animate-in fade-in slide-in-from-top-1 duration-150"
               >
-                <UserRoundIcon data-icon="default" />
-                {t("owner")}
+                <LogOutIcon data-icon="default" />
+                {t("logout")}
               </Button>
-            }
-          />
-          <DropdownMenuContent align="end">
-            {/* 预留：网站管理、权限管理等权限类操作入口 */}
-            <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}>
-              <LogOutIcon data-icon="default" />
-              {t("logout")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            )}
+          </>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t("owner")}
+                >
+                  <UserRoundIcon data-icon="default" />
+                  {t("owner")}
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              {/* 预留：网站管理、权限管理等权限类操作入口 */}
+              <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}>
+                <LogOutIcon data-icon="default" />
+                {t("logout")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </span>
     </Fragment>
   );
