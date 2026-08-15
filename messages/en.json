@@ -18,7 +18,7 @@
     "logout": "Sign out"
   },
   "meta": {
-    "defaultTitle": "M.S. Student",
+    "defaultTitle": "Home",
     "titleTemplate": "%s | Yu Shaoyuan",
     "description": "M.S. student at SUSTech, Dept. of Computer Science and Engineering. Currently learning."
   },

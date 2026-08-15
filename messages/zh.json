@@ -20,7 +20,7 @@
     "logout": "退出登录"
   },
   "meta": {
-    "defaultTitle": "硕士生",
+    "defaultTitle": "首页",
     "titleTemplate": "%s | Yu Shaoyuan",
     "description": "南方科技大学计算机科学与工程系硕士生，正在学习中。"
   },
