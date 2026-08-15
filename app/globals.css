@@ -135,6 +135,27 @@
   }
 }
 
+/* ---- 导航登录态双布局（OwnerNavItem）----
+   游客布局与登录布局在 SSR 都渲染，可见性由 html class 控制：
+   - 默认（无 class）：游客布局可见（.owner-only 不占宽）
+   - html.owner-logged-in：登录布局可见（app/layout.tsx 内联 script 在首帧
+     paint 前读 localStorage 设置，故刷新时首帧即正确布局、宽度恒定零跳变） */
+.guest-only,
+.owner-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem; /* gap-1，与顶部导航其余按钮间距一致 */
+}
+.owner-only {
+  display: none;
+}
+html.owner-logged-in .guest-only {
+  display: none;
+}
+html.owner-logged-in .owner-only {
+  display: inline-flex;
+}
+
 /* ---- 分段式筛选控件（segmented control，CCF 目录页 / Deadline 日历页共用）---- */
 .ccf-segmented {
   display: inline-flex;
