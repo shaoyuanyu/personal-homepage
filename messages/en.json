@@ -247,7 +247,7 @@
   "ideas": {
     "title": "Idea Scratchpad",
     "description": "Capture research ideas anytime, visible only to you",
-    "placeholder": "Jot down an idea… (Enter to save, Shift+Enter for newline)",
+    "placeholder": "Jot down an idea…",
     "hint": "Enter to save, Shift+Enter for newline",
     "add": "Save",
     "filters": {

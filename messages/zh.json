@@ -249,7 +249,7 @@
   "ideas": {
     "title": "Idea 速记",
     "description": "随时记录科研灵感，仅自己可见",
-    "placeholder": "记录一个 Idea…（回车保存，Shift+Enter 换行）",
+    "placeholder": "记录一个 Idea…",
     "hint": "回车保存，Shift+Enter 换行",
     "add": "保存",
     "filters": {

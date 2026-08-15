@@ -215,7 +215,7 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
             aria-label={t("placeholder")}
             rows={3}
             disabled={submitting}
-            className="resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+            className="resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 placeholder:text-sm"
           />
           <div className="mt-2 flex items-center justify-between gap-2 border-t pt-3">
             <p className="text-xs text-muted-foreground">{t("hint")}</p>
@@ -353,8 +353,8 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
                 </div>
               </div>
 
-              {/* 操作 */}
-              <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+              {/* 操作：桌面 hover 显示；触屏无 hover，移动端常显 */}
+              <div className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity focus-within:opacity-100 group-hover:opacity-100 md:opacity-0">
                 {editingId === idea.id ? (
                   <>
                     <Button

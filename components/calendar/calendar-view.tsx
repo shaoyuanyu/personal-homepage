@@ -416,8 +416,9 @@ export function CalendarView() {
                   onClick={() => setJumpOpen(false)}
                   aria-hidden
                 />
-                {/* 浮层面板 */}
-                <div className="absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 rounded-xl border bg-popover p-2 shadow-lg">
+                {/* 浮层面板：桌面以月份按钮为中心居中；窄屏下按钮组偏左，
+                    绝对定位无法容纳 304px 面板，改为固定视口顶部居中 */}
+                <div className="absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 rounded-xl border bg-popover p-2 shadow-lg max-sm:fixed max-sm:inset-x-4 max-sm:top-24 max-sm:translate-x-0">
                   <Calendar
                     mode="single"
                     onSelect={(d) => {
