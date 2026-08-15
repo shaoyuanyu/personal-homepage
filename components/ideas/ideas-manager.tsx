@@ -215,7 +215,7 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
             aria-label={t("placeholder")}
             rows={3}
             disabled={submitting}
-            className="resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 placeholder:text-sm"
+            className="resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0 placeholder:text-sm dark:bg-transparent"
           />
           <div className="mt-2 flex items-center justify-between gap-2 border-t pt-3">
             <p className="text-xs text-muted-foreground">{t("hint")}</p>
