@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,12 +9,15 @@ import {
   deadlinesFetchedAt as builtinFetchedAt,
   type DeadlineConf,
 } from "@/lib/data";
+import { pageMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = {
-  title: "Conference Deadlines",
-  description:
-    "Submission deadlines of CCF recommended conferences, synced from the ccfddl community",
+type Props = {
+  params: Promise<{ locale: string }>;
 };
+
+export async function generateMetadata({ params }: Props) {
+  return pageMetadata(params, "deadlines");
+}
 
 /**
  * 动态渲染：优先读取运行时同步数据（/api/deadlines/sync 写入的 data/deadlines.json），

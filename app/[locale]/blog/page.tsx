@@ -1,18 +1,23 @@
-import type { Metadata } from "next";
 import { useLocale, useTranslations } from "next-intl";
 
 import { BlogSearch, type PostMeta } from "@/components/blog/blog-search";
+import { pageMetadata } from "@/lib/i18n/metadata";
 import { posts } from "@/lib/data";
 
-export const metadata: Metadata = {
-  title: "Blog",
-  description: "Technical notes and research thoughts",
-  alternates: {
-    types: {
-      "application/rss+xml": "/feed.xml",
-    },
-  },
+type Props = {
+  params: Promise<{ locale: string }>;
 };
+
+export async function generateMetadata({ params }: Props) {
+  return {
+    ...(await pageMetadata(params, "blog")),
+    alternates: {
+      types: {
+        "application/rss+xml": "/feed.xml",
+      },
+    },
+  };
+}
 
 export default function BlogPage() {
   const t = useTranslations("blog");

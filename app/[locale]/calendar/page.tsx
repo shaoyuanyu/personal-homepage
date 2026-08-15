@@ -1,20 +1,22 @@
-import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { requireOwner } from "@/lib/auth/owner";
 import { CalendarView } from "@/components/calendar/calendar-view";
+import { pageMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = {
-  title: "My Calendar",
-  robots: { index: false, follow: false },
+type Props = {
+  params: Promise<{ locale: string }>;
 };
 
+export async function generateMetadata({ params }: Props) {
+  return {
+    ...(await pageMetadata(params, "calendar")),
+    robots: { index: false, follow: false },
+  };
+}
+
 /** 我的日历：主人专属页面（展示站主 CalDAV 日历事件），未登录重定向到登录页 */
-export default async function CalendarPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}) {
+export default async function CalendarPage({ params }: Props) {
   const { locale } = await params;
   setRequestLocale(locale);
 

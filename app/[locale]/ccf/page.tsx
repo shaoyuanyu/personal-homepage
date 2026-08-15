@@ -1,14 +1,16 @@
-import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { CcfDirectory } from "@/components/ccf/ccf-directory";
+import { pageMetadata } from "@/lib/i18n/metadata";
 
-export const metadata: Metadata = {
-  title: "CCF Recommended List (2026)",
-  description:
-    "China Computer Federation recommended international conferences and journals, 7th edition (2026)",
+type Props = {
+  params: Promise<{ locale: string }>;
 };
+
+export async function generateMetadata({ params }: Props) {
+  return pageMetadata(params, "ccf");
+}
 
 export default function CcfPage() {
   const t = useTranslations("ccf");

@@ -17,6 +17,11 @@
     "owner": "Me",
     "logout": "Sign out"
   },
+  "meta": {
+    "defaultTitle": "M.S. Student",
+    "titleTemplate": "%s | Yu Shaoyuan",
+    "description": "M.S. student at SUSTech, Dept. of Computer Science and Engineering. Currently learning."
+  },
   "login": {
     "title": "Admin Login",
     "description": "Enter the 6-digit code from your authenticator app",
@@ -268,6 +273,10 @@
       "save": "Failed to save, please retry",
       "delete": "Failed to delete, please retry"
     }
+  },
+  "notFound": {
+    "title": "Page Not Found",
+    "message": "Page not found"
   },
   "misc": {
     "soon": "Coming Soon",

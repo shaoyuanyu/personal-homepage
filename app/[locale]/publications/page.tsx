@@ -1,16 +1,19 @@
-import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
 import { BookMarkedIcon } from "lucide-react";
 
 import { PublicationsList } from "@/components/sections/publications-list";
 import { Button } from "@/components/ui/button";
 import { Link } from "@/lib/i18n/navigation";
+import { pageMetadata } from "@/lib/i18n/metadata";
 import { profile, publications } from "@/lib/data";
 
-export const metadata: Metadata = {
-  title: "Publications",
-  description: "List of publications and preprints",
+type Props = {
+  params: Promise<{ locale: string }>;
 };
+
+export async function generateMetadata({ params }: Props) {
+  return pageMetadata(params, "publications");
+}
 
 export default function PublicationsPage() {
   const t = useTranslations("publications");

@@ -1,13 +1,16 @@
-import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
 
 import { LinksSearch } from "@/components/links/links-search";
+import { pageMetadata } from "@/lib/i18n/metadata";
 import { navLinks } from "@/lib/data";
 
-export const metadata: Metadata = {
-  title: "Academic Links",
-  description: "Frequently used academic websites and tools",
+type Props = {
+  params: Promise<{ locale: string }>;
 };
+
+export async function generateMetadata({ params }: Props) {
+  return pageMetadata(params, "navPage");
+}
 
 export default function NavPage() {
   const t = useTranslations("navPage");
