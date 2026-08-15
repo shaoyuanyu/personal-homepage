@@ -3,7 +3,6 @@
 import { useState, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { KeyRoundIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +18,7 @@ export function LoginForm() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"totp" | "recovery">("totp");
 
   async function submit(value = code) {
     if (loading) return;
@@ -57,29 +57,45 @@ export function LoginForm() {
     }
   }
 
+  // 切换 验证码 / 恢复码 输入模式（placeholder、inputMode 联动，清空已输入内容）
+  function toggleMode() {
+    setMode((m) => (m === "totp" ? "recovery" : "totp"));
+    setCode("");
+    setError(null);
+  }
+
   return (
     <form
       onSubmit={(e: FormEvent) => {
         e.preventDefault();
         void submit();
       }}
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-6"
     >
-      <div className="flex flex-col gap-2">
-        <label htmlFor="auth-code" className="text-sm font-medium">
-          {t("codeLabel")}
-        </label>
+      <div className="grid gap-2">
+        <div className="flex items-center">
+          <label htmlFor="auth-code" className="text-sm font-bold leading-none">
+            {t("codeLabel")}
+          </label>
+          <button
+            type="button"
+            onClick={toggleMode}
+            className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
+          >
+            {mode === "totp" ? t("useRecovery") : t("useTotp")}
+          </button>
+        </div>
         <Input
           id="auth-code"
           value={code}
           onChange={(e) => handleChange(e.target.value)}
-          placeholder={t("codePlaceholder")}
+          placeholder={mode === "totp" ? t("codePlaceholder") : t("recoveryPlaceholder")}
           autoComplete="one-time-code"
-          inputMode="numeric"
+          inputMode={mode === "totp" ? "numeric" : "text"}
           autoFocus
           disabled={loading}
           aria-invalid={error != null}
-          className="h-12 text-center font-mono text-xl tracking-[0.5em] max-sm:text-base max-sm:tracking-[0.1em]"
+          className="h-12 font-mono"
         />
         {error && (
           <p role="alert" className="text-sm text-destructive">
@@ -87,10 +103,10 @@ export function LoginForm() {
           </p>
         )}
       </div>
-      <Button type="submit" disabled={loading} className="h-11">
-        <KeyRoundIcon />
+      <Button type="submit" disabled={loading} className="h-11 w-full">
         {loading ? t("submitting") : t("submit")}
       </Button>
+      <p className="text-balance text-sm text-muted-foreground">{t("totpHint")}</p>
     </form>
   );
 }

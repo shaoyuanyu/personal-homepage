@@ -1,6 +1,5 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { redirect } from "next/navigation";
-import { InfoIcon, KeyRoundIcon } from "lucide-react";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { isOwner } from "@/lib/auth/owner";
@@ -29,28 +28,24 @@ export default async function LoginPage({ params }: Props) {
 
   const t = await getTranslations("login");
 
+  // shadcn login-01 卡片式：所有内容（标题、描述、表单、提示）集中在卡片内，
+  // 整卡在 header 与 footer 之间垂直居中（main 为 flex 容器，flex-1 撑满剩余高度）
   return (
-    <div className="mx-auto flex max-w-md flex-col px-4 py-16 sm:px-6">
-      <div className="mb-8 flex flex-col items-center text-center">
-        <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20">
-          <KeyRoundIcon className="size-6" />
-        </div>
-        <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{t("description")}</p>
-        {/* 游客提示：消除访客困惑（本页为管理员专属入口） */}
-        <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-          <InfoIcon className="size-3.5 shrink-0" />
-          {t("guestHint")}
-        </p>
+    <div className="flex w-full flex-1 flex-col items-center justify-center px-6 py-12">
+      <div className="w-full max-w-sm">
+        <Card>
+          <CardContent className="flex flex-col gap-6">
+            {/* 标题区：左对齐（官方 CardTitle：text-base font-semibold leading-none + CardDescription text-sm muted） */}
+            <div className="flex flex-col gap-2">
+              <h1 className="text-base font-semibold leading-none">{t("title")}</h1>
+              <p className="text-balance text-sm text-muted-foreground">
+                {t("description")}
+              </p>
+            </div>
+            <LoginForm />
+          </CardContent>
+        </Card>
       </div>
-      <Card className="p-6 sm:p-8">
-        <CardContent className="p-0">
-          <LoginForm />
-        </CardContent>
-      </Card>
-      <p className="mt-6 text-center text-xs text-muted-foreground">
-        {t("recoveryHint")}
-      </p>
     </div>
   );
 }

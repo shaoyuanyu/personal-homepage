@@ -25,14 +25,16 @@
     "description": "南方科技大学计算机科学与工程系硕士生，正在学习中。"
   },
   "login": {
-    "title": "管理登录",
-    "description": "输入验证器应用中的 6 位验证码",
+    "title": "站长登录",
+    "description": "游客无需登录，此页面仅供站长登录使用",
     "codeLabel": "验证码",
-    "codePlaceholder": "6 位验证码或 16 位恢复码",
+    "codePlaceholder": "6位验证码",
+    "recoveryPlaceholder": "16位恢复码",
+    "useRecovery": "使用恢复码",
+    "useTotp": "使用验证码",
+    "totpHint": "验证码每 30 秒自动刷新",
     "submit": "登录",
     "submitting": "验证中…",
-    "guestHint": "游客无需登录，此页面仅供网站管理员使用",
-    "recoveryHint": "验证码无效？可使用设置时生成的 16 位恢复码",
     "error": {
       "invalid": "验证码无效，请重试",
       "rateLimited": "尝试次数过多，请 15 分钟后再试",
