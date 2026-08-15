@@ -29,12 +29,11 @@ jobs:
         run: node scripts/fetch-deadlines.mjs
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore: sync conference deadlines from ccfddl"
           branch: chore/sync-deadlines
           title: "⏰ 会议 Deadline 数据自动同步"
           body: |
-            每周自动同步脚本检测到 CCF 会议 deadline 数据更新（来源：ccfddl/ccf-deadlines），请确认后合并。
+            每 12 小时自动同步脚本检测到 CCF 会议 deadline 数据更新（来源：ccfddl/ccf-deadlines），请确认后合并。
           delete-branch: true
-          labels: automation
