@@ -45,14 +45,18 @@ jobs:
       # 注意：GITHUB_TOKEN 的合并 push 不触发 ci/deploy（防循环机制），
       # 线上数据由「立即同步」按钮（运行时 data/deadlines.json）或下次部署承载。
       - name: Enable auto-merge
+        id: am
         if: steps.cpr.outputs.pull-request-number != '' && secrets.AUTOMERGE_TOKEN != ''
+        continue-on-error: true
         run: |
           gh pr merge --auto --squash --delete-branch "${{ steps.cpr.outputs.pull-request-url }}"
         env:
           GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
 
+      # PAT 未配置或启用 automerge 失败（如 PAT 权限不足/无效）时，
+      # 降级为 GITHUB_TOKEN 立即合并，保证数据入库不被阻塞。
       - name: Auto-merge sync PR (fallback)
-        if: steps.cpr.outputs.pull-request-number != '' && secrets.AUTOMERGE_TOKEN == ''
+        if: steps.cpr.outputs.pull-request-number != '' && (secrets.AUTOMERGE_TOKEN == '' || steps.am.outcome == 'failure')
         run: |
           gh pr merge --squash --delete-branch "${{ steps.cpr.outputs.pull-request-url }}"
         env:
