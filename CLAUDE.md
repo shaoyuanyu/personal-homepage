@@ -151,7 +151,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 ## 开发规范
 
 - **内容即代码**：`content/` 下 YAML/MDX 由 velite 编译，结构错误构建期即报错。新增博客 = 新建 MDX；改论文/报告/导航 = 改 YAML。
-- **i18n**：`messages/zh.json` 与 `messages/en.json` 同步修改（先 zh 后 en）；文案一律走 `useTranslations`/`getTranslations`，不硬编码。metadata title 常用英文正式名（如 "Admin Login"、"Idea Scratchpad"）。
+- **i18n**：`messages/zh.json` 与 `messages/en.json` 同步修改（先 zh 后 en）；文案一律走 `useTranslations`/`getTranslations`，不硬编码。**页面 tab 标题已本地化**：页面 metadata 用 `generateMetadata` + `lib/i18n/metadata.ts` 的 `pageMetadata(params, "namespace")`（复用 section 的 `title`/`description` key），zh 显示中文标题；新增页面时沿用该模式，勿再写硬编码英文 `export const metadata`。首页标签页用 `title: { absolute: "Yu Shaoyuan" }` 只显示姓名（absolute 绕过父布局 template 后缀），`meta.defaultTitle`（首页/Home）仅作兜底。
 - **UI**：优先使用 `components/ui/` 下的 shadcn 封装（Button、Card、Input、DropdownMenu、ToggleGroup 等）；lucide-react 图标传 `data-icon="default"`（与既有组件一致）。
 - **客户端组件**（`"use client"`）放 `components/`；服务端页面守卫在 page.tsx 中。
 - **SSG**：`cookies()` 使页面动态渲染（如 /login、/ideas），属预期；其余页面保持静态。

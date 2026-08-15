@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ArrowRightIcon,
@@ -23,6 +24,11 @@ const interestIcons = {
   interpretability: BrainCircuitIcon,
   "continual-learning": RefreshCwIcon,
 } as const;
+
+// 首页标签页仅显示姓名（absolute 绕过父布局 template 的「%s | Yu Shaoyuan」后缀）
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: { absolute: "Yu Shaoyuan" } };
+}
 
 export default function HomePage() {
   const locale = useLocale();
