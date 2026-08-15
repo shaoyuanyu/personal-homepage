@@ -86,6 +86,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 
 - **⚠ 同步工作流必须显式声明 `permissions: {contents: write, pull-requests: write}`**：仓库创建于 2023-02-02 之后，`GITHUB_TOKEN` 默认只读，`peter-evans/create-pull-request` 推分支/建 PR 会 403（`Resource not accessible by integration`），工作流每次运行必失败且不留任何痕迹（无分支、无 PR）。排查时看 Actions 日志最后一步是否报该错；若加了 permissions 仍失败，再检查仓库 Settings → Actions → General → Workflow permissions 是否被设为只读。
 - **⚠ 勿给 create-pull-request 配不存在的 label**：`labels` 输入若引用仓库中不存在的 label，`issues.addLabels` 会 404/422 使步骤失败（v6 无 catch 直接抛错）。仓库没建 `automation` label，故两个 sync 工作流都不用 `labels`；要打标签先手动建好 label。同步工作流统一用 `create-pull-request@v8`。
+- **⚠ deadline 同步 PR 自动合并**：`sync-deadlines.yml` 在 create-pull-request（`id: cpr`）后加一步 `gh pr merge --squash --delete-branch`（`GH_TOKEN: ${{ github.token }}`，`if: steps.cpr.outputs.pull-request-number != ''`）。**GITHUB_TOKEN 无法「启用 automerge」**（GitHub 限制，需 PAT），但可直接合并 PR（只需 pull-requests: write）。**GITHUB_TOKEN 的合并 push 不触发 ci/deploy**（防循环），故合并后线上构建时数据不更新——线上 deadline 数据靠「立即同步」按钮（运行时 `data/deadlines.json`）或下次常规部署承载，属预期。
 
 ### CalDAV 会议日历（站主专属）
 
