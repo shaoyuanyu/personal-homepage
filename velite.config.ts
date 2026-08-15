@@ -175,7 +175,7 @@ const navLinks = defineCollection({
         group: s.object({ zh: s.string(), en: s.string() }),
         links: s.array(
           s.object({
-            name: s.string(),
+            name: s.object({ zh: s.string(), en: s.string() }),
             url: s.string(),
             desc: s.object({ zh: s.string(), en: s.string() }).optional(),
             icon: s.string().optional(),
