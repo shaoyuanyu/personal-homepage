@@ -16,6 +16,11 @@ jobs:
   sync:
     name: Sync conference deadlines from ccfddl
     runs-on: ubuntu-latest
+    # step 级 if 表达式无法访问 secrets context（工作流解析直接报错
+    # "Unrecognized named-value: 'secrets'"），需先经 job 级 env 中转，
+    # 步骤 if 中引用 env（未配置 secret 时求值为空字符串，不报错）。
+    env:
+      AUTOMERGE_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,7 +51,7 @@ jobs:
       # 线上数据由「立即同步」按钮（运行时 data/deadlines.json）或下次部署承载。
       - name: Enable auto-merge
         id: am
-        if: steps.cpr.outputs.pull-request-number != '' && secrets.AUTOMERGE_TOKEN != ''
+        if: steps.cpr.outputs.pull-request-number != '' && env.AUTOMERGE_TOKEN != ''
         continue-on-error: true
         run: |
           gh pr merge --auto --squash --delete-branch "${{ steps.cpr.outputs.pull-request-url }}"
@@ -56,7 +61,7 @@ jobs:
       # PAT 未配置或启用 automerge 失败（如 PAT 权限不足/无效）时，
       # 降级为 GITHUB_TOKEN 立即合并，保证数据入库不被阻塞。
       - name: Auto-merge sync PR (fallback)
-        if: steps.cpr.outputs.pull-request-number != '' && (secrets.AUTOMERGE_TOKEN == '' || steps.am.outcome == 'failure')
+        if: steps.cpr.outputs.pull-request-number != '' && (env.AUTOMERGE_TOKEN == '' || steps.am.outcome == 'failure')
         run: |
           gh pr merge --squash --delete-branch "${{ steps.cpr.outputs.pull-request-url }}"
         env:
