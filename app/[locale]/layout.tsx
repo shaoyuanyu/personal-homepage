@@ -55,7 +55,8 @@ export default async function LocaleLayout({
       <div className="flex min-h-svh flex-col">
         <Providers>
           <SiteHeader />
-          <main className="flex-1">
+          {/* flex-col：让页面根节点（如登录页 flex-1）可撑满 header/footer 之间的空间 */}
+          <main className="flex flex-1 flex-col">
             {children}
             <NavFab />
           </main>

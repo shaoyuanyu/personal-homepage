@@ -23,14 +23,16 @@
     "description": "M.S. student at SUSTech, Dept. of Computer Science and Engineering. Currently learning."
   },
   "login": {
-    "title": "Admin Login",
-    "description": "Enter the 6-digit code from your authenticator app",
+    "title": "Owner Login",
+    "description": "Visitors don't need to sign in — this page is for the site owner only",
     "codeLabel": "Verification code",
-    "codePlaceholder": "6-digit code or 16-digit recovery code",
+    "codePlaceholder": "6-digit code",
+    "recoveryPlaceholder": "16-digit recovery code",
+    "useRecovery": "Use recovery code",
+    "useTotp": "Use verification code",
+    "totpHint": "Codes refresh every 30 seconds",
     "submit": "Sign in",
     "submitting": "Verifying…",
-    "guestHint": "Visitors don't need to sign in — admin only",
-    "recoveryHint": "Code not working? Use a 16-digit recovery code generated during setup",
     "error": {
       "invalid": "Invalid code, please try again",
       "rateLimited": "Too many attempts, please try again in 15 minutes",
