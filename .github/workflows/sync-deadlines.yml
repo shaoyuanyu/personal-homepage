@@ -39,12 +39,20 @@ jobs:
             每 12 小时自动同步脚本检测到 CCF 会议 deadline 数据更新（来源：ccfddl/ccf-deadlines），请确认后合并。
           delete-branch: true
 
-      # GITHUB_TOKEN 无法「启用 automerge」（GitHub 限制，需 PAT），
-      # 但可直接合并 PR（pull-requests: write 即可），故 PR 创建后立即合并。
+      # GITHUB_TOKEN 无法「启用 automerge」（GitHub 限制，需 PAT 或 GitHub App），
+      # 因此配置 AUTOMERGE_TOKEN secret 后走原生 auto-merge；
+      # 未配置 secret 时回退为 GITHUB_TOKEN 立即合并（pull-requests: write 即可）。
       # 注意：GITHUB_TOKEN 的合并 push 不触发 ci/deploy（防循环机制），
       # 线上数据由「立即同步」按钮（运行时 data/deadlines.json）或下次部署承载。
-      - name: Auto-merge sync PR
-        if: steps.cpr.outputs.pull-request-number != ''
+      - name: Enable auto-merge
+        if: steps.cpr.outputs.pull-request-number != '' && secrets.AUTOMERGE_TOKEN != ''
+        run: |
+          gh pr merge --auto --squash --delete-branch "${{ steps.cpr.outputs.pull-request-url }}"
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
+
+      - name: Auto-merge sync PR (fallback)
+        if: steps.cpr.outputs.pull-request-number != '' && secrets.AUTOMERGE_TOKEN == ''
         run: |
           gh pr merge --squash --delete-branch "${{ steps.cpr.outputs.pull-request-url }}"
         env:
