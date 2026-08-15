@@ -6,6 +6,12 @@ on:
     - cron: "0 */12 * * *" # 每 12 小时（UTC 0 点与 12 点）
   workflow_dispatch:
 
+# 仓库创建于 2023-02-02 之后，GITHUB_TOKEN 默认只读；
+# create-pull-request 需要推送分支 + 创建 PR，必须显式提升权限（否则 403）。
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   sync:
     name: Sync conference deadlines from ccfddl
