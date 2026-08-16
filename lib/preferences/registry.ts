@@ -13,6 +13,8 @@
 export const PREFERENCE_KEYS = {
   /** CCF 推荐目录页筛选（领域/类型/级别/搜索词） */
   CCF_FILTERS: "ccf:filters",
+  /** 我的日历每周起始日（"sunday" 周日 / "monday" 周一；缺省=周日） */
+  CALENDAR_WEEK_START: "calendar:weekStart",
 } as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -53,7 +55,13 @@ function sanitizeCcfFilters(v: unknown): unknown | null {
 
 const VALIDATORS: Record<string, (v: unknown) => unknown | null> = {
   [PREFERENCE_KEYS.CCF_FILTERS]: sanitizeCcfFilters,
+  [PREFERENCE_KEYS.CALENDAR_WEEK_START]: sanitizeCalendarWeekStart,
 };
+
+/** calendar:weekStart → "sunday" | "monday"（其他值非法） */
+function sanitizeCalendarWeekStart(v: unknown): unknown | null {
+  return v === "sunday" || v === "monday" ? v : null;
+}
 
 export function isKnownPreferenceKey(key: string): boolean {
   return key in VALIDATORS;

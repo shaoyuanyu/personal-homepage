@@ -1,7 +1,7 @@
 import { useLocale, useTranslations } from "next-intl";
 import { CalendarIcon, DownloadIcon, ExternalLinkIcon, MapPinIcon, PresentationIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
@@ -59,16 +59,28 @@ export default function TalksPage() {
                 {(talk.url || talk.slides) && (
                   <div className="mt-1 flex flex-wrap gap-1">
                     {talk.url && (
-                      <Button variant="ghost" size="sm" render={<a href={talk.url} target="_blank" rel="noopener noreferrer" />}>
+                      <a
+                        href={talk.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-slot="button"
+                        className={buttonVariants({ variant: "ghost", size: "sm" })}
+                      >
                         <ExternalLinkIcon data-icon="inline-start" />
                         Link
-                      </Button>
+                      </a>
                     )}
                     {talk.slides && (
-                      <Button variant="ghost" size="sm" render={<a href={talk.slides} target="_blank" rel="noopener noreferrer" />}>
+                      <a
+                        href={talk.slides}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-slot="button"
+                        className={buttonVariants({ variant: "ghost", size: "sm" })}
+                      >
                         <DownloadIcon data-icon="inline-start" />
                         Slides
-                      </Button>
+                      </a>
                     )}
                   </div>
                 )}

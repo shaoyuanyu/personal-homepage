@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { KeyRoundIcon, ShuffleIcon, Trash2Icon } from "lucide-react";
+import { CopyIcon, KeyRoundIcon, ShuffleIcon, Trash2Icon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +16,25 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PREFERENCE_KEYS } from "@/lib/preferences/registry";
+import { useOwnerPreferences } from "@/lib/preferences/use-owner-preferences";
+
+/** 复制到剪贴板：优先 Clipboard API，失败回退 execCommand（非 HTTPS 环境可用） */
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  }
+}
 
 type CredStatus = {
   configured: boolean;
@@ -27,13 +46,17 @@ type CredStatus = {
 
 /**
  * CalDAV 凭证设置（站主专属，挂在「我的日历」工具栏）：
- * 查看账号/密码、修改用户名密码、一键随机重置。保存后运行时优先使用
+ * 查看用户名/密码明文、修改用户名密码、一键随机重置。保存后运行时优先使用
  * 文件凭证（data/caldav.json），未设置时回退服务器环境变量。
  * 密码变更会登记重置队列，VPS crontab 每分钟同步到 Radicale（页面显示 pending 提示）。
  * 服务器地址由部署环境决定（环境变量 CALDAV_URL），不在网站内配置。
  */
 export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
   const t = useTranslations("calendar");
+  // 显示偏好（每周起始日）：登录跨设备同步 / 游客 localStorage
+  const { prefs, setPref } = useOwnerPreferences();
+  const weekStart =
+    prefs[PREFERENCE_KEYS.CALENDAR_WEEK_START] === "monday" ? "monday" : "sunday";
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<CredStatus | null>(null);
   const [user, setUser] = useState("");
@@ -138,9 +161,13 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
     try {
       const res = await fetch("/api/calendar/credentials", { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // 清除后重新拉取状态：有环境变量凭证则回退显示，否则显示未配置
+      const data = (await fetch("/api/calendar/credentials")
+        .then((r) => r.json())
+        .catch(() => null)) as CredStatus | null;
       toast.add({ title: t("settingsCleared"), type: "success" });
-      setStatus(null);
-      setUser("");
+      setStatus(data);
+      setUser(data?.user ?? "");
       setPassword("");
       onSaved?.();
     } catch {
@@ -153,7 +180,7 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
   return (
     <>
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => setOpen(true)}
         aria-label={t("settings")}
@@ -170,7 +197,30 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
-            {/* 当前状态：账号 + 密码明文（仅站主可见）+ 待同步提示 */}
+            {/* 显示偏好：每周起始日（切换后主视图实时生效，偏好持久化） */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label>{t("weekStart")}</Label>
+              <Tabs
+                value={weekStart}
+                onValueChange={(v) => {
+                  if (v === "sunday" || v === "monday") {
+                    setPref(PREFERENCE_KEYS.CALENDAR_WEEK_START, v);
+                  }
+                }}
+              >
+                <TabsList aria-label={t("weekStart")}>
+                  <TabsTrigger value="sunday">
+                    {t("weekStartSunday")}
+                  </TabsTrigger>
+                  <TabsTrigger value="monday">
+                    {t("weekStartMonday")}
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+            <div aria-hidden className="border-t" />
+
+            {/* 当前状态：用户名 + 密码明文（仅站主可见）+ 待同步提示 */}
             {status?.configured && (
               <div className="flex flex-col gap-1 rounded-lg border bg-muted/40 px-3 py-2 text-xs">
                 <p className="text-muted-foreground">
@@ -179,8 +229,24 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
                     : t("settingsUsingEnv", { user: status.user ?? "" })}
                 </p>
                 <p className="flex items-center gap-1.5 font-mono text-sm text-foreground">
-                  <span>{t("settingsPasswordLabel")}:</span>
-                  <span className="break-all">{status.password ?? "—"}</span>
+                  <span className="shrink-0">{t("settingsPasswordLabel")}:</span>
+                  <span className="min-w-0 flex-1 break-all">
+                    {status.password ?? "—"}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("settingsCopy")}
+                    title={t("settingsCopy")}
+                    className="size-5 shrink-0"
+                    onClick={async () => {
+                      if (!status.password) return;
+                      await copyText(status.password);
+                      toast.add({ title: t("settingsCopied"), type: "success" });
+                    }}
+                  >
+                    <CopyIcon data-icon="default" className="size-3.5" />
+                  </Button>
                 </p>
                 {status.pending && (
                   <p className="text-amber-600 dark:text-amber-400">
@@ -195,11 +261,30 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
               </div>
             )}
 
-            {/* 随机重置后的新密码：高亮展示一次 */}
+            {/* 随机重置后的新密码：高亮展示一次，附复制按钮 */}
             {freshPassword && (
               <div className="flex flex-col gap-1 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
-                <p className="font-semibold text-primary">{t("settingsResetDone")}</p>
-                <p className="break-all font-mono text-sm text-foreground">{freshPassword}</p>
+                <p className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-primary">
+                    {t("settingsResetDone")}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("settingsCopy")}
+                    title={t("settingsCopy")}
+                    className="size-5 shrink-0 text-primary"
+                    onClick={async () => {
+                      await copyText(freshPassword);
+                      toast.add({ title: t("settingsCopied"), type: "success" });
+                    }}
+                  >
+                    <CopyIcon data-icon="default" className="size-3.5" />
+                  </Button>
+                </p>
+                <p className="break-all font-mono text-sm text-foreground">
+                  {freshPassword}
+                </p>
               </div>
             )}
 
@@ -236,7 +321,7 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
           </div>
 
           <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
-            {status?.configured && status.source === "file" ? (
+            {status?.configured ? (
               <Button
                 variant="outline"
                 size="sm"

@@ -10,6 +10,9 @@ import {
 
 export type OwnerPreferences = Record<string, unknown>;
 
+/** 偏好变更广播事件：同一页面多个 hook 实例（如设置弹窗与主视图）间同步 */
+export const OWNER_PREFS_CHANGED_EVENT = "owner-prefs-changed";
+
 /**
  * 主人偏好 hook：登录时偏好存服务器（跨设备同步），游客回退 localStorage。
  *
@@ -31,6 +34,19 @@ export function useOwnerPreferences() {
   const [isOwner, setIsOwner] = useState(false);
   const [prefs, setPrefs] = useState<OwnerPreferences>({});
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 监听其他 hook 实例的偏好变更（如设置弹窗切换后主视图实时生效）
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      const { key, value } = (e as CustomEvent).detail as {
+        key: string;
+        value: unknown;
+      };
+      setPrefs((prev) => ({ ...prev, [key]: value }));
+    };
+    window.addEventListener(OWNER_PREFS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(OWNER_PREFS_CHANGED_EVENT, onChanged);
+  }, []);
 
   // 加载偏好：挂载 + 登录态变化（登录/登出）时重新加载
   useEffect(() => {
@@ -124,6 +140,12 @@ export function useOwnerPreferences() {
       const clean = sanitizePreference(key, value);
       if (clean === null) return; // 结构非法：静默丢弃
       setPrefs((prev) => ({ ...prev, [key]: clean }));
+      // 广播给同页面的其他 hook 实例（主视图无需刷新即感知设置变更）
+      window.dispatchEvent(
+        new CustomEvent(OWNER_PREFS_CHANGED_EVENT, {
+          detail: { key, value: clean },
+        }),
+      );
 
       if (isOwner) {
         if (saveTimer.current) clearTimeout(saveTimer.current);

@@ -4,15 +4,15 @@ import { Fragment, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   ChevronDownIcon,
+  CompassIcon,
   LogInIcon,
   LogOutIcon,
-  MapIcon,
   UserRoundIcon,
 } from "lucide-react";
 
 import { Link, usePathname, useRouter } from "@/lib/i18n/navigation";
 import { OWNER_AUTH_CHANGED_EVENT } from "@/lib/auth/events";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -112,39 +112,42 @@ export function OwnerNavItem({ className }: { className?: string }) {
       {/* 速记/日历：主人专属单列入口（owner-only，SSR 渲染；游客时
           display:none 不占宽，登录态由 html.owner-logged-in 控制） */}
       <span className={`owner-only ${className ?? ""}`}>
-        <Button
-          variant="ghost"
-          size="sm"
-          render={<Link href="/ideas" />}
+        <Link
+          href="/ideas"
+          data-slot="button"
           aria-label={t("ideas")}
+          className={buttonVariants({ variant: "ghost", size: "sm" })}
         >
           {t("ideas")}
-        </Button>
+        </Link>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          render={<Link href="/calendar" />}
+        <Link
+          href="/calendar"
+          data-slot="button"
           aria-label={t("calendar")}
+          className={buttonVariants({ variant: "ghost", size: "sm" })}
         >
           {t("calendar")}
-        </Button>
+        </Link>
       </span>
 
       {sep}
 
       {/* 「导航」：游客/登录布局内容相同，直接渲染（带地图图标，与普通
           纯文字导航项区分——游客最需要的功能入口） */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className={className ?? undefined}
-        render={<Link href="/nav" />}
+      <Link
+        href="/nav"
+        data-slot="button"
         aria-label={t("nav")}
+        className={buttonVariants({
+          variant: "ghost",
+          size: "sm",
+          className: className ?? undefined,
+        })}
       >
-        <MapIcon data-icon="default" />
+        <CompassIcon data-icon="default" />
         {t("nav")}
-      </Button>
+      </Link>
     </Fragment>
   );
 }
@@ -185,15 +188,15 @@ export function OwnerAccountItem({
     <Fragment>
       {/* 游客：登录（guest-only；登录态时 display:none 不占宽） */}
       <span className={`guest-only ${className ?? ""}`}>
-        <Button
-          variant="ghost"
-          size="sm"
-          render={<Link href="/login" />}
+        <Link
+          href="/login"
+          data-slot="button"
           aria-label={t("login")}
+          className={buttonVariants({ variant: "ghost", size: "sm" })}
         >
           <LogInIcon data-icon="default" />
           {t("login")}
-        </Button>
+        </Link>
       </span>
 
       {/* 登录态：我的空间（owner-only；仅权限类操作入口） */}

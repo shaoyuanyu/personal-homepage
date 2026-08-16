@@ -6,7 +6,7 @@ import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, ClockIcon } from "lucide-r
 import { MDXContent } from "@/components/blog/mdx-content";
 import { PostToc } from "@/components/blog/post-toc";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Link } from "@/lib/i18n/navigation";
 import { formatDate } from "@/lib/utils/format";
@@ -97,10 +97,14 @@ export default async function PostPage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostJsonLd) }}
       />
-      <Button variant="ghost" size="sm" className="mb-8 -ml-2" render={<Link href="/blog" />}>
+      <Link
+        href="/blog"
+        data-slot="button"
+        className={buttonVariants({ variant: "ghost", size: "sm", className: "mb-8 -ml-2" })}
+      >
         <ArrowLeftIcon data-icon="inline-start" />
         {t("backToBlog")}
-      </Button>
+      </Link>
 
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_16rem] lg:gap-12">
         <article className="min-w-0">

@@ -1,11 +1,11 @@
-import type { ParsedIcsEvent } from "@/lib/ical";
+import type { ParsedIcsAppointment } from "@/lib/ical";
 
 /**
  * GET /api/calendar 的简单内存缓存（30 秒，月视图翻页会重复请求同一范围）。
  * 独立成模块：写入/删除事件后调用 invalidateCalendarCache() 失效，保证立即读到最新数据。
  */
 
-export type CalendarCacheEntry = { expires: number; events: ParsedIcsEvent[] };
+export type CalendarCacheEntry = { expires: number; events: ParsedIcsAppointment[] };
 
 export const CALENDAR_CACHE_TTL_MS = 30_000;
 

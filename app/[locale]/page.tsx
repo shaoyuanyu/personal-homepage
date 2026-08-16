@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { Hero } from "@/components/sections/hero";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -106,10 +106,14 @@ export default function HomePage() {
             <h2 className="text-xl font-semibold tracking-tight">{t("blog")}</h2>
             <Separator className="hidden flex-1 sm:block" />
           </div>
-          <Button variant="ghost" size="sm" render={<Link href="/blog" />}>
+          <Link
+            href="/blog"
+            data-slot="button"
+            className={buttonVariants({ variant: "ghost", size: "sm" })}
+          >
             {t("viewAllBlog")}
             <ArrowRightIcon data-icon="inline-end" />
-          </Button>
+          </Link>
         </div>
         <div className="flex flex-col gap-3">
           {latestPosts.map((post) => (
