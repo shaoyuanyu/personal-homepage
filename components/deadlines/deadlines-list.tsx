@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -795,16 +795,28 @@ export function DeadlinesList({
               </div>
               <DialogFooter className="flex-wrap gap-2">
                 {openItem.conf.d && (
-                  <Button variant="outline" size="sm" render={<a href={openItem.conf.d} target="_blank" rel="noopener noreferrer" />}>
+                  <a
+                    href={openItem.conf.d}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-slot="button"
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                  >
                     <ExternalLinkIcon data-icon="inline-start" />
                     DBLP
-                  </Button>
+                  </a>
                 )}
                 {openItem.year.link && (
-                  <Button variant="outline" size="sm" render={<a href={openItem.year.link} target="_blank" rel="noopener noreferrer" />}>
+                  <a
+                    href={openItem.year.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-slot="button"
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                  >
                     <Globe2Icon data-icon="inline-start" />
                     {t("website")}
-                  </Button>
+                  </a>
                 )}
               </DialogFooter>
             </>

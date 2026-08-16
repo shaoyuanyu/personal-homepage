@@ -18,22 +18,22 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
 
-# 默认账号：与宿主机部署用户同名（ysy）；可用 CALDAV_USER 环境变量覆盖
+# 默认用户名：与宿主机部署用户同名（ysy）；可用 CALDAV_USER 环境变量覆盖
 USERNAME="${CALDAV_USER:-ysy}"
 
-# 1. 账号：首次运行生成强随机密码；已存在则跳过
+# 1. 用户名：首次运行生成强随机密码；已存在则跳过
 if [[ ! -f radicale/users ]]; then
   PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
   HASH="$(openssl passwd -5 "$PASSWORD")"
   mkdir -p radicale
   printf '%s:%s\n' "$USERNAME" "$HASH" > radicale/users
   chmod 600 radicale/users
-  echo "✔ CalDAV 账号已创建：$USERNAME"
+  echo "✔ CalDAV 用户名已创建：$USERNAME"
   echo "  初始密码：$PASSWORD"
-  echo "  后续可在网站「我的日历 → 设置」里查看账号密码或随机重置（无需再登录 VPS）"
+  echo "  后续可在网站「我的日历 → 设置」里查看用户名密码或随机重置（无需再登录 VPS）"
 else
   echo "ℹ radicale/users 已存在，跳过账号创建"
-  echo "  账号密码请在网站「我的日历 → 设置」里查看或重置"
+  echo "  用户名密码请在网站「我的日历 → 设置」里查看或重置"
 fi
 
 # 2. 数据目录与容器启动

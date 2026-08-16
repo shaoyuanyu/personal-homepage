@@ -15,8 +15,10 @@ import {
  *
  * - GET     返回状态（configured / source / user / password / pending）。
  *           **含密码明文**：页面仅站主可访问（isOwner 守卫，游客 401），单站主场景无泄露面。
- * - PUT     body { user, password? }：user 必填；password 缺省时保留原密码（首次必填）。
- *           密码变更时同步登记重置队列（VPS crontab 应用到 Radicale htpasswd）。
+ * - PUT     body { user, password? }：user 必填；password 缺省时保留现有密码
+ *           （回退链：文件凭证 → 环境变量 CALDAV_PASSWORD → 均无则首次必填报错）。
+ *           凭证写入文件后登记同步队列（VPS crontab 应用到 Radicale htpasswd）——
+ *           密码变更、首次保存、用户名变更都会触发同步（追加/更新对应用户名）。
  * - POST    随机重置密码：服务器生成强随机密码 → 更新网站侧凭证 + 登记重置队列，
  *           返回 { user, password }（新密码展示一次，之后可在 GET 中随时查看）。
  * - DELETE  清除网站内保存的凭证（回退环境变量）。
@@ -34,10 +36,10 @@ export async function GET() {
   return NextResponse.json(getCalDavStatus());
 }
 
-/** 更新凭证：写入网站侧 + 密码变更时登记重置队列（供 VPS 同步 Radicale） */
-function applyCredentials(user: string, password: string, resetApplied: boolean) {
+/** 更新凭证：写入网站侧；需要同步时登记重置队列（供 VPS crontab 同步 Radicale） */
+function applyCredentials(user: string, password: string, syncRadicale: boolean) {
   writeCalDavCredentials({ user, password });
-  if (resetApplied) {
+  if (syncRadicale) {
     queueCalDavPasswordReset(user, password);
   }
 }
@@ -61,19 +63,23 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: "用户名不合法" }, { status: 400 });
   }
 
-  // 密码：填写则更新；留空保留原密码（首次设置必须填写）
+  // 密码：填写则更新；留空保留现有密码（回退链：文件凭证 → 环境变量 → 报错）。
+  // 环境变量来源时（页面显示「使用服务器环境凭证」）留空同样可保存——
+  // 新文件凭证继承环境变量密码，避免「显示已配置却要求首次填密码」的语义分裂。
   let password: string;
-  let changed = false;
+  let passwordChanged = false;
   if (typeof body.password === "string" && body.password) {
     password = body.password;
     if (password.length > MAX_LEN) {
       return NextResponse.json({ error: "密码不合法" }, { status: 400 });
     }
-    changed = true;
+    passwordChanged = true;
   } else {
     const existing = readCalDavCredentials();
     if (existing) {
       password = existing.password;
+    } else if (process.env.CALDAV_PASSWORD) {
+      password = process.env.CALDAV_PASSWORD;
     } else {
       return NextResponse.json(
         { error: "首次设置必须填写密码" },
@@ -82,7 +88,13 @@ export async function PUT(req: Request) {
     }
   }
 
-  applyCredentials(user, password, changed);
+  // 需要同步 Radicale 的情形：密码变更；首次写入文件凭证（无文件凭证）；
+  // 用户名与当前文件凭证不同（htpasswd 需追加/更新该用户名，否则日历 API 会 401）。
+  // 仅文件凭证已存在且用户名密码均未变时不写队列（避免无意义同步）。
+  const file = readCalDavCredentials();
+  const syncRadicale = passwordChanged || !file || file.user !== user;
+
+  applyCredentials(user, password, syncRadicale);
   return NextResponse.json({ ok: true });
 }
 
@@ -92,7 +104,7 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 需先有账号（用户名来自当前配置；未配置时 400）
+  // 需先有凭证（用户名来自当前配置；未配置时 400）
   const status = getCalDavStatus();
   if (!status.configured || !status.user) {
     return NextResponse.json(

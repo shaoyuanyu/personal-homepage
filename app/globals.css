@@ -227,3 +227,38 @@ section[id^="ccf-field"] {
   content-visibility: auto;
   contain-intrinsic-size: auto 640px;
 }
+
+/* ---- 我的日历月视图：今日 / 聚焦 / 日号（calendar-view.tsx 配套）----
+   语义：今日 = 空心圆圈（cell 高亮已由 todayClassName 置空，此处覆盖
+   REUI 内置的实底圆 bg-primary + text-primary-foreground）；
+   聚焦 = 灰底（dayClassName 的 bg-primary/10）+ 日号实心圆圈；
+   今日与聚焦同日时聚焦优先（实心）。
+   特异性：属性选择器组合 0-3-0 / 0-2-0 高于 REUI 的 Tailwind 类 0-1-0。
+   注意 .ec-day-focused 规则必须写在 [data-today] 规则之后（同优先级时
+   后者胜出，实现同日叠加时聚焦优先）。 */
+[data-slot="event-calendar-month-cell"][data-today]
+  [data-slot="event-calendar-month-day-number"] {
+  /* 覆盖 REUI 内置 font-light（300），与普通日号同粗细；
+     圆圈比普通日号（size-5 = 20px）略大，与聚焦实心圆协调 */
+  background: transparent;
+  color: var(--color-primary);
+  font-weight: 400;
+  width: 1.375rem;
+  height: 1.375rem;
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+[data-slot="event-calendar-month-cell"].ec-day-focused
+  [data-slot="event-calendar-month-day-number"] {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  width: 1.375rem;
+  height: 1.375rem;
+  box-shadow: none;
+}
+/* 本月日号：13px（REUI 日历整体 text-xs 12px 与正文 16px 之间取偏小；
+   不加粗；非本月保持 12px 与 muted 色。font-size 不被今日/聚焦规则
+   覆盖（它们只声明背景/颜色/尺寸） */
+[data-slot="event-calendar-month-cell"]:not([data-outside])
+  [data-slot="event-calendar-month-day-number"] {
+  font-size: 0.8125rem;
+}

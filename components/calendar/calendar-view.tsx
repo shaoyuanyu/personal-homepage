@@ -1,21 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { enUS as enUSDateFns, zhCN as zhCNDateFns } from "date-fns/locale";
+import { enUS as enUSRdp, zhCN as zhCNRdp } from "react-day-picker/locale";
 import {
+  BellIcon,
   CalendarClockIcon,
   CalendarDaysIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
+  CameraIcon,
+  ClipboardCheckIcon,
   ExternalLinkIcon,
-  HouseIcon,
+  FileCheckIcon,
+  FileTextIcon,
   RefreshCwIcon,
   Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react";
+import type { DropdownProps } from "react-day-picker";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +33,11 @@ import {
 import { CalendarSettings } from "@/components/calendar/calendar-settings";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -35,23 +46,33 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { enUS, zhCN } from "react-day-picker/locale";
-import type { ParsedIcsEvent } from "@/lib/ical";
+import { PREFERENCE_KEYS } from "@/lib/preferences/registry";
+import { useOwnerPreferences } from "@/lib/preferences/use-owner-preferences";
+import {
+  EventCalendar,
+  useEventCalendarNavigation,
+  type EventCalendarApi,
+  type EventCalendarRenderEventProps,
+} from "@/components/reui/event-calendar/event-calendar";
+import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
+import type { EventCalendarI18nOverrides } from "@/components/reui/event-calendar/event-calendar-i18n";
+import {
+  EventCalendarNav,
+  EventCalendarNavNext,
+  EventCalendarNavPrev,
+  EventCalendarToolbar,
+} from "@/components/reui/event-calendar/event-calendar-nav";
+import type {
+  CalendarEvent,
+  EventCalendarOccurrence,
+  EventCalendarRangeInfo,
+  EventCalendarSlotInfo,
+} from "@/components/reui/event-calendar/event-calendar-types";
+import type { ParsedIcsAppointment } from "@/lib/ical";
 
 /* ---------------- 日期工具（无依赖） ---------------- */
-
-type Day = { y: number; m: number; d: number };
-
-function toDayKey(day: Day): string {
-  return `${day.y}-${String(day.m).padStart(2, "0")}-${String(day.d).padStart(2, "0")}`;
-}
-
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
-}
 
 function sameDay(a: Date, b: Date): boolean {
   return (
@@ -61,51 +82,8 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
-/** 事件 → 本地日期范围（跨天事件覆盖多个日期） */
-function eventLocalRange(ev: ParsedIcsEvent): { start: Day; end: Day } {
-  const fromMs = (ms: number): Day => {
-    const d = new Date(ms);
-    return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
-  };
-  const fromStr = (s: string): Day => {
-    const [date] = s.split("T");
-    const [y, m, d] = date.split("-").map(Number);
-    return { y, m, d };
-  };
-
-  let start: Day;
-  let end: Day;
-  if (ev.allDayDate) {
-    start = fromStr(ev.allDayDate);
-    // 持续天数 = (endUtc - startUtc) / 天（至少 1 天）
-    const days =
-      ev.startUtc !== null && ev.endUtc !== null
-        ? Math.max(1, Math.round((ev.endUtc - ev.startUtc) / 86_400_000) + 1)
-        : 1;
-    end = fromMs(Date.UTC(start.y, start.m - 1, start.d + days - 1));
-  } else if (ev.floatingStart) {
-    start = fromStr(ev.floatingStart);
-    end = ev.floatingEnd ? fromStr(ev.floatingEnd) : start;
-    // 防御：结束早于开始时按单日处理
-    if (toDayKey(end) < toDayKey(start)) end = start;
-  } else if (ev.startUtc !== null) {
-    start = fromMs(ev.startUtc);
-    end = ev.endUtc !== null ? fromMs(ev.endUtc) : start;
-    // 同一天内结束（如 1 小时事件）只算一天；结束早于开始视为异常单日
-    if (
-      sameDay(new Date(ev.startUtc), new Date(ev.endUtc ?? ev.startUtc)) ||
-      toDayKey(end) < toDayKey(start)
-    ) {
-      end = start;
-    }
-  } else {
-    return { start: { y: 1970, m: 1, d: 1 }, end: { y: 1970, m: 1, d: 1 } };
-  }
-  return { start, end };
-}
-
-/** 事件 → 本地开始时间 Date（归格与列表排序共用） */
-function eventStartDate(ev: ParsedIcsEvent): Date {
+/** 日程 → 本地开始时间 Date（列表排序共用） */
+function appointmentStartDate(ev: ParsedIcsAppointment): Date {
   if (ev.allDayDate) {
     const [y, m, d] = ev.allDayDate.split("-").map(Number);
     return new Date(y, m - 1, d);
@@ -120,8 +98,8 @@ function eventStartDate(ev: ParsedIcsEvent): Date {
   return new Date(0);
 }
 
-/** 事件当天的时间前缀（HH:mm，本地）；全天/无时刻返回 null */
-function eventTimePrefix(ev: ParsedIcsEvent, locale: string): string | null {
+/** 日程当天的时间前缀（HH:mm，本地）；全天/无时刻返回 null */
+function appointmentTimePrefix(ev: ParsedIcsAppointment, locale: string): string | null {
   if (ev.allDayDate || ev.floatingStart) {
     return ev.floatingStart ? ev.floatingStart.split("T")[1] : null;
   }
@@ -133,204 +111,457 @@ function eventTimePrefix(ev: ParsedIcsEvent, locale: string): string | null {
   }).format(new Date(ev.startUtc));
 }
 
-const WEEKDAY_ZH = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-const WEEKDAY_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** 日程时间文本（详情 Dialog 与日程 tooltip 共用） */
+function formatAppointmentTimeText(
+  event: ParsedIcsAppointment,
+  locale: string,
+  allDayLabel: string,
+): string {
+  const fmt = new Intl.DateTimeFormat(locale, {
+    dateStyle: "full",
+    timeStyle: "short",
+  });
+  const dayFmt = new Intl.DateTimeFormat(locale, { dateStyle: "full" });
+
+  if (event.allDayDate) {
+    // 全天：持续天数
+    const [y, m, d] = event.allDayDate.split("-").map(Number);
+    const start = new Date(y, m - 1, d);
+    const days =
+      event.startUtc !== null && event.endUtc !== null
+        ? Math.max(1, Math.round((event.endUtc - event.startUtc) / 86_400_000) + 1)
+        : 1;
+    if (days > 1) {
+      const end = new Date(y, m - 1, d + days - 1);
+      return `${dayFmt.format(start)} – ${dayFmt.format(end)} · ${allDayLabel}`;
+    }
+    return `${dayFmt.format(start)} · ${allDayLabel}`;
+  }
+  if (event.startUtc !== null) {
+    const start = new Date(event.startUtc);
+    if (event.endUtc !== null && !sameDay(start, new Date(event.endUtc))) {
+      return `${dayFmt.format(start)} – ${fmt.format(new Date(event.endUtc))}`;
+    }
+    if (event.endUtc !== null) {
+      const endFmt = new Intl.DateTimeFormat(locale, { timeStyle: "short" });
+      return `${fmt.format(start)} – ${endFmt.format(new Date(event.endUtc))}`;
+    }
+    return fmt.format(start);
+  }
+  if (event.floatingStart) {
+    const [date, time] = event.floatingStart.split("T");
+    const [y, m, d] = date.split("-").map(Number);
+    const [h, mi] = time.split(":").map(Number);
+    const start = new Date(y, m - 1, d, h, mi);
+    if (event.floatingEnd) {
+      const [ed, et] = event.floatingEnd.split("T");
+      const [ey, em, edd] = ed.split("-").map(Number);
+      const [eh, emi] = et.split(":").map(Number);
+      const end = new Date(ey, em - 1, edd, eh, emi);
+      const endFmt = new Intl.DateTimeFormat(locale, { timeStyle: "short" });
+      return `${fmt.format(start)} – ${endFmt.format(end)}`;
+    }
+    return fmt.format(start);
+  }
+  return "—";
+}
+
+/* ---------------- REUI EventCalendar 日程映射 ---------------- */
+
+/** 会议 DDL 常见节点分类（摘要/全文/注册/Camera-ready/通知；个人日程归 other） */
+type DdlCategory =
+  | "abstract"
+  | "paper"
+  | "registration"
+  | "camera"
+  | "notification"
+  | "other";
+
+/** 按 summary 关键词归类；个人日程（无 DDL 节点词）归 other */
+function categorizeAppointment(ev: ParsedIcsAppointment): DdlCategory {
+  const s = ev.summary.toLowerCase();
+  if (/摘要|abstract|submission/.test(s)) return "abstract";
+  if (/全文|论文|paper/.test(s)) return "paper";
+  if (/注册|registration|register/.test(s)) return "registration";
+  if (/camera|相机|ready/.test(s)) return "camera";
+  if (/通知|notification|notify/.test(s)) return "notification";
+  return "other";
+}
+
+/** 类别 → 颜色/图标/标签（badgeClass 为完整类名，避免动态拼接 Tailwind 类） */
+const CATEGORY: Record<
+  DdlCategory,
+  {
+    labelKey: string;
+    color: string;
+    icon: ReactNode;
+    badgeClass: string;
+  }
+> = {
+  abstract: {
+    labelKey: "catAbstract",
+    color: "var(--color-violet-500)",
+    icon: <FileTextIcon className="size-3.5" aria-hidden="true" />,
+    badgeClass:
+      "bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400",
+  },
+  paper: {
+    labelKey: "catPaper",
+    color: "var(--color-sky-500)",
+    icon: <FileCheckIcon className="size-3.5" aria-hidden="true" />,
+    badgeClass: "bg-sky-500/10 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400",
+  },
+  registration: {
+    labelKey: "catRegistration",
+    color: "var(--color-amber-500)",
+    icon: <ClipboardCheckIcon className="size-3.5" aria-hidden="true" />,
+    badgeClass:
+      "bg-amber-500/10 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
+  },
+  camera: {
+    labelKey: "catCamera",
+    color: "var(--color-emerald-500)",
+    icon: <CameraIcon className="size-3.5" aria-hidden="true" />,
+    badgeClass:
+      "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400",
+  },
+  notification: {
+    labelKey: "catNotification",
+    color: "var(--color-rose-500)",
+    icon: <BellIcon className="size-3.5" aria-hidden="true" />,
+    badgeClass: "bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400",
+  },
+  other: {
+    labelKey: "catOther",
+    color: "var(--color-primary)",
+    icon: <CalendarDaysIcon className="size-3.5" aria-hidden="true" />,
+    badgeClass: "bg-primary/10 text-primary dark:bg-primary/15 dark:text-primary",
+  },
+};
+
+type AppointmentData = { ics: ParsedIcsAppointment; category: DdlCategory };
+
+/** ParsedIcsAppointment → REUI CalendarEvent（全天 = 本地午夜且 end 排他，定时 = 原始时刻） */
+function toCalendarAppointment(ev: ParsedIcsAppointment): CalendarEvent<AppointmentData> {
+  const category = categorizeAppointment(ev);
+  const data: AppointmentData = { ics: ev, category };
+  const base = {
+    id: ev.uid,
+    title: ev.summary,
+    color: CATEGORY[category].color,
+    data,
+  };
+  if (ev.allDayDate) {
+    // REUI 约定：全天日程的 start/end 必须是显示时区（浏览器本地）的午夜
+    const [y, m, d] = ev.allDayDate.split("-").map(Number);
+    const days =
+      ev.startUtc !== null && ev.endUtc !== null
+        ? Math.max(1, Math.round((ev.endUtc - ev.startUtc) / 86_400_000) + 1)
+        : 1;
+    return {
+      ...base,
+      start: new Date(y, m - 1, d),
+      end: new Date(y, m - 1, d + days),
+      allDay: true,
+    };
+  }
+  if (ev.startUtc !== null) {
+    const start = new Date(ev.startUtc);
+    const end = ev.endUtc !== null ? new Date(ev.endUtc) : start;
+    return {
+      ...base,
+      start,
+      // end 排他且须 > start；缺 DTEND 的异常数据兜底为 1 小时
+      end: end > start ? end : new Date(start.getTime() + 3_600_000),
+    };
+  }
+  // 浮时（TZID 降级）：按浏览器本地解释
+  const parseFloating = (s?: string): Date | null => {
+    if (!s) return null;
+    const [date, time] = s.split("T");
+    const [y, m, d] = date.split("-").map(Number);
+    const [h, mi] = time.split(":").map(Number);
+    return new Date(y, m - 1, d, h, mi);
+  };
+  const start = parseFloating(ev.floatingStart) ?? new Date(0);
+  const end = parseFloating(ev.floatingEnd) ?? start;
+  return {
+    ...base,
+    start,
+    end: end > start ? end : new Date(start.getTime() + 3_600_000),
+  };
+}
 
 /* ---------------- 主组件 ---------------- */
 
 export function CalendarView() {
   const t = useTranslations("calendar");
   const locale = useLocale();
-  // 周起始：zh 周一（1），en 周日（0）
-  const weekStartsOn = locale === "zh" ? 1 : 0;
+  // 周起始：统一默认周日（0）；可在「设置」中切换为周一（偏好持久化）
+  const { prefs } = useOwnerPreferences();
+  const weekStartsOn =
+    prefs[PREFERENCE_KEYS.CALENDAR_WEEK_START] === "monday" ? 1 : 0;
   // 网格容器引用：列表点击跳转后瞬时定位到网格顶部
   const gridRef = useRef<HTMLDivElement>(null);
+  // REUI EventCalendar 命令式 API（goTo 跳月等）
+  const apiRef = useRef<EventCalendarApi<AppointmentData> | null>(null);
 
+  const [appointments, setAppointments] = useState<ParsedIcsAppointment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<ParsedIcsAppointment | null>(null);
+  // 日程删除：两步确认（首次点击进入确认态，5 秒内再点执行）
+  const [deleting, setDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 聚焦的选中日期；null = 未聚焦（下方显示本月及未来日程总览）
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  // 选中日期的当天日程（聚焦时按需加载，双向联动）
+  const [dayAppointments, setDayAppointments] = useState<ParsedIcsAppointment[]>([]);
+  const [dayAppointmentsLoading, setDayAppointmentsLoading] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const reloadKeyRef = useRef(0);
+  // 本月及未来日程列表（网格下方详细列表，独立于当月网格加载）
+  const [upcomingAppointments, setUpcomingAppointments] = useState<ParsedIcsAppointment[]>([]);
+  const [upcomingAppointmentsLoading, setUpcomingAppointmentsLoading] = useState(true);
+  // 当前显示月份（REUI onDateChange 同步；onSlotClick 判断非当月跳月用）
   const [viewDate, setViewDate] = useState<Date>(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  const [events, setEvents] = useState<ParsedIcsEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<ParsedIcsEvent | null>(null);
-  // 事件删除：两步确认（首次点击进入确认态，5 秒内再点执行）
-  const [deleting, setDeleting] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 聚焦的选中日期；null = 未聚焦（下方显示本月及未来事件总览）
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  // 选中日期的当天事件（聚焦时按需加载，双向联动）
-  const [dayEvents, setDayEvents] = useState<ParsedIcsEvent[]>([]);
-  const [dayEventsLoading, setDayEventsLoading] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
-  // 本月及未来事件列表（网格下方详细列表，独立于当月网格加载）
-  const [upcoming, setUpcoming] = useState<ParsedIcsEvent[]>([]);
-  const [upcomingLoading, setUpcomingLoading] = useState(true);
-  // 跳转选择器：打开状态 + 本地时区（官方 Calendar timeZone prop，避免 SSR 不一致）
-  const [jumpOpen, setJumpOpen] = useState(false);
-  const [timeZone, setTimeZone] = useState<string | undefined>(undefined);
-  const [jumpMonth, setJumpMonth] = useState<Date>(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
 
-  useEffect(() => {
-    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-  }, []);
-
-  // 聚焦某天时：按需加载当天事件（任意日期均准确，API 有 30s 缓存兜底）
+  // 聚焦某天时：按需加载当天日程（任意日期均准确，API 有 30s 缓存兜底）
   useEffect(() => {
     if (!selectedDate) {
-      setDayEvents([]);
+      setDayAppointments([]);
       return;
     }
     let cancelled = false;
     const fmt = (d: Date) =>
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    setDayEventsLoading(true);
+    setDayAppointmentsLoading(true);
     fetch(`/api/calendar?start=${fmt(selectedDate)}&end=${fmt(selectedDate)}&v=${reloadKey}`)
       .then((r) => r.json().catch(() => null))
-      .then((data: { events?: ParsedIcsEvent[] } | null) => {
-        if (!cancelled && data?.events) setDayEvents(data.events);
+      .then((data: { events?: ParsedIcsAppointment[] } | null) => {
+        if (!cancelled && data?.events) setDayAppointments(data.events);
       })
       .catch(() => {})
       .finally(() => {
-        if (!cancelled) setDayEventsLoading(false);
+        if (!cancelled) setDayAppointmentsLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [selectedDate, reloadKey]);
 
-  // 加载本月 1 日 ~ 未来 7 个月末的事件（网格下方列表；刷新按钮联动）
+  // 加载当前查看月份 1 日 ~ 之后 7 个月末的日程（网格下方列表；刷新按钮联动）
   useEffect(() => {
     let cancelled = false;
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 7, 0);
+    const start = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    const end = new Date(viewDate.getFullYear(), viewDate.getMonth() + 7, 0);
     const fmt = (d: Date) =>
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    setUpcomingLoading(true);
+    setUpcomingAppointmentsLoading(true);
     fetch(`/api/calendar?start=${fmt(start)}&end=${fmt(end)}&v=${reloadKey}`)
       .then((r) => r.json().catch(() => null))
-      .then((data: { events?: ParsedIcsEvent[] } | null) => {
-        if (!cancelled && data?.events) setUpcoming(data.events);
+      .then((data: { events?: ParsedIcsAppointment[] } | null) => {
+        if (!cancelled && data?.events) setUpcomingAppointments(data.events);
       })
       .catch(() => {})
       .finally(() => {
-        if (!cancelled) setUpcomingLoading(false);
+        if (!cancelled) setUpcomingAppointmentsLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, viewDate]);
 
-  // 网格范围：从月首向前补到周起始，固定 42 格（6 周），拆成 6 行 × 7 列
-  const gridDays = useMemo(() => {
-    const first = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
-    const offset = (first.getDay() - weekStartsOn + 7) % 7;
-    const start = addDays(first, -offset);
-    return Array.from({ length: 42 }, (_, i) => addDays(start, i));
-  }, [viewDate, weekStartsOn]);
-
-  const weekRows = useMemo(() => {
-    const rows: Date[][] = [];
-    for (let i = 0; i < 6; i++) {
-      rows.push(gridDays.slice(i * 7, i * 7 + 7));
-    }
-    return rows;
-  }, [gridDays]);
-
-  const loadEvents = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const start = toDayKey({
-      y: gridDays[0].getFullYear(),
-      m: gridDays[0].getMonth() + 1,
-      d: gridDays[0].getDate(),
-    });
-    const last = gridDays[41];
-    const end = toDayKey({ y: last.getFullYear(), m: last.getMonth() + 1, d: last.getDate() });
-    try {
-      const res = await fetch(`/api/calendar?start=${start}&end=${end}&v=${reloadKey}`);
-      if (res.status === 503) {
-        setError(t("notConfigured"));
-        return;
+  // 网格加载：REUI onRangeChange 驱动（挂载时自动触发一次 + 翻月时触发）
+  const loadRangeAppointments = useCallback(
+    async (range: { start: Date; end: Date }) => {
+      const fmt = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(
+          `/api/calendar?start=${fmt(range.start)}&end=${fmt(range.end)}&v=${reloadKeyRef.current}`,
+        );
+        if (res.status === 503) {
+          setError(t("notConfigured"));
+          return;
+        }
+        if (!res.ok) {
+          const data = (await res.json().catch(() => null)) as { error?: string } | null;
+          setError(data?.error ?? t("loadFailed"));
+          return;
+        }
+        const data = (await res.json()) as { events: ParsedIcsAppointment[] };
+        setAppointments(data.events);
+      } catch {
+        setError(t("loadFailed"));
+      } finally {
+        setLoading(false);
       }
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        setError(data?.error ?? t("loadFailed"));
-        return;
-      }
-      const data = (await res.json()) as { events: ParsedIcsEvent[] };
-      setEvents(data.events);
-    } catch {
-      setError(t("loadFailed"));
-    } finally {
-      setLoading(false);
-    }
-  }, [gridDays, reloadKey, t]);
-
-  useEffect(() => {
-    void loadEvents();
-  }, [loadEvents]);
-
-  // 事件按日期归格（跨天事件在每一天都出现）
-  const byDay = useMemo(() => {
-    const map = new Map<string, ParsedIcsEvent[]>();
-    for (const ev of events) {
-      const { start, end } = eventLocalRange(ev);
-      const endKey = toDayKey(end);
-      let day = start;
-      // 防御：最多遍历 31 天（跨月事件不会超过一个月）
-      for (let i = 0; i < 32; i++) {
-        const key = toDayKey(day);
-        const list = map.get(key) ?? [];
-        list.push(ev);
-        map.set(key, list);
-        if (key === endKey) break;
-        const d = new Date(day.y, day.m - 1, day.d + 1);
-        day = { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
-      }
-    }
-    // 每天内按开始时间排序（无时刻的排最前）
-    for (const list of map.values()) {
-      list.sort((a, b) => {
-        const at = a.startUtc ?? (a.floatingStart ? -1 : -2);
-        const bt = b.startUtc ?? (b.floatingStart ? -1 : -2);
-        return at - bt;
-      });
-    }
-    return map;
-  }, [events]);
-
-  const today = new Date();
-  const monthTitle = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, { year: "numeric", month: "long" }).format(
-        viewDate,
-      ),
-    [locale, viewDate],
+    },
+    [t],
   );
-  const weekdays = locale === "zh" ? WEEKDAY_ZH : WEEKDAY_EN;
 
-  const prevMonth = () =>
-    setViewDate((v) => new Date(v.getFullYear(), v.getMonth() - 1, 1));
-  const nextMonth = () =>
-    setViewDate((v) => new Date(v.getFullYear(), v.getMonth() + 1, 1));
-  const jumpToToday = () => {
-    const now = new Date();
-    setViewDate(new Date(now.getFullYear(), now.getMonth(), 1));
-    setSelectedDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
-  };
-  // 回本月并取消聚焦（下方显示本月及未来事件总览）
+  // 最近一次可见范围（刷新按钮重取网格用；onRangeChange 只在范围变化时触发）
+  const lastRangeRef = useRef<{ start: Date; end: Date } | null>(null);
+  const handleRangeChange = useCallback(
+    (info: EventCalendarRangeInfo) => {
+      lastRangeRef.current = { start: info.range.start, end: info.range.end };
+      void loadRangeAppointments(info.range);
+    },
+    [loadRangeAppointments],
+  );
+  // 网格月份变化（‹ › 翻月 / 标题日期选择器 / 今日 / 本月 / 点击非当月格 / 列表跳转）→
+  // 联动列表：翻月时取消聚焦，下方列表回到「本月及未来日程」总览并跟随新 viewDate。
+  // 注：REUI 的 goTo/prev/next 同步触发 onDateChange；jumpToToday、JumpDatePicker、
+  // 列表 onJump、非当月格聚焦等路径在 goTo 之后仍会同步 setSelectedDate(目标日期)，
+  // React 批处理下最后一次调用生效，聚焦不会被这里误清。
+  const handleDateChange = useCallback((d: Date) => {
+    setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
+    setSelectedDate(null);
+  }, []);
+
+  // 点击日期格 → 聚焦该日期；再次点击已聚焦的当月日期 → 取消聚焦；
+  // 点击非当月格子 → 自动跳月并聚焦
+  const handleSlotClick = useCallback(
+    (slot: EventCalendarSlotInfo) => {
+      const d = new Date(
+        slot.date.getFullYear(),
+        slot.date.getMonth(),
+        slot.date.getDate(),
+      );
+      const inMonth =
+        d.getFullYear() === viewDate.getFullYear() &&
+        d.getMonth() === viewDate.getMonth();
+      if (!inMonth) {
+        apiRef.current?.goTo(new Date(d.getFullYear(), d.getMonth(), 1));
+        setSelectedDate(d);
+        return;
+      }
+      setSelectedDate((cur) => (cur && sameDay(cur, d) ? null : d));
+    },
+    [viewDate],
+  );
+
+  // 日程 chip 点击 → 打开详情 Dialog
+  const handleAppointmentClick = useCallback(
+    (occurrence: EventCalendarOccurrence<AppointmentData>) => {
+      const ics = occurrence.event.data?.ics;
+      if (ics) setSelected(ics);
+    },
+    [],
+  );
+
+  // 自定义日程 chip：单行「类别图标 + 标题」（跟随 reui custom event chips 示例），
+  // 颜色随类别（--ec-event-color 由 color prop 注入）
+  const renderAppointmentChip = useCallback(
+    ({ occurrence }: EventCalendarRenderEventProps<AppointmentData>) => {
+      const category = occurrence.event.data?.category;
+      if (!category) return undefined;
+      return (
+        <span className="flex w-full min-w-0 items-center gap-1.5">
+          <span className="flex shrink-0 text-(--ec-event-color)">
+            {CATEGORY[category].icon}
+          </span>
+          <span className="truncate font-medium">{occurrence.event.title}</span>
+        </span>
+      );
+    },
+    [],
+  );
+
+  // 日程 hover tooltip：标题 + 类别·时间 + 描述
+  const renderTooltip = useCallback(
+    ({ occurrence }: { occurrence: { event: CalendarEvent<AppointmentData> } }) => {
+      const category = occurrence.event.data?.category;
+      const ics = occurrence.event.data?.ics;
+      if (!category || !ics) return undefined;
+      return (
+        <div className="space-y-0.5">
+          <p className="font-medium">{occurrence.event.title}</p>
+          <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <span
+              aria-hidden
+              className="size-1.5 shrink-0 rounded-full"
+              style={{ backgroundColor: CATEGORY[category].color }}
+            />
+            {t(CATEGORY[category].labelKey)} ·{" "}
+            {formatAppointmentTimeText(ics, locale, t("allDay"))}
+          </p>
+          {ics.description && (
+            <p className="text-muted-foreground line-clamp-3 text-xs whitespace-pre-line">
+              {ics.description}
+            </p>
+          )}
+        </div>
+      );
+    },
+    [locale, t],
+  );
+
+  // 聚焦 = 灰底 + 日号实心圆圈；今日 = 空心圆圈（无 cell 高亮，由
+  // todayClassName 去掉内置实底圆/顶部条）。同日叠加时聚焦优先（实心）。
+  // ec-day-focused 标记类配合 globals.css 覆盖日号圆圈样式。
+  const dayClassName = useCallback(
+    (day: Date) => {
+      if (!selectedDate) return undefined;
+      if (!sameDay(day, selectedDate)) return undefined;
+      return "ec-day-focused bg-primary/10";
+    },
+    [selectedDate],
+  );
+
+  // REUI 内置文案/格式覆盖（复用现有翻译 key）
+  const ecI18n = useMemo<EventCalendarI18nOverrides>(
+    () => ({
+      labels: {
+        today: t("jumpToday"),
+        previous: t("prevMonth"),
+        next: t("nextMonth"),
+        allDay: t("allDay"),
+        more: (n: number) => t("more", { n }),
+        goToDate: t("jumpTo"),
+        noEvents: t("empty"),
+      },
+      formats: {
+        monthTitle: locale === "zh" ? "yyyy年M月" : "MMMM yyyy",
+        dayTitle: locale === "zh" ? "yyyy年M月d日 EEEE" : "EEEE, MMMM d, yyyy",
+      },
+    }),
+    [locale, t],
+  );
+
+  // ParsedIcsAppointment[] → REUI CalendarEvent[]（受控 events，fetch 完成后更新）
+  const calendarAppointments = useMemo(
+    () => appointments.map(toCalendarAppointment),
+    [appointments],
+  );
+
+  // 回本月并取消聚焦（下方显示本月及未来日程总览）
   const jumpToThisMonth = () => {
     const now = new Date();
-    setViewDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    apiRef.current?.goTo(new Date(now.getFullYear(), now.getMonth(), 1));
     setSelectedDate(null);
   };
-  const refresh = () => setReloadKey((k) => k + 1);
+  // 今日：跳到今天并聚焦（网格聚焦背景 + 下方当天日程联动）
+  const jumpToToday = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    apiRef.current?.goTo(today);
+    setSelectedDate(today);
+  };
+  const refresh = () => {
+    // 先推进 ref 再取 state，确保重取时 v 参数已是新值（绕过 API 30s 缓存）
+    reloadKeyRef.current += 1;
+    setReloadKey(reloadKeyRef.current);
+    // 网格范围不变时 onRangeChange 不会重发：显式重取最近范围
+    if (lastRangeRef.current) void loadRangeAppointments(lastRangeRef.current);
+  };
 
   // 关闭详情/卸载时复位删除确认态并清理定时器
   useEffect(() => {
@@ -343,7 +574,7 @@ export function CalendarView() {
     setConfirmingDelete(false);
   };
 
-  // 两步确认后从 CalDAV 删除事件；成功关闭详情并刷新（API 侧已清缓存）
+  // 两步确认后从 CalDAV 删除日程；成功关闭详情并刷新（API 侧已清缓存）
   const handleDelete = async () => {
     if (!selected) return;
     if (!confirmingDelete) {
@@ -359,7 +590,7 @@ export function CalendarView() {
         { method: "DELETE" },
       );
       if (res.status === 404) {
-        // 事件已被其他客户端删除：同样视为成功，刷新即可
+        // 日程已被其他客户端删除：同样视为成功，刷新即可
       } else if (!res.ok) {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
         toast.add({ title: data?.error ?? t("deleteFailed"), type: "error" });
@@ -375,139 +606,10 @@ export function CalendarView() {
     }
   };
 
-  const inCurrentMonth = (d: Date) => d.getMonth() === viewDate.getMonth();
-  // 分段按钮状态高亮：viewDate 为当前月 / 聚焦今天
-  const isThisMonth =
-    viewDate.getFullYear() === today.getFullYear() &&
-    viewDate.getMonth() === today.getMonth();
-  const isTodaySelected =
-    selectedDate !== null && sameDay(selectedDate, today);
-
   return (
     <div>
-      {/* 工具栏：‹ 月份 › 居中夹住月份标题（Google 布局），今天为按钮样式 */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <div className="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={prevMonth}
-            aria-label={t("prevMonth")}
-          >
-            <ChevronLeftIcon data-icon="default" />
-          </Button>
-          {/* 月份标题：点击弹出跳转选择器（自绘 Popover，Base UI Select 在 Dialog 内 Popup 定位失败） */}
-          <div className="relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-base font-semibold tracking-tight"
-              onClick={() => setJumpOpen((o) => !o)}
-              aria-label={t("jumpTo")}
-              aria-expanded={jumpOpen}
-            >
-              {monthTitle}
-            </Button>
-            {jumpOpen && (
-              <>
-                {/* 遮罩：点击外部关闭 */}
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setJumpOpen(false)}
-                  aria-hidden
-                />
-                {/* 浮层面板：桌面以月份按钮为中心居中；窄屏下按钮组偏左，
-                    绝对定位无法容纳 304px 面板，改为固定视口顶部居中 */}
-                <div className="absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 rounded-xl border bg-popover p-2 shadow-lg max-sm:fixed max-sm:inset-x-4 max-sm:top-24 max-sm:translate-x-0">
-                  <Calendar
-                    mode="single"
-                    onSelect={(d) => {
-                      if (d) {
-                        setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
-                        setSelectedDate(
-                          new Date(d.getFullYear(), d.getMonth(), d.getDate()),
-                        );
-                        setJumpOpen(false);
-                      }
-                    }}
-                    month={jumpMonth}
-                    onMonthChange={setJumpMonth}
-                    locale={locale === "zh" ? zhCN : enUS}
-                    timeZone={timeZone}
-                    components={{
-                      // 用 Month/Year Select 选择，移除 rdp 内置 ‹ › 导航层
-                      // （其 absolute 全宽层会拦截 Caption 内 Select 的点击）
-                      Nav: () => <></>,
-                      MonthCaption: ({ calendarMonth, ...props }) => (
-                        // z-10：防止其他绝对定位层拦截 Select 点击
-                        <div
-                          {...props}
-                          className={cn(props.className, "relative z-10")}
-                        >
-                          <MonthYearSelect
-                            displayMonth={calendarMonth.date}
-                            locale={locale}
-                            onMonthChange={setJumpMonth}
-                          />
-                        </div>
-                      ),
-                    }}
-                    className="rounded-lg"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={nextMonth}
-            aria-label={t("nextMonth")}
-          >
-            <ChevronRightIcon data-icon="default" />
-          </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* 分段按钮：本月 | 今日（连体 + 图标 + 当前态高亮） */}
-          <div role="group" aria-label={t("jumpLabel")} className="flex items-center">
-            <Button
-              variant="outline"
-              size="sm"
-              className={`gap-1 rounded-r-none ${
-                isThisMonth ? "bg-muted text-foreground hover:bg-muted" : ""
-              }`}
-              onClick={jumpToThisMonth}
-            >
-              <HouseIcon data-icon="default" className="size-3.5" />
-              {t("jumpThisMonth")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className={`-ml-px gap-1 rounded-l-none ${
-                isTodaySelected ? "bg-muted text-foreground hover:bg-muted" : ""
-              }`}
-              onClick={jumpToToday}
-            >
-              <CalendarDaysIcon data-icon="default" className="size-3.5" />
-              {t("jumpToday")}
-            </Button>
-          </div>
-          <Button variant="ghost" size="sm" onClick={refresh} aria-label={t("refresh")}>
-            <RefreshCwIcon data-icon="default" className={loading ? "animate-spin" : ""} />
-            <span className="hidden sm:inline">{t("refresh")}</span>
-          </Button>
-          {/* CalDAV 凭证设置：保存/清除后自动用新凭证刷新日历 */}
-          <CalendarSettings onSaved={refresh} />
-        </div>
-      </div>
-
-      {/* 加载中 */}
-      {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Spinner className="size-6 text-muted-foreground" />
-        </div>
-      ) : error ? (
+      {error ? (
+        /* 未配置 / 加载失败：错误提示 + 重试 */
         <div className="flex flex-col items-center gap-4 py-16 text-center">
           <TriangleAlertIcon data-icon="default" className="size-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">{error}</p>
@@ -516,150 +618,108 @@ export function CalendarView() {
           </Button>
         </div>
       ) : (
-        <>
-          {/* 卡片式月视图：独立表头 + 行分隔线 + 列分隔线（非当月格仅淡显日期，不显示事件） */}
-          <div
-            ref={gridRef}
-            className="scroll-mt-16 overflow-hidden rounded-2xl border bg-card shadow-sm"
-          >
-            {/* 表头：shadcn 表格风格（muted 底 + 灰字），周末不特殊化 */}
-            <div className="grid grid-cols-7 border-b bg-muted/50">
-              {weekdays.map((w) => (
-                <div
-                  key={w}
-                  className="py-2.5 text-center text-xs font-medium text-muted-foreground"
-                >
-                  {w}
-                </div>
-              ))}
-            </div>
-            {/* 6 行日期格 */}
-            {weekRows.map((row, ri) => (
-              <div
-                key={ri}
-                className={`grid grid-cols-7 ${ri > 0 ? "border-t" : ""}`}
+        <div ref={gridRef} className="scroll-mt-16">
+          {/* 卡片式月视图：REUI EventCalendar（custom event chips 示例布局） */}
+          <Card className="w-full py-0">
+            <CardContent className="p-0">
+              <EventCalendar
+                events={calendarAppointments}
+                defaultView="month"
+                views={["month"]}
+                weekStartsOn={weekStartsOn}
+                locale={locale === "zh" ? zhCNDateFns : enUSDateFns}
+                apiRef={apiRef}
+                loading={loading}
+                renderEvent={renderAppointmentChip}
+                renderEventTooltip={renderTooltip}
+                eventTooltip={{ side: "top" }}
+                // 站主日历为只读展示：关闭拖拽/缩放/拖选创建
+                interactions={{ drag: false, resize: false, selectSlot: false }}
+                onEventClick={handleAppointmentClick}
+                onSlotClick={handleSlotClick}
+                onRangeChange={handleRangeChange}
+                onDateChange={handleDateChange}
+                dayClassName={dayClassName}
+                // 今日改为空心圆圈语义：去掉 REUI 内置的实底圆/顶部条高亮
+                todayClassName="bg-transparent border-b-transparent"
+                maxEventsPerCell={3}
+                i18n={ecI18n}
+                className="h-[640px] w-full"
               >
-                {row.map((day, ci) => {
-                  const key = toDayKey({
-                    y: day.getFullYear(),
-                    m: day.getMonth() + 1,
-                    d: day.getDate(),
-                  });
-                  const dayEvents = byDay.get(key) ?? [];
-                  const isToday = sameDay(day, today);
-                  const isSelected =
-                    selectedDate !== null && sameDay(day, selectedDate);
-                  const inMonth = inCurrentMonth(day);
-                  return (
-                    <div
-                      key={key}
-                      onClick={() => {
-                        // 点击日期格 → 聚焦该日期；非当月格子自动跳到对应月；
-                        // 再次点击已聚焦的当月日期 → 取消聚焦（回到总览）
-                        const target = new Date(
-                          day.getFullYear(),
-                          day.getMonth(),
-                          day.getDate(),
-                        );
-                        if (!inMonth) {
-                          setViewDate(
-                            new Date(day.getFullYear(), day.getMonth(), 1),
-                          );
-                          setSelectedDate(target);
-                          return;
-                        }
-                        setSelectedDate((cur) =>
-                          cur && sameDay(cur, target) ? null : target,
-                        );
-                      }}
-                      className={`min-h-20 cursor-pointer p-1.5 transition-colors hover:bg-muted/40 sm:min-h-24 sm:p-2 ${
-                        ci > 0 ? "border-l" : ""
-                      } ${
-                        !inMonth ? "bg-muted/10 hover:bg-muted/20" : ""
-                      } ${
-                        isSelected ? "bg-muted/40 hover:bg-muted/50" : ""
-                      }`}
-                    >
-                      {/* 日期号：选中实底 primary；今天（未选中）muted 圆底；非当月淡显 */}
-                      <div className="mb-1.5 flex justify-between">
-                        <span
-                          className={`flex size-6 items-center justify-center rounded-full text-sm tabular-nums ${
-                            isSelected
-                              ? "bg-primary font-semibold text-primary-foreground shadow-sm"
-                              : isToday && inMonth
-                                ? "bg-muted font-medium text-foreground"
-                                : inMonth
-                                  ? "font-medium text-foreground"
-                                  : "text-muted-foreground/40"
-                          }`}
-                        >
-                          {day.getDate()}
-                        </span>
+                <div className="flex flex-wrap items-center gap-2 pe-2">
+                  <EventCalendarNav
+                    className="min-w-0 flex-1"
+                    showViewSwitcher={false}
+                  >
+                    <TooltipProvider delay={600} timeout={300}>
+                      {/* 左半区：无边框按钮（‹ 年月 › + 本月/今日） */}
+                      {/* 年月显示放在 ‹ › 中间；标题即日期选择器入口（选日期 →
+                          跳月并聚焦；REUI 内置 DatePicker 仅跳转不聚焦） */}
+                      <div className="flex items-center">
+                        <EventCalendarNavPrev />
+                        <JumpDatePicker onPick={setSelectedDate} weekStartsOn={weekStartsOn} />
+                        <EventCalendarNavNext />
                       </div>
-                      {/* 事件块：secondary 淡灰底深字（shadcn 官方色板），非当月不显示 */}
-                      <div className="flex flex-col gap-1 overflow-hidden">
-                        {inMonth &&
-                          dayEvents.slice(0, 3).map((ev) => {
-                            const prefix = eventTimePrefix(ev, locale);
-                            return (
-                              <button
-                                key={ev.uid + key}
-                                onClick={() => setSelected(ev)}
-                                title={ev.summary}
-                                className="flex w-full items-center gap-1 rounded bg-secondary/80 px-1.5 py-1 text-left text-xs font-semibold leading-4 text-secondary-foreground transition-colors hover:bg-secondary"
-                              >
-                                {prefix && (
-                                  <span className="shrink-0 text-[10px] font-medium tabular-nums text-muted-foreground">
-                                    {prefix}
-                                  </span>
-                                )}
-                                <span className="truncate">{ev.summary}</span>
-                              </button>
-                            );
-                          })}
-                        {inMonth && dayEvents.length > 3 && (
-                          <span className="px-1.5 text-[10px] font-medium text-muted-foreground">
-                            {t("more", { n: dayEvents.length - 3 })}
-                          </span>
-                        )}
+                      <div className="flex items-center gap-0.5">
+                        <Button variant="ghost" size="sm" onClick={jumpToThisMonth}>
+                          {t("jumpThisMonth")}
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={jumpToToday}>
+                          {t("jumpToday")}
+                        </Button>
                       </div>
-                    </div>
-                  );
-                })}
+                      <div className="grow" />
+                    </TooltipProvider>
+                  </EventCalendarNav>
+                  {/* 右半区：带边框按钮 */}
+                  <EventCalendarToolbar>
+                    <Button variant="outline" size="sm" onClick={refresh} aria-label={t("refresh")}>
+                      <RefreshCwIcon data-icon="default" className={loading ? "animate-spin" : ""} />
+                      <span className="hidden sm:inline">{t("refresh")}</span>
+                    </Button>
+                    {/* CalDAV 凭证设置：保存/清除后自动用新凭证刷新日历 */}
+                    <CalendarSettings onSaved={refresh} />
+                  </EventCalendarToolbar>
+                </div>
+                <EventCalendarContent />
+              </EventCalendar>
+              {/* 颜色指示器：标明各日程颜色对应的语义（类别图例） */}
+              <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-4 py-3 text-xs">
+                {(Object.keys(CATEGORY) as DdlCategory[]).map((key) => (
+                  <span key={key} className="flex items-center gap-1.5">
+                    <span
+                      aria-hidden
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: CATEGORY[key].color }}
+                    />
+                    {t(CATEGORY[key].labelKey)}
+                  </span>
+                ))}
               </div>
-            ))}
-          </div>
-
-          {/* 空状态 */}
-          {events.length === 0 && (
-            <Empty className="mt-8">
-              <EmptyHeader>
-                <EmptyTitle>{t("empty")}</EmptyTitle>
-                <EmptyDescription>{t("emptyHint")}</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
-        </>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
-      {/* 双向联动：聚焦某天 → 显示当天事件；未聚焦 → 显示本月及未来事件总览 */}
+      {/* 双向联动：聚焦某天 → 显示当天日程；未聚焦 → 显示本月及未来日程总览 */}
       {selectedDate ? (
-        <DayEventsList
+        <DayAppointmentsList
           date={selectedDate}
-          events={dayEvents}
-          loading={dayEventsLoading}
+          events={dayAppointments}
+          loading={dayAppointmentsLoading}
           locale={locale}
           onSelect={setSelected}
           onClear={() => setSelectedDate(null)}
         />
       ) : (
-        <UpcomingEventsList
-          events={upcoming}
-          loading={upcomingLoading}
+        <UpcomingAppointmentsList
+          events={upcomingAppointments}
+          loading={upcomingAppointmentsLoading}
           locale={locale}
+          viewDate={viewDate}
           onJump={(ev) => {
-            const d = eventStartDate(ev);
-            setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
+            const d = appointmentStartDate(ev);
+            apiRef.current?.goTo(new Date(d.getFullYear(), d.getMonth(), 1));
             setSelectedDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
             // 瞬时定位到网格顶部（scroll-mt 避开 sticky header），避免平滑滚动动画的抽动感
             gridRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
@@ -667,7 +727,7 @@ export function CalendarView() {
         />
       )}
 
-      {/* 事件详情 Dialog */}
+      {/* 日程详情 Dialog */}
       <Dialog
         open={selected !== null}
         onOpenChange={(open) => {
@@ -680,7 +740,15 @@ export function CalendarView() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CalendarDaysIcon data-icon="default" className="size-4 shrink-0" />
+              {selected && (
+                <span
+                  aria-hidden
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{
+                    backgroundColor: CATEGORY[categorizeAppointment(selected)].color,
+                  }}
+                />
+              )}
               <span className="truncate">{selected?.summary ?? ""}</span>
             </DialogTitle>
             <DialogDescription className="sr-only">
@@ -688,7 +756,7 @@ export function CalendarView() {
             </DialogDescription>
           </DialogHeader>
           {selected && (
-            <EventDetails event={selected} locale={locale} />
+            <AppointmentDetails event={selected} locale={locale} />
           )}
           <DialogFooter className="sm:justify-between">
             <Button
@@ -705,7 +773,7 @@ export function CalendarView() {
                 ? t("deleting")
                 : confirmingDelete
                   ? t("deleteConfirm")
-                  : t("deleteEvent")}
+                  : t("deleteAppointment")}
             </Button>
             <Button variant="outline" onClick={() => setSelected(null)}>
               {t("close")}
@@ -717,74 +785,142 @@ export function CalendarView() {
   );
 }
 
-/** 官方 Calendar 的月份/年份选择器：用 shadcn Select 替换 react-day-picker 原生下拉 */
-function MonthYearSelect({
-  displayMonth,
-  locale,
-  onMonthChange,
+/** 跳转日期选择器：月份标题即入口（点击弹出 rdp 日历，选日期 → 跳月并聚焦当天） */
+function JumpDatePicker({
+  onPick,
+  weekStartsOn,
 }: {
-  displayMonth: Date;
-  locale: string;
-  onMonthChange: (d: Date) => void;
+  onPick: (d: Date) => void;
+  weekStartsOn: 0 | 1;
 }) {
-  const monthOptions = useMemo(
-    () =>
-      Array.from({ length: 12 }, (_, i) => ({
-        value: String(i + 1),
-        label: new Intl.DateTimeFormat(locale, { month: "long" }).format(
-          new Date(2000, i, 1),
-        ),
-      })),
-    [locale],
-  );
-  // 年份范围：今年 -3 ～ +7（覆盖当年/次年会议 deadline 与个人安排）
-  const yearOptions = useMemo(() => {
-    const y = new Date().getFullYear();
-    return Array.from({ length: 11 }, (_, i) => y - 3 + i);
+  const { title, date, goTo } = useEventCalendarNavigation();
+  const t = useTranslations("calendar");
+  const locale = useLocale();
+  const [open, setOpen] = useState(false);
+  // 本地时区（rdp timeZone prop，避免 SSR 不一致）
+  const [timeZone, setTimeZone] = useState<string | undefined>(undefined);
+  const [month, setMonth] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+
+  useEffect(() => {
+    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
   }, []);
 
+  // 打开面板时同步到当前显示月（标题可能已被 ‹ › / 今日翻走）
+  useEffect(() => {
+    if (open) setMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+  }, [open, date]);
+
   return (
-    <div className="flex items-center justify-center gap-1.5">
-      <Select
-        value={String(displayMonth.getMonth() + 1)}
-        onValueChange={(v) =>
-          v && onMonthChange(new Date(displayMonth.getFullYear(), Number(v) - 1, 1))
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-w-0 px-1.5 text-base font-semibold tracking-tight"
+            aria-label={t("jumpTo")}
+          />
         }
       >
-        <SelectTrigger size="sm" className="w-24" aria-label="Month">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {monthOptions.map((m) => (
-            <SelectItem key={m.value} value={m.value} label={m.label}>
-              {m.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select
-        value={String(displayMonth.getFullYear())}
-        onValueChange={(v) =>
-          v && onMonthChange(new Date(Number(v), displayMonth.getMonth(), 1))
-        }
-      >
-        <SelectTrigger size="sm" className="w-24" aria-label="Year">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {yearOptions.map((y) => (
-            <SelectItem key={y} value={String(y)} label={String(y)}>
-              {y}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+        {title}
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0!">
+        <Calendar
+          mode="single"
+          onSelect={(d) => {
+            if (!d) return;
+            goTo(d);
+            onPick(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
+            setOpen(false);
+          }}
+          month={month}
+          onMonthChange={setMonth}
+          captionLayout="dropdown"
+          startMonth={new Date(new Date().getFullYear() - 3, 0, 1)}
+          endMonth={new Date(new Date().getFullYear() + 7, 11, 31)}
+          locale={locale === "zh" ? zhCNRdp : enUSRdp}
+          weekStartsOn={weekStartsOn}
+          timeZone={timeZone}
+          // 月份/年份下拉用 Base UI Select（shadcn 样式），替代原生 select
+          components={{ Dropdown: CalendarDropdown }}
+          className="rounded-lg"
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
-/** 聚焦某天的当天事件列表：按时间排序，可点击打开详情，「显示全部」返回总览 */
-function DayEventsList({
+/**
+ * rdp v10 的月份/年份下拉：用 Base UI Select 渲染（shadcn 样式），
+ * 替代原生 <select>。rdp 通过 options 传选项、onChange 读 target.value。
+ */
+function CalendarDropdown({
+  options,
+  value,
+  onChange,
+  "aria-label": ariaLabel,
+}: DropdownProps) {
+  const items = options ?? [];
+  // Base UI 的 label 自动解析在 popover 内不可靠（会回退显示 value），
+  // 显式取选中项 label 传给 SelectValue
+  const selectedLabel =
+    items.find((o) => String(o.value) === String(value))?.label ?? "";
+  return (
+    <Select
+      value={value !== undefined ? String(value) : undefined}
+      onValueChange={(v) => {
+        // 复刻原生 select 的 onChange 事件（rdp 只读 target.value）
+        onChange?.({
+          target: { value: String(v) },
+        } as ChangeEvent<HTMLSelectElement>);
+      }}
+    >
+      {/* 原生 select 的其他属性（size/name/事件处理器等）与 Base UI
+          SelectTrigger（button）不兼容，只保留 aria-label。
+          relative z-10：rdp 的 Nav（absolute）先渲染会盖住下拉触发按钮 */}
+      <SelectTrigger
+        size="sm"
+        aria-label={ariaLabel}
+        className="relative z-10 h-7 rounded-(--cell-radius) px-2 text-sm"
+      >
+        <SelectValue>{selectedLabel}</SelectValue>
+      </SelectTrigger>
+      <SelectContent className="min-w-24">
+        {items.map((opt) => (
+          <SelectItem
+            key={opt.value}
+            value={String(opt.value)}
+            disabled={opt.disabled}
+          >
+            {opt.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** 日程类别彩色标签（列表视图用：彩色小徽章，避免整行染色） */
+function CategoryBadge({ category }: { category: DdlCategory }) {
+  const t = useTranslations("calendar");
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10px] font-semibold",
+        CATEGORY[category].badgeClass,
+      )}
+    >
+      {CATEGORY[category].icon}
+      {t(CATEGORY[category].labelKey)}
+    </span>
+  );
+}
+
+/** 聚焦某天的当天日程列表：按时间排序，可点击打开详情，「显示全部」返回总览 */
+function DayAppointmentsList({
   date,
   events,
   loading,
@@ -793,10 +929,10 @@ function DayEventsList({
   onClear,
 }: {
   date: Date;
-  events: ParsedIcsEvent[];
+  events: ParsedIcsAppointment[];
   loading: boolean;
   locale: string;
-  onSelect: (ev: ParsedIcsEvent) => void;
+  onSelect: (ev: ParsedIcsAppointment) => void;
   onClear: () => void;
 }) {
   const t = useTranslations("calendar");
@@ -814,7 +950,7 @@ function DayEventsList({
   const sorted = useMemo(
     () =>
       [...events].sort(
-        (a, b) => eventStartDate(a).getTime() - eventStartDate(b).getTime(),
+        (a, b) => appointmentStartDate(a).getTime() - appointmentStartDate(b).getTime(),
       ),
     [events],
   );
@@ -868,7 +1004,7 @@ function DayEventsList({
       {header}
       <div className="flex flex-col gap-1.5">
         {sorted.map((ev) => {
-          const prefix = eventTimePrefix(ev, locale);
+          const prefix = appointmentTimePrefix(ev, locale);
           return (
             <button
               key={ev.uid}
@@ -888,9 +1024,12 @@ function DayEventsList({
                   </span>
                 )}
               </div>
-              {/* 标题 + 描述 */}
+              {/* 类别标签 + 标题 + 描述 */}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{ev.summary}</p>
+                <div className="flex items-center gap-1.5">
+                  <CategoryBadge category={categorizeAppointment(ev)} />
+                  <p className="truncate text-sm font-semibold">{ev.summary}</p>
+                </div>
                 {ev.description && (
                   <p className="truncate text-xs text-muted-foreground">
                     {ev.description}
@@ -905,25 +1044,28 @@ function DayEventsList({
   );
 }
 
-/** 本月及未来事件详细列表：按月份分组、按时间排序，点击跳转到对应月份 */
-function UpcomingEventsList({
+/** 当前查看月份及之后的日程详细列表：按月份分组、按时间排序，点击跳转到对应月份 */
+function UpcomingAppointmentsList({
   events,
   loading,
   locale,
+  viewDate,
   onJump,
 }: {
-  events: ParsedIcsEvent[];
+  events: ParsedIcsAppointment[];
   loading: boolean;
   locale: string;
-  onJump: (ev: ParsedIcsEvent) => void;
+  viewDate: Date;
+  onJump: (ev: ParsedIcsAppointment) => void;
 }) {
   const t = useTranslations("calendar");
   const now = useMemo(() => new Date(), []);
+  const viewMonthKey = `${viewDate.getFullYear()}-${viewDate.getMonth() + 1}`;
 
   const groups = useMemo(() => {
     const sorted = [...events].sort((a, b) => {
-      const da = eventStartDate(a).getTime();
-      const db = eventStartDate(b).getTime();
+      const da = appointmentStartDate(a).getTime();
+      const db = appointmentStartDate(b).getTime();
       return da - db;
     });
     const monthFmt = new Intl.DateTimeFormat(locale, {
@@ -933,10 +1075,10 @@ function UpcomingEventsList({
     const groups: {
       key: string;
       label: string;
-      events: ParsedIcsEvent[];
+      events: ParsedIcsAppointment[];
     }[] = [];
     for (const ev of sorted) {
-      const d = eventStartDate(ev);
+      const d = appointmentStartDate(ev);
       const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
       let g = groups.find((x) => x.key === key);
       if (!g) {
@@ -945,8 +1087,16 @@ function UpcomingEventsList({
       }
       g.events.push(ev);
     }
+    // 当前查看月份分组始终保留：无日程时在列表内显示「本月暂无日程」占位
+    if (!groups.some((g) => g.key === viewMonthKey)) {
+      groups.unshift({
+        key: viewMonthKey,
+        label: monthFmt.format(viewDate),
+        events: [],
+      });
+    }
     return groups;
-  }, [events, locale]);
+  }, [events, locale, viewMonthKey, viewDate]);
 
   const header = (
     <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold tracking-tight">
@@ -974,13 +1124,14 @@ function UpcomingEventsList({
     );
   }
 
-  if (groups.length === 0) {
+  if (events.length === 0) {
     return (
       <section className="mt-10">
         {header}
         <Empty className="mt-2">
           <EmptyHeader>
             <EmptyTitle>{t("upcomingEmpty")}</EmptyTitle>
+            <EmptyDescription>{t("emptyHint")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </section>
@@ -1002,55 +1153,64 @@ function UpcomingEventsList({
             <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
               {g.label}
             </h3>
-            <div className="flex flex-col gap-1.5">
-              {g.events.map((ev) => {
-                const d = eventStartDate(ev);
-                // 早于当前 6 小时视为已过（当天未到的截止仍算未来）
-                const past = d.getTime() < now.getTime() - 6 * 3_600_000;
-                const prefix = eventTimePrefix(ev, locale);
-                return (
-                  <button
-                    key={ev.uid}
-                    onClick={() => onJump(ev)}
-                    title={`${t("jumpTo")}: ${g.label}`}
-                    className={`flex items-center gap-2.5 rounded-lg border bg-card p-2.5 text-left transition-colors hover:bg-muted/50 sm:gap-3 sm:p-3 ${
-                      past ? "opacity-55" : ""
-                    }`}
-                  >
-                    {/* 日期块：muted 灰底（shadcn 中性） */}
-                    <div className="flex w-14 shrink-0 flex-col items-center rounded-lg bg-muted/70 py-1.5 sm:w-16">
-                      <span className="text-sm leading-5 font-semibold tabular-nums text-foreground">
-                        {dayFmt.format(d)}
-                      </span>
-                      <span className="text-[10px] font-medium text-muted-foreground">
-                        {weekdayFmt.format(d)}
-                      </span>
-                    </div>
-                    {/* 标题 + 描述 */}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{ev.summary}</p>
-                      {ev.description && (
-                        <p className="truncate text-xs text-muted-foreground">
-                          {ev.description}
-                        </p>
-                      )}
-                    </div>
-                    {/* 时间 */}
-                    <div className="shrink-0 text-right">
-                      {prefix ? (
-                        <p className="text-xs font-semibold tabular-nums text-foreground">
-                          {prefix}
-                        </p>
-                      ) : (
-                        <p className="text-xs font-medium text-muted-foreground">
-                          {t("allDay")}
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            {g.events.length === 0 ? (
+              <div className="flex h-16 items-center justify-center rounded-lg border border-dashed bg-card/50 text-sm text-muted-foreground">
+                {t("empty")}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {g.events.map((ev) => {
+                  const d = appointmentStartDate(ev);
+                  // 早于当前 6 小时视为已过（当天未到的截止仍算未来）
+                  const past = d.getTime() < now.getTime() - 6 * 3_600_000;
+                  const prefix = appointmentTimePrefix(ev, locale);
+                  return (
+                    <button
+                      key={ev.uid}
+                      onClick={() => onJump(ev)}
+                      title={`${t("jumpTo")}: ${g.label}`}
+                      className={`flex items-center gap-2.5 rounded-lg border bg-card p-2.5 text-left transition-colors hover:bg-muted/50 sm:gap-3 sm:p-3 ${
+                        past ? "opacity-55" : ""
+                      }`}
+                    >
+                      {/* 日期块：muted 灰底（shadcn 中性） */}
+                      <div className="flex w-14 shrink-0 flex-col items-center rounded-lg bg-muted/70 py-1.5 sm:w-16">
+                        <span className="text-sm leading-5 font-semibold tabular-nums text-foreground">
+                          {dayFmt.format(d)}
+                        </span>
+                        <span className="text-[10px] font-medium text-muted-foreground">
+                          {weekdayFmt.format(d)}
+                        </span>
+                      </div>
+                      {/* 类别标签 + 标题 + 描述 */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <CategoryBadge category={categorizeAppointment(ev)} />
+                          <p className="truncate text-sm font-semibold">{ev.summary}</p>
+                        </div>
+                        {ev.description && (
+                          <p className="truncate text-xs text-muted-foreground">
+                            {ev.description}
+                          </p>
+                        )}
+                      </div>
+                      {/* 时间 */}
+                      <div className="shrink-0 text-right">
+                        {prefix ? (
+                          <p className="text-xs font-semibold tabular-nums text-foreground">
+                            {prefix}
+                          </p>
+                        ) : (
+                          <p className="text-xs font-medium text-muted-foreground">
+                            {t("allDay")}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -1058,59 +1218,11 @@ function UpcomingEventsList({
   );
 }
 
-/** 事件详情行（时间 / 描述 / 链接） */
-function EventDetails({ event, locale }: { event: ParsedIcsEvent; locale: string }) {
+/** 日程详情行（时间 / 描述 / 链接） */
+function AppointmentDetails({ event, locale }: { event: ParsedIcsAppointment; locale: string }) {
   const t = useTranslations("calendar");
 
-  const timeText = useMemo(() => {
-    const fmt = new Intl.DateTimeFormat(locale, {
-      dateStyle: "full",
-      timeStyle: "short",
-    });
-    const dayFmt = new Intl.DateTimeFormat(locale, { dateStyle: "full" });
-
-    if (event.allDayDate) {
-      // 全天：持续天数
-      const [y, m, d] = event.allDayDate.split("-").map(Number);
-      const start = new Date(y, m - 1, d);
-      const days =
-        event.startUtc !== null && event.endUtc !== null
-          ? Math.max(1, Math.round((event.endUtc - event.startUtc) / 86_400_000) + 1)
-          : 1;
-      if (days > 1) {
-        const end = new Date(y, m - 1, d + days - 1);
-        return `${dayFmt.format(start)} – ${dayFmt.format(end)} · ${t("allDay")}`;
-      }
-      return `${dayFmt.format(start)} · ${t("allDay")}`;
-    }
-    if (event.startUtc !== null) {
-      const start = new Date(event.startUtc);
-      if (event.endUtc !== null && !sameDay(start, new Date(event.endUtc))) {
-        return `${dayFmt.format(start)} – ${fmt.format(new Date(event.endUtc))}`;
-      }
-      if (event.endUtc !== null) {
-        const endFmt = new Intl.DateTimeFormat(locale, { timeStyle: "short" });
-        return `${fmt.format(start)} – ${endFmt.format(new Date(event.endUtc))}`;
-      }
-      return fmt.format(start);
-    }
-    if (event.floatingStart) {
-      const [date, time] = event.floatingStart.split("T");
-      const [y, m, d] = date.split("-").map(Number);
-      const [h, mi] = time.split(":").map(Number);
-      const start = new Date(y, m - 1, d, h, mi);
-      if (event.floatingEnd) {
-        const [ed, et] = event.floatingEnd.split("T");
-        const [ey, em, edd] = ed.split("-").map(Number);
-        const [eh, emi] = et.split(":").map(Number);
-        const end = new Date(ey, em - 1, edd, eh, emi);
-        const endFmt = new Intl.DateTimeFormat(locale, { timeStyle: "short" });
-        return `${fmt.format(start)} – ${endFmt.format(end)}`;
-      }
-      return fmt.format(start);
-    }
-    return "—";
-  }, [event, locale, t]);
+  const timeText = formatAppointmentTimeText(event, locale, t("allDay"));
 
   return (
     <div className="flex flex-col gap-3 text-sm">

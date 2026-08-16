@@ -3,7 +3,7 @@ import { FileQuestionIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Link } from "@/lib/i18n/navigation";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -20,7 +20,9 @@ export default function NotFound() {
       <FileQuestionIcon className="size-12 text-muted-foreground" />
       <h1 className="text-3xl font-bold tracking-tight">404</h1>
       <p className="text-muted-foreground">{t("message")}</p>
-      <Button render={<Link href="/" />}>{tNav("home")}</Button>
+      <Link href="/" data-slot="button" className={buttonVariants({})}>
+        {tNav("home")}
+      </Link>
     </div>
   );
 }

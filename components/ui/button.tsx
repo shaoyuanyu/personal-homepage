@@ -1,4 +1,3 @@
-import * as React from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -45,24 +44,12 @@ function Button({
   className,
   variant = "default",
   size = "default",
-  render,
-  nativeButton,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
-  // render 提供非原生 <button> 元素（如 <a>、Link）时，
-  // 自动禁用原生 button 语义，避免 Base UI 告警
-  const renderCustom =
-    render != null &&
-    typeof render !== "function" &&
-    React.isValidElement(render) &&
-    render.type !== "button"
-
   return (
     <ButtonPrimitive
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
-      render={render}
-      nativeButton={renderCustom ? false : nativeButton}
       {...props}
     />
   )

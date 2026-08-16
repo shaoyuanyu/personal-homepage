@@ -44,7 +44,7 @@ export function buildIcsText(e: IcsEvent): string {
 
 /* ---------------- iCal 解析（CalDAV 读取方向） ---------------- */
 
-export type ParsedIcsEvent = {
+export type ParsedIcsAppointment = {
   uid: string;
   summary: string;
   description?: string;
@@ -85,7 +85,7 @@ function unesc(s: string): string {
 }
 
 /** 解析单个 VEVENT 块 → 事件对象（解析失败返回 null） */
-function parseVevent(block: string): ParsedIcsEvent | null {
+function parseVevent(block: string): ParsedIcsAppointment | null {
   const props = new Map<string, { params: string; value: string }>();
   for (const line of block.split(/\r\n|\n/)) {
     if (!line) continue;
@@ -109,7 +109,7 @@ function parseVevent(block: string): ParsedIcsEvent | null {
   const isAllDay = /VALUE=DATE(?!-TIME)/i.test(startProp.params);
   const end = endProp?.value ?? "";
 
-  const ev: ParsedIcsEvent = {
+  const ev: ParsedIcsAppointment = {
     uid,
     summary: unesc(summary),
     description: props.get("DESCRIPTION") ? unesc(props.get("DESCRIPTION")!.value) : undefined,
@@ -155,14 +155,14 @@ function parseVevent(block: string): ParsedIcsEvent | null {
  * 解析完整 iCal 文本（VCALENDAR，可含多个 VEVENT）→ 事件数组。
  * 支持：行折叠、UTC（Z）、全天（VALUE=DATE）、浮时。TZID 事件降级为浮时。
  */
-export function parseIcsText(text: string): ParsedIcsEvent[] {
+export function parseIcsText(text: string): ParsedIcsAppointment[] {
   // 行折叠：RFC 5545 中续行以单个空格/制表符开头
   const unfolded = text
     .replace(/\r\n[ \t]/g, "")
     .replace(/\n[ \t]/g, "")
     .replace(/\r[ \t]/g, "");
 
-  const events: ParsedIcsEvent[] = [];
+  const events: ParsedIcsAppointment[] = [];
   const veventRe = /BEGIN:VEVENT[\s\S]*?END:VEVENT/g;
   for (const match of unfolded.matchAll(veventRe)) {
     const ev = parseVevent(match[0]);

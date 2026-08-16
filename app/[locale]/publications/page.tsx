@@ -2,7 +2,7 @@ import { useTranslations } from "next-intl";
 import { BookMarkedIcon } from "lucide-react";
 
 import { PublicationsList } from "@/components/sections/publications-list";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Link } from "@/lib/i18n/navigation";
 import { pageMetadata } from "@/lib/i18n/metadata";
 import { profile, publications } from "@/lib/data";
@@ -27,15 +27,14 @@ export default function PublicationsPage() {
           <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
           <p className="text-muted-foreground">{t("description")}</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          render={<Link href="/ccf" />}
+        <Link
+          href="/ccf"
+          data-slot="button"
+          className={buttonVariants({ variant: "outline", size: "sm", className: "shrink-0" })}
         >
           <BookMarkedIcon />
           {t("ccfEntry")}
-        </Button>
+        </Link>
       </div>
       <PublicationsList publications={sorted} myName={profile.name} />
     </div>

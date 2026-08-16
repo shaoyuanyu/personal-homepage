@@ -215,7 +215,7 @@ test.describe("主人登录（TOTP）", () => {
 
     // 桌面视口下：高频功能「速记」单列入口 +「我的」菜单
     await page.setViewportSize({ width: 1280, height: 800 });
-    await expect(page.getByRole("button", { name: "速记" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "速记" })).toBeVisible();
     await expect(page.getByRole("button", { name: "我的" })).toBeVisible();
 
     // 菜单仅含「退出登录」（权限类操作）
@@ -225,7 +225,7 @@ test.describe("主人登录（TOTP）", () => {
 
     // 等导航刷新为「登录」（= 登出请求完成 + 登录态查询完成），再断言会话清除，
     // 避免登出 fetch 与 cookie 读取之间的竞态
-    await expect(page.getByRole("button", { name: "登录" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "登录" })).toBeVisible();
     await expect(page).toHaveURL(/\/$/);
     const cookies = await page.context().cookies();
     expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
@@ -437,12 +437,12 @@ test.describe("我的日历（主人专属）", () => {
     expect(r.status()).toBe(401);
   });
 
-  test("游客删除日历事件返回 401", async ({ request }) => {
+  test("游客删除日历日程返回 401", async ({ request }) => {
     const r = await request.delete("/api/calendar/events/test-uid-401");
     expect(r.status()).toBe(401);
   });
 
-  test("登录后未配置凭证时删除日历事件返回 503", async ({ page }) => {
+  test("登录后未配置凭证时删除日历日程返回 503", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
 
@@ -457,15 +457,15 @@ test.describe("我的日历（主人专属）", () => {
     await loginWithCode(page, code);
 
     await page.setViewportSize({ width: 1280, height: 800 });
-    await expect(page.getByRole("button", { name: "速记" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "日历" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "速记" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "日历" })).toBeVisible();
     // 未登录时导航栏无「日历」入口
   });
 
   test("游客导航栏无「日历」入口", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
-    await expect(page.getByRole("button", { name: "日历" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "日历" })).toHaveCount(0);
   });
 
   test("登录后访问 /calendar：页面 200 + 月视图可见", async ({ page }) => {
@@ -480,38 +480,84 @@ test.describe("我的日历（主人专属）", () => {
     await expect(page.getByRole("button", { name: "本月" })).toBeVisible();
     await expect(page.getByRole("button", { name: "上个月" })).toBeVisible();
     await expect(page.getByRole("button", { name: "下个月" })).toBeVisible();
-    // 周表头（zh 从周一开始）——限定在月视图网格内（下方事件列表日期块也有「周一」字样）
+    // 周表头（默认统一周日开始）——限定在月视图网格内（下方事件列表日期块也有「周日」字样）
     await expect(
-      page.locator(".grid.grid-cols-7").first().getByText("周一", { exact: true }),
+      page
+        .locator("[data-slot=event-calendar-month-header]")
+        .getByText("周日", { exact: true }),
     ).toBeVisible();
   });
 
-  test("点击日期格聚焦：下方联动显示当天事件，可返回总览", async ({ page }) => {
+  test("周起始日设置：默认周日，可切换为周一并实时生效", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    // 重置为默认周日（防御上次运行残留的 monday 偏好）
+    await page.request.patch("/api/preferences", {
+      data: { "calendar:weekStart": "sunday" },
+    });
+    await page.goto("/calendar");
+
+    const header = page.locator("[data-slot=event-calendar-month-header]");
+    // 第一列表头即每周起始日（zh/en 默认统一周日）。注意 cell 内含窄屏缩写
+    // span（display:none），toHaveText 会拼上缩写（「周日日」），须用按可见
+    // 文本匹配的 getByText（旧断言「周一」表头同款写法）
+    const firstHeader = header.getByText("周日", { exact: true }).first();
+    await expect(firstHeader).toBeVisible();
+
+    // 设置中切换为周一 → 表头实时更新（偏好广播，无需刷新）。
+    // 周起始控件是 shadcn Tabs（Base UI），触发项可访问性 role 为 tab
+    await page.getByRole("button", { name: "设置" }).click();
+    await page.getByRole("tab", { name: "周一" }).click();
+    await page.getByRole("button", { name: "关闭" }).click();
+    await expect(
+      header.getByText("周一", { exact: true }).first(),
+    ).toBeVisible();
+
+    // 恢复默认周日（用例自清理，避免影响其他用例的默认断言）。
+    // UI 切换只改本地状态，防抖 PATCH 可能未落盘测试就结束，
+    // 显式 API 写入确保服务器数据干净
+    await page.getByRole("button", { name: "设置" }).click();
+    await page.getByRole("tab", { name: "周日" }).click();
+    await page.getByRole("button", { name: "关闭" }).click();
+    await expect(firstHeader).toBeVisible();
+    const reset = await page.request.patch("/api/preferences", {
+      data: { "calendar:weekStart": "sunday" },
+    });
+    expect(reset.status()).toBe(200);
+  });
+
+  test("点击日期格聚焦：下方联动显示当天日程，可返回总览", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
     await page.goto("/calendar");
 
-    // 默认未聚焦：下方显示本月及未来事件总览
+    // 默认未聚焦：下方显示本月及未来日程总览
     await expect(
-      page.getByRole("heading", { name: "本月及未来事件" }),
+      page.getByRole("heading", { name: "本月及未来日程" }),
     ).toBeVisible();
 
-    // 点击当月 20 号日期格（聚焦）
+    // 等待客户端 hydration 完成（heading 是 SSR 渲染的，此时 React 事件
+    // 可能尚未挂载；dispatchEvent 需在 hydration 后才能命中 onSlotClick）
+    await page.waitForTimeout(1000);
+
+    // 点击当月 20 号日期格（聚焦）——REUI 月视图 cell：非当月带 data-outside，日期号在
+    // [data-slot=event-calendar-month-day-number]（右下角）
     await page.evaluate(() => {
       const cells = Array.from(
-        document.querySelectorAll(".grid.grid-cols-7 > div"),
+        document.querySelectorAll("[data-slot=event-calendar-month-cell]"),
       );
       const cell = cells.find(
         (x) =>
-          x.querySelector("span.size-6")?.textContent === "20" &&
-          !x.className.includes("bg-muted/20"),
+          !x.hasAttribute("data-outside") &&
+          x.querySelector("[data-slot=event-calendar-month-day-number]")
+            ?.textContent === "20",
       );
       cell?.dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true }),
       );
     });
 
-    // 下方切换为当天事件 + 显示全部按钮（双向联动）
+    // 下方切换为当天日程 + 显示全部按钮（双向联动）
     await expect(
       page.getByRole("heading", { name: /2026年8月20日/ }),
     ).toBeVisible();
@@ -520,30 +566,32 @@ test.describe("我的日历（主人专属）", () => {
     // 再次点击同一日期格 → 取消聚焦，回到总览
     await page.evaluate(() => {
       const cells = Array.from(
-        document.querySelectorAll(".grid.grid-cols-7 > div"),
+        document.querySelectorAll("[data-slot=event-calendar-month-cell]"),
       );
       const cell = cells.find(
         (x) =>
-          x.querySelector("span.size-6")?.textContent === "20" &&
-          !x.className.includes("bg-muted/20"),
+          !x.hasAttribute("data-outside") &&
+          x.querySelector("[data-slot=event-calendar-month-day-number]")
+            ?.textContent === "20",
       );
       cell?.dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true }),
       );
     });
     await expect(
-      page.getByRole("heading", { name: "本月及未来事件" }),
+      page.getByRole("heading", { name: "本月及未来日程" }),
     ).toBeVisible();
 
     // 「显示全部」按钮同样可返回总览
     await page.evaluate(() => {
       const cells = Array.from(
-        document.querySelectorAll(".grid.grid-cols-7 > div"),
+        document.querySelectorAll("[data-slot=event-calendar-month-cell]"),
       );
       const cell = cells.find(
         (x) =>
-          x.querySelector("span.size-6")?.textContent === "20" &&
-          !x.className.includes("bg-muted/20"),
+          !x.hasAttribute("data-outside") &&
+          x.querySelector("[data-slot=event-calendar-month-day-number]")
+            ?.textContent === "20",
       );
       cell?.dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true }),
@@ -551,7 +599,31 @@ test.describe("我的日历（主人专属）", () => {
     });
     await page.getByRole("button", { name: "显示全部" }).click();
     await expect(
-      page.getByRole("heading", { name: "本月及未来事件" }),
+      page.getByRole("heading", { name: "本月及未来日程" }),
+    ).toBeVisible();
+
+    // 翻月联动（bug 回归）：聚焦某天后点「下个月」→ 列表联动取消聚焦，
+    // 切回「本月及未来日程」总览（曾停留在原日期列表不联动）
+    await page.evaluate(() => {
+      const cells = Array.from(
+        document.querySelectorAll("[data-slot=event-calendar-month-cell]"),
+      );
+      const cell = cells.find(
+        (x) =>
+          !x.hasAttribute("data-outside") &&
+          x.querySelector("[data-slot=event-calendar-month-day-number]")
+            ?.textContent === "20",
+      );
+      cell?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+    await expect(
+      page.getByRole("heading", { name: /2026年8月20日/ }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "下个月" }).click();
+    await expect(
+      page.getByRole("heading", { name: "本月及未来日程" }),
     ).toBeVisible();
   });
 
@@ -572,7 +644,7 @@ test.describe("我的日历（主人专属）", () => {
     // 工具栏有设置入口
     await page.getByRole("button", { name: "设置" }).click();
     await expect(
-      page.getByRole("heading", { name: "CalDAV 日历设置" }),
+      page.getByRole("heading", { name: "日历设置" }),
     ).toBeVisible();
 
     // 填写用户名 / 密码并保存（服务器地址由部署环境决定，不在网站内配置）

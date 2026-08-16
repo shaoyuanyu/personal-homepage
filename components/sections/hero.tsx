@@ -3,7 +3,7 @@ import { Icon } from "@iconify/react";
 import { useLocale, useTranslations } from "next-intl";
 import { MailIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { profile } from "@/lib/data";
 
@@ -73,24 +73,26 @@ export function Hero() {
         {/* 社交链接 */}
         <div className="mt-1 flex flex-wrap items-center justify-center gap-1 md:justify-start">
           {socials.map((social) => (
-            <Button
+            <a
               key={social.key}
-              variant="ghost"
-              size="icon-sm"
-              render={
-                <a href={social.url} target="_blank" rel="noopener noreferrer" aria-label={social.key} />
-              }
+              href={social.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={social.key}
+              data-slot="button"
+              className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
             >
               <Icon icon={social.icon} data-icon="default" className="text-base" />
-            </Button>
+            </a>
           ))}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            render={<a href={`mailto:${profile.email}`} aria-label="Email" />}
+          <a
+            href={`mailto:${profile.email}`}
+            aria-label="Email"
+            data-slot="button"
+            className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
           >
             <MailIcon data-icon="default" className="text-base" />
-          </Button>
+          </a>
         </div>
       </div>
     </section>

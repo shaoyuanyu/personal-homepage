@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { BookOpenIcon, CopyIcon, ExternalLinkIcon, FileCode2Icon, FolderGit2Icon, ScrollTextIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -81,15 +81,17 @@ export function PublicationCard({
 
         <div className="mt-1 flex flex-wrap items-center gap-1">
           {links.map((link) => (
-            <Button
+            <a
               key={link.label}
-              variant="ghost"
-              size="sm"
-              render={<a href={link.href} target="_blank" rel="noopener noreferrer" />}
+              href={link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-slot="button"
+              className={buttonVariants({ variant: "ghost", size: "sm" })}
             >
               {link.icon}
               {link.label}
-            </Button>
+            </a>
           ))}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger

@@ -36,7 +36,7 @@ export type CalDavStatus = {
   /** 凭证来源：file=网站设置；env=服务器环境变量；null=未配置 */
   source: "file" | "env" | null;
   user: string | null;
-  /** 密码明文（仅站主会话可见；环境变量来源时亦回传，便于「查看账号密码」） */
+  /** 密码明文（仅站主会话可见；环境变量来源时亦回传，便于「查看用户名密码」） */
   password: string | null;
   /** 是否有待应用的密码变更（已写入队列、尚未被 VPS 同步到 Radicale） */
   pending: boolean;
