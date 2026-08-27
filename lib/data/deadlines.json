@@ -1838,6 +1838,22 @@
               "t": "2025-10-13 23:59:59"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "http://iccvm.org/2027/",
+          "tz": "UTC",
+          "date": "April 9-11, 2027",
+          "place": "Nanyang Technological University, Singapore",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-10-23 23:59:59"
+            },
+            {
+              "t": "2026-10-26 23:59:59"
+            }
+          ]
         }
       ]
     },
@@ -4582,6 +4598,18 @@
               "t": "2026-01-31 23:59:59"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://ieeecec.org/2027",
+          "tz": "Etc/GMT+12",
+          "date": "July 25-28, 2027",
+          "place": "Edinburgh, Scotland, UK",
+          "timeline": [
+            {
+              "t": "2027-02-28 23:59:59"
+            }
+          ]
         }
       ]
     },
@@ -5742,6 +5770,18 @@
           "timeline": [
             {
               "t": "2025-10-30 20:00:00"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://mlsys.org/",
+          "tz": "UTC",
+          "date": "TBD",
+          "place": "Bellevue, Washington, USA",
+          "timeline": [
+            {
+              "t": "2026-10-30 20:00:00"
             }
           ]
         }
