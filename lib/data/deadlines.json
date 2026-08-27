@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-08-26",
+  "fetchedAt": "2026-08-27",
   "source": "ccfddl/ccf-deadlines (allconf.yml)",
   "conferences": [
     {
@@ -5363,6 +5363,22 @@
           "timeline": [
             {
               "t": "2026-01-29 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://conf.researchr.org/home/issta-2027",
+          "tz": "Etc/GMT+12",
+          "date": "September 7-10, 2027",
+          "place": "Singapore",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2027-01-08 23:59:59"
+            },
+            {
+              "t": "2027-01-11 23:59:59"
             }
           ]
         }
