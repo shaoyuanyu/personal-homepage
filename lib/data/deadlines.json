@@ -7642,7 +7642,7 @@
           "link": "https://sensys.acm.org/2027/",
           "tz": "Etc/GMT+12",
           "date": "May 17-20, 2027",
-          "place": "New York, USA",
+          "place": "Boulder, CO, USA",
           "timeline": [
             {
               "k": "abstract",
@@ -7651,6 +7651,14 @@
             {
               "t": "2026-06-05 23:59:00",
               "c": "1st deadline"
+            },
+            {
+              "k": "abstract",
+              "t": "2026-10-29 23:59:00"
+            },
+            {
+              "t": "2026-11-05 23:59:00",
+              "c": "2nd deadline"
             }
           ]
         }
