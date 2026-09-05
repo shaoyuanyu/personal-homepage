@@ -2900,10 +2900,10 @@
           "link": "https://fc27.ifca.ai/",
           "tz": "Etc/GMT+12",
           "date": "February 8-12, 2027",
-          "place": "Barbados (tentative)",
+          "place": "Barbados",
           "timeline": [
             {
-              "t": "2026-09-17 23:59:59",
+              "t": "2026-09-24 23:59:59",
               "c": "Submission deadline"
             }
           ]
