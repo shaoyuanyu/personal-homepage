@@ -162,6 +162,23 @@
               "c": "2nd round Deadline"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://acisp.org/",
+          "tz": "Etc/GMT+12",
+          "date": "July 7-10, 2027",
+          "place": "Melbourne, Australia",
+          "timeline": [
+            {
+              "t": "2026-11-30 23:59:59",
+              "c": "1st round Deadline"
+            },
+            {
+              "t": "2027-03-01 23:59:59",
+              "c": "2nd round Deadline"
+            }
+          ]
         }
       ]
     },
