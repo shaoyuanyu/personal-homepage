@@ -74,6 +74,17 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - **UI**：`components/deadlines/deadlines-list.tsx`——等级 A/B/C/未收录 + 时间范围（30/90 天）+ 领域多选筛选、倒计时、详情 Dialog、Google 日历 / .ics 导出。领域词表与 CCF 目录一致（官方中文名，短键取 `/` 前段）。
 - **注意**：allconf.yml 缩进风格不统一（数组项可与父键同级），解析器按内容模式驱动而非绝对缩进；若解析结果为空会直接报错退出（防提交空数据）。数据源（ccfddl.com）偶发连接超时，脚本内置 3 次重试；可用 `DEADLINES_URL` 环境变量覆盖源地址（CLI 另支持 `--url`）。
 
+## 中科院 SCI 分区表（公开功能，`/cas`）
+
+- **定位**：中科院分区表（升级版）**计算机科学大类**期刊速查（758 本），与「CCF 推荐目录」同风格姊妹页（`/ccf` 复刻：统计卡 + sticky 筛选栏 + 学科多选 chips + 单列分组表）。入口：学术导航页「中科院 SCI 分区表」链接（未加入顶部导航）。
+- **数据文件**：`lib/data/cas-2025.json`（约 380KB 压缩存储；JSON 结构 `fetchedAt/version/source/count/rows/subjects/stats`）。行结构 `{n 刊名, i ISSN/EISSN, w WoS 收录, top, m [大类中文名, 分区 1-4, 大类内排名, 大类内总数], s [小类学科 × N]}`；小类 = `[JCR 学科规范英文名, 官方中文名, 学科分区, 学科内排名, 学科内总数]`（学科中英名已内置，UI 按 locale 直接取，无需运行时翻译）。`subjects` = 55 个去重小类词表（zh/en，供筛选 chips）。「大类分区」原文格式 `1 [3/58]`，入库前拆为数字段。
+- **数据源与同步**：`scripts/fetch-cas.mjs`（零依赖 CSV 状态机解析 + `pnpm fetch:cas`）从 `hitfyd/ShowJCR` 仓库（advanced.fenqubiao.com 官方导出 CSV 的社区二次整理）抓 `FQBJCR2025-UTF8.csv` 全量 21772 行 → 只保留计算机科学大类。⚠ **CSV 部分单元格含逗号且用双引号包裹（如 `" MATERIALS SCIENCE, MULTIDISCIPLINARY 材料科学：综合"`），必须状态机解析，不能 `split(",")`**（曾致 757/758 行小类全空且总行数少 1 的静默错误）。raw.githubusercontent.com 国内访问经常超时（60s 超时 + 3 次重试仍失败），脚本支持 `--url` 覆盖源（本地用 HTTP 服务验证）；同步命令运行环境须能访问 GitHub（建议在 CI 或代理环境跑）。
+- **数据校验**：默认按分区升序 + 大类排名排序（1 区第 1 = IEEE Communications Surveys and Tutorials）；脚本输出若行数 ≠ 758 或 subjects ≠ 55 应人工核查格式变化。**数据更新会改变页面默认排序首位**——若上游把新期刊排进 1 区第 1，E2E/人工抽查的「首位期刊」断言需随之调整。
+- **UI**：`components/cas/cas-directory.tsx`——搜索（刊名/ISSN/WoS/学科，大小写不敏感）、分区 1-4 分段控件、Top/非 Top 分段、小类学科多选（chip 按中文名排序；en 界面显示英文名）。行 = 刊名 + Top 金色胶囊徽章 + 第二行 `ISSN xxx · 排名 x/y` + WoS chip（SCIE/SSCI 主色、ESCI 灰、On Hold 警示色）+ 学科点列（超宽屏，`xl:` 起，tooltip 显示排名）+ 分区徽章（红/蓝/绿/琥珀，同 CCF A/B/C 用色体系）＋ hover 行首色条。单列不分字段分组（大数据量搜索场景）；默认渲染全部行（`content-visibility` 未启用，758 行 DOM 可接受——若未来接入全大类上万行再考虑分页/虚拟化）。
+- **偏好持久化**：key `cas:filters`（`{q?, zone?, top?, subjects?}` 结构同 `ccf:filters`），已在 `lib/preferences/registry.ts` 注册 sanitize；URL 参数 `?zone=&top=&q=&subjects=`（中文学科名逗号分隔，encode 后入 URL）可分享/刷新恢复。
+- **⚠ 数据解构陷阱**：`entry.m` 元组是 `[大类名, 分区, 排名, 总数]`——取分区是 `m[1]` 不是 `m[0]`。曾因 `const [mainZone, ...] = entry.m` 把**大类中文名**当分区索引 `ZONE_STYLE[zone]`，服务端渲染直接抛 `Cannot read properties of undefined (reading 'bar')` 整页 500（本地 build 不报错，SSG 预渲染也不报——因为客户端组件，报错发生在 standalone 运行时）。凡「按索引取 tuple 字段再当 key 索引对象」的模式，务必核对数据列序。
+- **⚠ Tailwind 动态类**：小类点色/徽章色必须整串静态写出（`SUB_DOT`/`ZONE_STYLE` map，key 为 1-4 字面量），勿用 `var(--color-zone-N)` 之类未定义 CSS 变量或模板字符串拼类名（Tailwind 扫描不到会丢样式）。
+
 ## 部署（GitHub Actions → GHCR → VPS）
 
 ### 流水线
@@ -196,4 +207,5 @@ pnpm totp:setup          # 生成/重生成 TOTP 密钥与恢复码
 pnpm fetch:publications  # 同步 Semantic Scholar 论文
 pnpm fetch:ccf-dblp      # 同步 CCF 目录（DBLP）
 pnpm fetch:deadlines     # 同步会议 deadline（ccfddl）
+pnpm fetch:cas           # 同步中科院分区表（ShowJCR，需可访问 GitHub）
 ```

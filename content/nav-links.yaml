@@ -99,6 +99,13 @@ groups:
           zh: CCF 会议与期刊目录（站内版）
           en: CCF recommended venues & journals (local)
       - name:
+          zh: 中科院 SCI 分区表
+          en: CAS Journal Zones
+        url: "/cas"
+        desc:
+          zh: 中科院分区表计算机科学大类（站内版）
+          en: CAS journal zones — Computer Science (local)
+      - name:
           zh: 会议 Deadline 日历
           en: Conference Deadline Calendar
         url: "/deadlines"

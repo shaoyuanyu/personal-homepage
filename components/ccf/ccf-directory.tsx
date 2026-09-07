@@ -9,11 +9,10 @@ import {
   LayersIcon,
   PresentationIcon,
   RotateCcwIcon,
-  SearchIcon,
 } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { SearchInput } from "@/components/ui/search-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
@@ -394,20 +393,14 @@ export function CcfDirectory() {
       {/* sticky 筛选栏 */}
       <div className="sticky top-14 z-30 rounded-2xl border bg-background/85 px-3 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative w-full sm:w-64 lg:w-72">
-            <SearchIcon
-              className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
-              data-icon="inline-start"
-            />
-            <Input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("searchPlaceholder")}
-              className="pl-10"
-              aria-label={t("searchPlaceholder")}
-            />
-          </div>
+          <SearchInput
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("searchPlaceholder")}
+            className="w-full sm:w-64 lg:w-72"
+            clearLabel={t("clearSearch")}
+            aria-label={t("searchPlaceholder")}
+          />
 
           <ToggleGroup
             value={[type]}
