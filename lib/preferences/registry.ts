@@ -15,6 +15,8 @@ export const PREFERENCE_KEYS = {
   CCF_FILTERS: "ccf:filters",
   /** 我的日历每周起始日（"sunday" 周日 / "monday" 周一；缺省=周日） */
   CALENDAR_WEEK_START: "calendar:weekStart",
+  /** CAS 分区表页筛选（分区/仅 Top/搜索词） */
+  CAS_FILTERS: "cas:filters",
 } as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -53,9 +55,31 @@ function sanitizeCcfFilters(v: unknown): unknown | null {
   return out;
 }
 
+const ZONES = ["all", "1", "2", "3", "4"] as const;
+
+/** cas:filters → { q?, zone?, top? }（2026-09 移除小类多选后仅含 3 字段） */
+function sanitizeCasFilters(v: unknown): unknown | null {
+  if (!isRecord(v)) return null;
+  const out: Record<string, unknown> = {};
+  if (v.zone !== undefined) {
+    if (!ZONES.includes(v.zone as (typeof ZONES)[number])) return null;
+    out.zone = v.zone;
+  }
+  if (v.top !== undefined) {
+    if (v.top !== "all" && v.top !== "top" && v.top !== "non") return null;
+    out.top = v.top;
+  }
+  if (v.q !== undefined) {
+    if (typeof v.q !== "string" || v.q.length > 100) return null;
+    out.q = v.q;
+  }
+  return out;
+}
+
 const VALIDATORS: Record<string, (v: unknown) => unknown | null> = {
   [PREFERENCE_KEYS.CCF_FILTERS]: sanitizeCcfFilters,
   [PREFERENCE_KEYS.CALENDAR_WEEK_START]: sanitizeCalendarWeekStart,
+  [PREFERENCE_KEYS.CAS_FILTERS]: sanitizeCasFilters,
 };
 
 /** calendar:weekStart → "sunday" | "monday"（其他值非法） */

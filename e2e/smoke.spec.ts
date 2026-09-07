@@ -59,7 +59,7 @@ test.describe("页面可达性", () => {
   });
 
   test("核心子页面：200", async ({ page }) => {
-    for (const path of ["/publications", "/talks", "/projects", "/blog", "/ccf", "/nav", "/deadlines"]) {
+    for (const path of ["/publications", "/talks", "/projects", "/blog", "/ccf", "/cas", "/nav", "/deadlines"]) {
       await expectPageOk(page, path);
     }
   });
@@ -155,6 +155,32 @@ test.describe("关键资源", () => {
       "target",
       "_blank",
     );
+  });
+
+  test("CAS 分区表：分区徽章 + 筛选", async ({ page }) => {
+    await expectPageOk(page, "/cas", "中科院 SCI 分区表");
+    // 分区徽章（1-4 区）存在
+    for (const zone of ["1", "2", "3", "4"]) {
+      await expect
+        .poll(
+          async () => page.getByLabel(`${zone} 大类分区`).count(),
+          `应有 ${zone} 区徽章`,
+        )
+        .toBeGreaterThan(0);
+    }
+    // 默认排序：IEEE Communications Surveys and Tutorials 大类排名第 1 应在首屏
+    await expect(
+      page.locator("li", { hasText: "IEEE Communications Surveys and Tutorials" }),
+    ).toBeVisible();
+    // 搜索过滤后列表变短（行内第二行固定含「排名 x/y」文本，用它定位行）
+    const before = await page.locator("li", { hasText: "排名" }).count();
+    await page.getByLabel("搜索刊名、缩写或 ISSN…").fill("pattern analysis");
+    await expect(
+      page.getByText("IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE"),
+    ).toBeVisible();
+    const after = await page.locator("li", { hasText: "排名" }).count();
+    expect(after).toBeGreaterThan(0);
+    expect(after).toBeLessThan(before);
   });
 
   test("页面无控制台错误", async ({ page }) => {
@@ -531,6 +557,12 @@ test.describe("我的日历（主人专属）", () => {
     await loginWithCode(page, code);
     await page.goto("/calendar");
 
+    // 动态取「当月某日」（20 号，避免硬编码日期跨月失效）；
+    // 日历页默认显示当前月（今天所在月）。REUI 标题格式 zh: yyyy年M月
+    const now = new Date();
+    const clickDay = now.getDate() <= 20 ? 20 : 15;
+    const clickedDate = `${now.getFullYear()}年${now.getMonth() + 1}月${clickDay}日`;
+
     // 默认未聚焦：下方显示本月及未来日程总览
     await expect(
       page.getByRole("heading", { name: "本月及未来日程" }),
@@ -540,63 +572,40 @@ test.describe("我的日历（主人专属）", () => {
     // 可能尚未挂载；dispatchEvent 需在 hydration 后才能命中 onSlotClick）
     await page.waitForTimeout(1000);
 
-    // 点击当月 20 号日期格（聚焦）——REUI 月视图 cell：非当月带 data-outside，日期号在
-    // [data-slot=event-calendar-month-day-number]（右下角）
-    await page.evaluate(() => {
-      const cells = Array.from(
-        document.querySelectorAll("[data-slot=event-calendar-month-cell]"),
-      );
-      const cell = cells.find(
-        (x) =>
-          !x.hasAttribute("data-outside") &&
-          x.querySelector("[data-slot=event-calendar-month-day-number]")
-            ?.textContent === "20",
-      );
-      cell?.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
+    /** 点击当月某日日期格（聚焦/取消聚焦）——REUI 月视图 cell：非当月带
+        data-outside，日期号在 [data-slot=event-calendar-month-day-number] */
+    const clickCell = () =>
+      page.evaluate((day) => {
+        const cells = Array.from(
+          document.querySelectorAll("[data-slot=event-calendar-month-cell]"),
+        );
+        const cell = cells.find(
+          (x) =>
+            !x.hasAttribute("data-outside") &&
+            x.querySelector("[data-slot=event-calendar-month-day-number]")
+              ?.textContent === String(day),
+        );
+        cell?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true, cancelable: true }),
+        );
+      }, clickDay);
+
+    await clickCell();
 
     // 下方切换为当天日程 + 显示全部按钮（双向联动）
     await expect(
-      page.getByRole("heading", { name: /2026年8月20日/ }),
+      page.getByRole("heading", { name: new RegExp(clickedDate) }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "显示全部" })).toBeVisible();
 
     // 再次点击同一日期格 → 取消聚焦，回到总览
-    await page.evaluate(() => {
-      const cells = Array.from(
-        document.querySelectorAll("[data-slot=event-calendar-month-cell]"),
-      );
-      const cell = cells.find(
-        (x) =>
-          !x.hasAttribute("data-outside") &&
-          x.querySelector("[data-slot=event-calendar-month-day-number]")
-            ?.textContent === "20",
-      );
-      cell?.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
+    await clickCell();
     await expect(
       page.getByRole("heading", { name: "本月及未来日程" }),
     ).toBeVisible();
 
     // 「显示全部」按钮同样可返回总览
-    await page.evaluate(() => {
-      const cells = Array.from(
-        document.querySelectorAll("[data-slot=event-calendar-month-cell]"),
-      );
-      const cell = cells.find(
-        (x) =>
-          !x.hasAttribute("data-outside") &&
-          x.querySelector("[data-slot=event-calendar-month-day-number]")
-            ?.textContent === "20",
-      );
-      cell?.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
+    await clickCell();
     await page.getByRole("button", { name: "显示全部" }).click();
     await expect(
       page.getByRole("heading", { name: "本月及未来日程" }),
@@ -604,22 +613,9 @@ test.describe("我的日历（主人专属）", () => {
 
     // 翻月联动（bug 回归）：聚焦某天后点「下个月」→ 列表联动取消聚焦，
     // 切回「本月及未来日程」总览（曾停留在原日期列表不联动）
-    await page.evaluate(() => {
-      const cells = Array.from(
-        document.querySelectorAll("[data-slot=event-calendar-month-cell]"),
-      );
-      const cell = cells.find(
-        (x) =>
-          !x.hasAttribute("data-outside") &&
-          x.querySelector("[data-slot=event-calendar-month-day-number]")
-            ?.textContent === "20",
-      );
-      cell?.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
+    await clickCell();
     await expect(
-      page.getByRole("heading", { name: /2026年8月20日/ }),
+      page.getByRole("heading", { name: new RegExp(clickedDate) }),
     ).toBeVisible();
     await page.getByRole("button", { name: "下个月" }).click();
     await expect(

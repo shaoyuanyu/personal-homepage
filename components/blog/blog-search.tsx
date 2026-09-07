@@ -3,9 +3,8 @@
 import { useMemo, useState } from "react";
 import Fuse from "fuse.js";
 import { useLocale, useTranslations } from "next-intl";
-import { SearchIcon } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
@@ -55,20 +54,13 @@ export function BlogSearch({ posts }: { posts: PostMeta[] }) {
     <div className="flex flex-col gap-6">
       {/* 搜索 + 标签 */}
       <div className="flex flex-col gap-4">
-        <div className="relative">
-          <SearchIcon
-            data-icon="inline-start"
-            className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("searchPlaceholder")}
-            className="pl-10"
-            aria-label={t("searchPlaceholder")}
-          />
-        </div>
+        <SearchInput
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("searchPlaceholder")}
+          clearLabel={t("clearSearch")}
+          aria-label={t("searchPlaceholder")}
+        />
         {allTags.length > 1 && (
           <ToggleGroup
             value={[tag]}

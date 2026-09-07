@@ -80,6 +80,83 @@ export const ccf = ccfData as {
   journals: CcfEntry[];
 };
 
+// ---- 中科院分区表（升级版，静态数据，来源：fenqubiao.com 官方发布）----
+import casData from "./cas-2025.json";
+
+/** 中科院大类分区 1/2/3/4 */
+export type CasZone = "1" | "2" | "3" | "4";
+
+/** 小类（JCR 学科）分区信息 */
+export type CasSub = {
+  /** JCR 学科（规范英文名） */
+  en: string;
+  /** 官方中文名（如「计算机：人工智能」） */
+  zh: string;
+  /** 该学科下分区 1-4 */
+  l: CasZone;
+  /** 该学科内排名（按影响因子） */
+  r: number;
+  /** 该学科期刊总数 */
+  t: number;
+};
+
+export type CasEntry = {
+  /** 期刊名 */
+  n: string;
+  /** ISSN/EISSN（"xxxx-xxxx/yyyy-yyyy"） */
+  i: string;
+  /** WoS 收录类型（SCIE / SSCI / ESCI / AHCI 等，可为复合） */
+  w: string;
+  /** 是否 Top 期刊（升级版 Top 标识） */
+  top: boolean;
+  /** [大类中文名, 分区, 大类内排名, 大类内总数] */
+  m: [string, CasZone, number, number];
+  /** 小类（JCR 学科）分区列表 */
+  s: CasSub[];
+};
+
+export type CasSubject = {
+  /** 官方中文名 */
+  zh: string;
+  /** 规范英文名 */
+  en: string;
+};
+
+type RawCasRow = Omit<CasEntry, "s"> & {
+  m: [string, CasZone, number, number];
+  s: [string, string, CasZone, number, number][];
+};
+
+const rawCas = casData as unknown as {
+  fetchedAt: string;
+  version: string;
+  source: string;
+  rows: RawCasRow[];
+  subjects: CasSubject[];
+  stats: { zones: Partial<Record<CasZone, number>>; top: number };
+};
+
+/** 行内紧凑数组 → CasSub 对象（调用方按需展开，避免运行时解析开销） */
+function unpackSub(sub: [string, string, CasZone, number, number]): CasSub {
+  return { en: sub[0], zh: sub[1], l: sub[2], r: sub[3], t: sub[4] };
+}
+
+/** 中科院分区表（仅计算机科学大类，2025 升级版） */
+export const cas = {
+  fetchedAt: rawCas.fetchedAt,
+  version: rawCas.version,
+  rows: rawCas.rows.map((row) => ({
+    ...row,
+    m: row.m as CasEntry["m"],
+    s: row.s.map(unpackSub),
+  })),
+  /** 全量 JCR 学科词表（按中文名排序，供筛选 chips 使用） */
+  subjects: rawCas.subjects,
+  stats: rawCas.stats,
+  /** 中科院大类名称（中文，数据唯一值） */
+  mainField: rawCas.rows[0]?.m[0] ?? "",
+};
+
 // ---- 会议 deadline 日历（自动同步自 ccfddl + 本地覆盖层合并）----
 import deadlineData from "./deadlines.json";
 import { deadlinesOverrides as rawDeadlinesOverrides } from "@velite/index";

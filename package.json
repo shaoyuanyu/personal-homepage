@@ -13,6 +13,7 @@
     "fetch:publications": "node scripts/fetch-publications.mjs",
     "fetch:ccf-dblp": "node scripts/fetch-ccf-dblp.mjs",
     "fetch:deadlines": "node scripts/fetch-deadlines.mjs",
+    "fetch:cas": "node scripts/fetch-cas.mjs",
     "totp:setup": "node scripts/totp-setup.mjs",
     "test:e2e": "playwright test",
     "test:e2e:local": "bash scripts/e2e-local.sh"

@@ -12,7 +12,6 @@ import {
   MapPinIcon,
   RefreshCwIcon,
   RotateCcwIcon,
-  SearchIcon,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Empty } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/toast";
 import { useOwnerPreferences } from "@/lib/preferences/use-owner-preferences";
@@ -443,20 +442,14 @@ export function DeadlinesList({
       <div className="sticky top-14 z-30 rounded-2xl border bg-background/85 px-3 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <div className="flex flex-wrap items-center gap-2">
           {/* md 以下搜索框独占一行；md 起弹性伸缩与筛选组同行 */}
-          <div className="relative w-full md:w-auto md:min-w-44 md:max-w-72 md:flex-1">
-            <SearchIcon
-              className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
-              data-icon="inline-start"
-            />
-            <Input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("searchPlaceholder")}
-              className="pl-10"
-              aria-label={t("searchPlaceholder")}
-            />
-          </div>
+          <SearchInput
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("searchPlaceholder")}
+            className="w-full md:w-auto md:min-w-44 md:max-w-72 md:flex-1"
+            clearLabel={t("clearSearch")}
+            aria-label={t("searchPlaceholder")}
+          />
           <ToggleGroup
             value={[level]}
             onValueChange={(v) => setLevel((v[0] as LevelFilter) ?? "all")}

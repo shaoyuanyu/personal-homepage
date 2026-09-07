@@ -5,7 +5,17 @@ import { posts } from "@velite/index";
 // 站点对外 URL：构建时通过 SITE_URL 注入（见 Dockerfile ARG）；默认 HTTPS
 const BASE_URL = process.env.SITE_URL ?? "https://shaoyuanyu.cn";
 
-const staticRoutes = ["", "/publications", "/talks", "/projects", "/blog", "/nav"] as const;
+const staticRoutes = [
+  "",
+  "/publications",
+  "/talks",
+  "/projects",
+  "/blog",
+  "/nav",
+  "/ccf",
+  "/cas",
+  "/deadlines",
+] as const;
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const entries: MetadataRoute.Sitemap = [];
