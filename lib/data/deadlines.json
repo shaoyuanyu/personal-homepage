@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-09-07",
+  "fetchedAt": "2026-09-08",
   "source": "ccfddl/ccf-deadlines (allconf.yml)",
   "conferences": [
     {
@@ -1002,6 +1002,18 @@
               "t": "2026-01-28 23:59:59"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://conferences.i-cav.org/2027/",
+          "tz": "Etc/GMT+12",
+          "date": "July 19-23, 2027",
+          "place": "KIT, Amsterdam, The Netherlands",
+          "timeline": [
+            {
+              "t": "2027-01-20 23:59:59"
+            }
+          ]
         }
       ]
     },
@@ -1440,7 +1452,7 @@
     },
     {
       "a": "COLING",
-      "n": "INTERNATIONNAL CONFERENCE ON COMPUTATIONAL LINGUISTICS",
+      "n": "International Conference on Computational Linguistics",
       "l": "B",
       "f": "人工智能",
       "d": "https://dblp.org/db/conf/coling/",
