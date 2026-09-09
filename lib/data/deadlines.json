@@ -2020,6 +2020,18 @@
               "t": "2025-10-27 23:59:59"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://dasfaa2027.github.io/",
+          "tz": "Etc/GMT+12",
+          "date": "May 27-30, 2027",
+          "place": "Shenyang, China",
+          "timeline": [
+            {
+              "t": "2026-11-25 23:59:59"
+            }
+          ]
         }
       ]
     },
