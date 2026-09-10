@@ -215,7 +215,8 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
             aria-label={t("placeholder")}
             rows={3}
             disabled={submitting}
-            className="resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0 placeholder:text-sm dark:bg-transparent"
+            className="resize-none border-0 bg-transparent px-1 py-2 font-serif text-base shadow-none focus-visible:ring-0 placeholder:text-sm dark:bg-transparent"
+            data-longform
           />
           <div className="mt-2 flex items-center justify-between gap-2 border-t pt-3">
             <p className="text-xs text-muted-foreground">{t("hint")}</p>
@@ -249,19 +250,19 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
       >
         <ToggleGroupItem value="all">
           {t("filters.all")}
-          <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px] tabular-nums">
+          <Badge variant="secondary" className="ml-1 px-1.5 text-xs tabular-nums">
             {counts.all}
           </Badge>
         </ToggleGroupItem>
         <ToggleGroupItem value="open">
           {t("filters.open")}
-          <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px] tabular-nums">
+          <Badge variant="secondary" className="ml-1 px-1.5 text-xs tabular-nums">
             {counts.open}
           </Badge>
         </ToggleGroupItem>
         <ToggleGroupItem value="done">
           {t("filters.done")}
-          <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px] tabular-nums">
+          <Badge variant="secondary" className="ml-1 px-1.5 text-xs tabular-nums">
             {counts.done}
           </Badge>
         </ToggleGroupItem>
@@ -325,11 +326,13 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
                     }}
                     rows={3}
                     autoFocus
-                    className="resize-none"
+                    className="resize-none font-serif text-base"
+                    data-longform
                   />
                 ) : (
                   <p
-                    className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${
+                    data-longform
+                    className={`whitespace-pre-wrap break-words font-serif text-base leading-relaxed ${
                       idea.status === "done"
                         ? "text-muted-foreground line-through decoration-muted-foreground/40"
                         : ""
@@ -346,7 +349,7 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
                     {formatRelativeTime(idea.createdAt)}
                   </time>
                   {idea.status === "done" && (
-                    <Badge variant="outline" className="h-4 px-1 text-[10px]">
+                    <Badge variant="outline" className="px-1.5 text-xs">
                       {t("filters.done")}
                     </Badge>
                   )}

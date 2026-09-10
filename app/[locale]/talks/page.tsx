@@ -26,7 +26,7 @@ export default function TalksPage() {
   return (
     <div className="w-full mx-auto max-w-5xl px-4 py-12 sm:px-6">
       <div className="mb-8 flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
+        <h1 className="text-3xl font-bold">{t("title")}</h1>
         <p className="text-muted-foreground">{t("description")}</p>
       </div>
 
@@ -35,7 +35,7 @@ export default function TalksPage() {
       <div className="flex flex-col gap-6">
         {sorted.map((talk) => (
           <Card key={talk.title + talk.date}>
-            <CardContent className="flex flex-col gap-3 py-5 sm:flex-row sm:gap-6">
+            <CardContent className="flex flex-col gap-3 sm:flex-row sm:gap-6">
               {/* 日期 */}
               <div className="flex shrink-0 flex-col items-start gap-1 sm:w-28">
                 <span className="font-mono text-sm font-semibold">{formatDate(talk.date, locale, { year: "numeric" })}</span>

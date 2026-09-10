@@ -105,7 +105,7 @@ export function LinksSearch({ groups }: { groups: NavLinkGroup[] }) {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {group.links.map((link) => (
               <Card key={link.url} className="group transition-colors hover:border-primary/40">
-                <CardHeader className="pb-2">
+                <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-sm font-medium">
                     <LinkIcon link={link} />
                     {isInternal(link.url) ? (
@@ -128,7 +128,7 @@ export function LinksSearch({ groups }: { groups: NavLinkGroup[] }) {
                   </CardTitle>
                 </CardHeader>
                 {link.desc && (
-                  <CardContent className="pb-3">
+                  <CardContent>
                     <p className="line-clamp-2 text-xs text-muted-foreground">{link.desc[lang]}</p>
                   </CardContent>
                 )}

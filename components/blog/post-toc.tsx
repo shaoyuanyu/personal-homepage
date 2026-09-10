@@ -76,7 +76,9 @@ export function PostToc({ toc }: { toc: TocEntry[] }) {
       aria-label={t("tableOfContents")}
       className="sticky top-20 max-h-[calc(100svh-6rem)] overflow-y-auto"
     >
-      <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      {/* 目录标签：**不用 .eyebrow-label**（中文标签放等宽会拉取 1.3MB 的 cjk 分片，
+          且中文无大小写、upper 无意义 → 中英不对称）。中文标签一律无衬线。 */}
+      <p className="mb-3 flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground">
         <ListTreeIcon className="size-3.5" />
         {t("tableOfContents")}
       </p>

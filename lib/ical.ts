@@ -14,6 +14,8 @@ export type IcsEvent = {
   summary: string;
   description?: string;
   url?: string;
+  /** 类别（iCal CATEGORIES，语言中立的机器可读标签，如 ["abstract", "paper"]） */
+  categories?: string[];
   /** UTC 毫秒时间戳 */
   start: number;
   end: number;
@@ -37,6 +39,9 @@ export function buildIcsText(e: IcsEvent): string {
     `SUMMARY:${esc(e.summary)}`,
     ...(e.description ? [`DESCRIPTION:${esc(e.description)}`] : []),
     ...(e.url ? [`URL:${esc(e.url)}`] : []),
+    ...(e.categories?.length
+      ? [`CATEGORIES:${e.categories.map(esc).join(",")}`]
+      : []),
     "END:VEVENT",
     "END:VCALENDAR",
   ].join("\r\n");
@@ -49,6 +54,8 @@ export type ParsedIcsAppointment = {
   summary: string;
   description?: string;
   url?: string;
+  /** 类别（CATEGORIES 属性值，逗号分割去转义；缺失时为 undefined） */
+  categories?: string[];
   /** 全天事件日期 "YYYY-MM-DD"（无时区语义，按浏览器本地日解释） */
   allDayDate?: string;
   /** 明确 UTC 时间（毫秒戳）；null 表示全天或浮时 */
@@ -101,6 +108,12 @@ function parseVevent(block: string): ParsedIcsAppointment | null {
   const summary = props.get("SUMMARY")?.value ?? "";
   if (!uid && !summary) return null;
 
+  // CATEGORIES 为逗号分隔列表（TEXT 转义，分隔逗号不转义）——lookbehind 排除 \, 字面逗号
+  const rawCategories = props.get("CATEGORIES")?.value;
+  const categories = rawCategories
+    ? rawCategories.split(/(?<!\\),/).map(unesc).filter(Boolean)
+    : undefined;
+
   const startProp = props.get("DTSTART");
   const endProp = props.get("DTEND");
   if (!startProp) return null;
@@ -114,6 +127,7 @@ function parseVevent(block: string): ParsedIcsAppointment | null {
     summary: unesc(summary),
     description: props.get("DESCRIPTION") ? unesc(props.get("DESCRIPTION")!.value) : undefined,
     url: props.get("URL")?.value || undefined,
+    categories,
     startUtc: null,
     endUtc: null,
   };

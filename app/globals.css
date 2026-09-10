@@ -8,9 +8,50 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  /* 字体策略（对齐 Anthropic 官网范式，按「角色」而非「页面语言」——
+     同一角色在中/英页面用同一字体）。三族，**无衬线是主角、衬线是配角**：
+       1. 无衬线 --font-sans（全站默认，承载约 90% 文本）：
+          · 全部页面标题 —— **h1 默认无衬线**（30/36px，bold，行高 1.15）；
+            唯一例外是首页 hero 的人名（见下方 2b「展示标题块」）
+          · 全部功能性 UI —— 顶部栏、按钮、菜单、标签页、分段/多选控件、
+            下拉与命令面板、徽章与 chip、表单、提示/Toast、日历网格与工具栏
+          · 全部说明性文字 —— 页面 description、卡片描述、空态文案、副标题
+          · 全部元数据 —— 日期、分类、计数、页脚
+          · **全部外部专名 —— 会议/期刊全名、地名、论文标题、导航站外链名**
+       2. 有衬线 --font-serif（**两个角色**，其余场景一律不用）：
+          a. **长正文** —— 连续阅读的段落：博客正文、速记正文。载体必须带
+             `data-longform`，且 ≥16px + 行高 ≥1.6。
+          b. **展示标题块（display serif）** —— 仅首页 hero 的人名 + 职务行。
+             载体必须带 `data-display-serif`。这是「个人站的名即品牌」的签名式
+             用法，对应 Anthropic 首页 `.big-cta_title`（68px/500 衬线）+
+             `.big-cta_subtitle`（24px 衬线），即「衬线作大字展示标题」。
+             ⚠ 全站只此一处；**不要**把它扩散到其它页面标题（那会回到
+             「衬线既是大标题又是小字说明」的语义混乱）。
+          ⚠ **绝不用作**：h1/h2/h3（首页 hero 除外）、页面说明、元数据、专名、
+             任何 <16px 的文本。
+          （判据：衬线必须单义。长正文的衬线 = 「你正在读一段正文」；展示标题块
+          的衬线 = 「这是一个身份/品牌签名」。两者都不与「小字说明」混用。）
+       3. 等宽 --font-mono：标识符与数字（缩写、ISSN、年份、日期、凭据）、
+          逐字代码（pre/code/kbd、BibTeX）、品牌 Logo，以及
+          **全大写技术眉标**（.eyebrow-label，见下方）。
+     兜底：未列举的一律无衬线。**最小字号 12px**（不再出现 10/11px）。
+     字阶（唯一允许的值，勿新增）：12 / 14 / 16 / 18 / 20 / 24 / 30 / 48 px，
+     对应 Tailwind `text-xs/sm/base/lg/xl/2xl/3xl/5xl`；
+     **唯一例外：长正文 17px**（见下方 `.prose`，衬线需更大字号才达同等可读性）。
+     行高：标题 1.05~1.15、UI 1.43、长正文 1.7、密集列表 1.4。
+     实现：真实字体栈定义在下方 `:root` 的 `--font-stack-*`，此处只做 token 映射。
+     中/英页面字体完全一致（无语言开关）——同一元素跨语言必然同族。 */
+  --font-sans: var(--font-stack-sans);
+  --font-serif: var(--font-stack-serif);
+  --font-mono: var(--font-stack-mono);
+  /* ---- 行高刻度对齐 Anthropic（其全站行高只有 1 / 1.1 / 1.3 / 1.4 / 1.5，
+     且 1.4 是绝对主力：135/169 个元素）----
+     Tailwind 默认让行高随字号变化（text-base 1.5、text-lg 1.556），
+     偏离了 Anthropic 的「统一 1.4」。此处覆盖为 1.4。 */
+  --text-base--line-height: 1.4;
+  --text-lg--line-height: 1.4;
+  --text-xl--line-height: 1.4;
+  --text-2xl--line-height: 1.3;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -52,6 +93,34 @@
 }
 
 :root {
+  /* 字体族名（@fontsource 自托管 @font-face / 自生成分片），供下方字体栈引用 */
+  --font-inter: "Inter Variable";
+  --font-tinos: "Tinos";
+  --font-noto-serif-sc: "Noto Serif SC Variable";
+  --font-noto-sans-mono-cjk: "Noto Sans Mono CJK SC";
+
+  /* ===== 真实字体栈（被上方 @theme 映射）===== */
+  /* 无衬线（功能 UI，全站默认）：西文 Inter（自托管变量字体，按 unicode-range
+     分片，浏览器只下载用到的分片）；中文**不引入 webfont**（体积代价大），
+     走系统无衬线逐级回退 —— 苹方（macOS/iOS）→ 思源黑体（Linux/Android 默认
+     中文黑体，字形覆盖最全）→ 微软雅黑（Windows 兜底）。
+     ⚠ 勿把 Microsoft YaHei 提前——Linux 上若装了雅黑会命中较老的雅黑而非思源黑体。 */
+  --font-stack-sans: var(--font-inter), -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC",
+    "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+  /* 有衬线（标题/正文/专名）：西文 Tinos（Times New Roman 度量兼容替身）；
+     中文**自托管 Noto Serif SC**（变量字重 + unicode-range 分片）——
+     不用系统回退是因为 Windows 会落到 SimSun（点阵味、小字号明显差），
+     而衬线在本方案里覆盖说明性文字与会议/期刊全名，字号偏小、面积很大。 */
+  --font-stack-serif: var(--font-tinos), var(--font-noto-serif-sc),
+    "Songti SC", "STSong", "SimSun", serif;
+  /* 等宽（标识符 / 数字 / 逐字代码）：**全站唯一等宽字体** —— Noto Sans Mono CJK SC
+     （自托管分片，见 app/fonts-mono.css，由 scripts/subset-fonts.mjs 生成）。
+     选它的理由：拉丁 0.5em / 汉字 1.0em = **恰好 2:1**，中英混排能精确对齐；
+     且一个字体同时提供拉丁与汉字，无需第二个等宽族（多数等宽字体无 CJK 字形）。
+     下列系统族仅用于分片外的生僻字回退。 */
+  --font-stack-mono: var(--font-noto-sans-mono-cjk), ui-monospace,
+    SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -63,7 +132,7 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.54 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -133,7 +202,86 @@
        导致视口宽度变化、居中内容（含 sticky 顶部栏）横向抖动 */
     scrollbar-gutter: stable;
   }
+  /* 标题默认紧行高（Anthropic 范式：其 h1 实测 60.9px / lh 1.1、文章 h1 52px /
+     lh 1.1、h2 25px / lh 1.2）。此处只给默认值，页面仍可用 leading-* 覆盖。 */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply leading-[1.1];
+    /* 字距：Anthropic 的大字号一律 letter-spacing normal（其实测 60.9px/68.3px
+       标题均 ls 0），只有小字号才略微收紧（页脚 12px → -0.02em、导航 15px →
+       -0.0025em）。故**展示级标题不再加 tracking-tight**（勿加回）。
+       小字号的收紧由各组件的 tracking-tight 承担（≈ -0.025em，与 Anthropic 同向）。 */
+    letter-spacing: normal;
+  }
 }
+
+/* ---- 等宽全大写技术眉标（Anthropic 标志性用法）----
+   用于数据卡片/列表的「分类标签」位（如 CCF-A / SCIE / DATE 等短标签），
+   提供第三种语气：既非正文也非按钮，而是「技术性标注」。
+   Anthropic 实测值：Anthropic Mono / uppercase / **w400** / lh 1.4 /
+   **letter-spacing normal** / 16px（字号 16px 取不到——我们的眉标装在 h-5
+   （20px）的徽章里，16×1.4=22.4px 装不下，故取 14px 上限；其独立一行的
+   16px 用法待有真·眉标位时再用）。
+   ⚠ 只用于短标签（≤8 字符），不要用于句子——全大写英文长句可读性很差；
+   ⚠ **中文不要放进眉标**，否则会拉取 1.3MB 的等宽 cjk 分片（见字体分片说明）。 */
+.eyebrow-label {
+  font-family: var(--font-mono);
+  font-size: 0.875rem; /* 14px，受徽章 h-5 高度约束 */
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: uppercase;
+}
+
+/* ---- 长正文（全站唯一使用衬线的场景）----
+   要求：字号 ≥16px、行高 ≥1.6。衬线的 x-height 比无衬线小，同字号下视觉更小、
+   笔画更细，必须靠更大字号 + 更松行距才达到同等可读性（Anthropic 文章正文
+   即为 17px / 行高 1.55）。`.prose` 默认 16px/1.75，此处调为 17px/1.7：
+   字号拉开与 UI 正文（14px）的层级，行高略收以匹配更大的字号。
+   ⚠ 勿在此处之外的任何地方使用衬线（见上方字体策略）。 */
+.prose {
+  font-size: 1.0625rem; /* 17px */
+  /* Anthropic 文章正文实测 17px / lh 1.55，取其整数档 1.6 */
+  line-height: 1.6;
+}
+/* ⚠ 衬线正文内部的**小标题切回无衬线**（Anthropic 的关键细节，勿改回衬线）：
+   其实测文章页 h2 = Anthropic **Sans** 25px/600/lh1.2，正文才是 Serif 17px。
+   即「sans = 结构（标题/导航/元数据），serif = 阅读（段落）」这条分工在正文内部
+   依然成立——让 h2/h3 继承衬线等于让衬线又兼职做结构，正是要避免的语义混用。
+   字号钉到站内字阶（默认是 em 相对值，会落在 25.5/21.25px 等非体系值上）。 */
+.prose :where(h2) {
+  font-family: var(--font-sans);
+  font-size: 1.5rem; /* 24px */
+  line-height: 1.3;
+}
+.prose :where(h3) {
+  font-family: var(--font-sans);
+  font-size: 1.25rem; /* 20px */
+  line-height: 1.35;
+}
+.prose :where(h4) {
+  font-family: var(--font-sans);
+}
+/* 行内代码 / 代码块：默认 0.875em（17px × 0.875 = 14.875px）会落在非体系值上，
+   钉到 14px（等宽字体在 14px 下与 17px 正文并排仍协调）。 */
+.prose :where(code, pre) {
+  font-size: 0.875rem;
+}
+
+/* ---- 字体 @font-face 来源 ----
+   - Inter / Tinos / Noto Serif SC：由 app/layout.tsx 导入 @fontsource 的 CSS
+     （自托管，按 unicode-range 分片，浏览器只下载用到的分片）。
+   - Noto Sans Mono CJK SC（等宽）：由 app/fonts-mono.css 提供（生成物，见
+     scripts/subset-fonts.mjs）——npm / Google Fonts 均无此字体，必须自己子集化。
+
+   历史（勿改回）：曾用「注入 <style> 覆盖 --font-body」实现「英文页整页衬线」。
+   新范式按「角色」而非「页面语言」分派字体（中/英页面同一角色同族），故该机制
+   （components/layout/locale-font-style.tsx）已整体删除。
+   ⚠ 若将来真需要按语言切字体，勿用「在 <html> 上渲染 data-locale 属性 + CSS 选择
+   器」：React 客户端导航不会 diff <html> 的属性（<html lang> 同样如此），实测
+   切语言后字体不更新、必须刷新才生效。 */
 
 /* ---- 导航登录态双布局（OwnerNavItem）----
    游客布局与登录布局在 SSR 都渲染，可见性由 html class 控制：
@@ -154,6 +302,49 @@ html.owner-logged-in .guest-only {
 }
 html.owner-logged-in .owner-only {
   display: inline-flex;
+}
+
+/* ---- 顶部栏：桌面导航的紧凑档（≥lg）----
+   内联导航断点为 lg（1024，见 site-header.tsx）。英文文案（Publications /
+   Scratchpad / Calendar）明显更长：若不收紧，登录态在 1024~1280px 视口下
+   余量很薄（max-w-5xl 容器扣掉 px-6 与滚动条预留后可用 ~961px）。
+   故 ≥1024 收紧导航项水平内边距与项间距。
+   ⚠ 间距在字号从 15px 回到 14px 后已放宽（gap 2px → 4px）——
+     相邻项各 8px 内边距 + 4px 间距 = 20px 视觉间隔；若再收紧会显得「拥塞」。
+   仅命中桌面内联导航（<lg 时 nav 为 display:none；移动端 Sheet 已 portal 到
+   body、不在 .site-header 内，走 globals.css 的 .sheet-nav 规则，不受影响）。 */
+@media (min-width: 1024px) {
+  .site-header nav {
+    gap: 0.25rem; /* gap-1 */
+  }
+  .site-header nav [data-slot="button"] {
+    padding-inline: 0.5rem; /* px-2 */
+  }
+}
+
+/* ---- 顶部栏（site-header）字号 ---- ghost sm 按钮默认 0.8rem（12.8px）
+   在顶部栏上偏小，故覆盖为 **0.875rem（14px）/ w500**。
+
+   ⚠ **勿改成 15px**（曾试过）：字号不能脱离栏高单独决定。实测「栏高 / 字号」比：
+     Anthropic 69px/15px=4.60、Linear 72/16=4.50、Vercel 64/16=4.00、Stripe 64/16=4.00、
+     GitHub 50/16=3.13。本站栏高固定 56px（h-14，被 4 处 sticky top-14 依赖），
+     若文字上 15px 则比值跌到 **3.73** —— 文字在栏里显得挤、钝（照抄 Anthropic 的
+     15px 却没抄它的 69px 栏高，数字脱离上下文就错了）。14px 时比值 4.0，与
+     Vercel / Stripe 一致。
+   ⚠ 另一层原因：**中文字形在相同字号下视觉上大于拉丁**（汉字几乎撑满 em 框，
+     拉丁 x-height 只占约一半），所以 15px 的中文导航观感接近 16.5px 的英文。
+
+   ⚠ 这是全站最紧的约束点：英文登录态在 1024px 视口下余量有限，
+   改这里**必须重跑** E2E「多视口 × 中英文的顶部栏均不横向溢出」。
+   icon 按钮（主题/语言）无文字不受影响；「我的」由
+   DropdownMenuTrigger 渲染（data-slot=dropdown-menu-trigger），须一并匹配。
+   仅作用于 header 容器内的桌面导航/工具栏；移动端 Sheet（portal 到 body）
+   不在此容器内，仍走下方 .sheet-nav 的 1rem 触控字号。 */
+.site-header [data-slot="button"],
+.site-header [data-slot="dropdown-menu-trigger"] {
+  font-size: 0.875rem;
+  /* w500（非 400）：栏高偏矮时，中等字重的汉字比常规字重更有分量、不发「平」 */
+  font-weight: 500;
 }
 
 /* ---- 移动端 Sheet 内导航（sheet-nav / sheet-stack）----

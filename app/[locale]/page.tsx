@@ -17,7 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "@/lib/i18n/navigation";
 import { formatDate } from "@/lib/utils/format";
-import { profile, posts } from "@/lib/data";
+import { listPosts, profile } from "@/lib/data";
 
 const interestIcons = {
   "ai-safety": ShieldCheckIcon,
@@ -35,10 +35,8 @@ export default function HomePage() {
   const t = useTranslations("home");
   const lang = locale === "zh" ? "zh" : "en";
 
-  const latestPosts = posts
-    .filter((p) => p.locale === locale)
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 3);
+  // 全部文章（缺当前语言版本时回退原文），按日期倒序取前 3 篇
+  const latestPosts = listPosts(locale).slice(0, 3);
 
   // Person 结构化数据：帮助搜索引擎（Google 学术等）正确索引个人主页
   const siteUrl = process.env.SITE_URL ?? "https://shaoyuanyu.cn";
@@ -118,7 +116,7 @@ export default function HomePage() {
         <div className="flex flex-col gap-3">
           {latestPosts.map((post) => (
             <Card key={post.slug}>
-              <CardHeader className="py-4">
+              <CardHeader>
                 <CardTitle className="text-base">
                   <Link href={`/blog/${post.slug}`} className="hover:underline">
                     {post.title}

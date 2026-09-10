@@ -228,9 +228,14 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
                     ? t("settingsConfigured", { user: status.user ?? "" })
                     : t("settingsUsingEnv", { user: status.user ?? "" })}
                 </p>
-                <p className="flex items-center gap-1.5 font-mono text-sm text-foreground">
-                  <span className="shrink-0">{t("settingsPasswordLabel")}:</span>
-                  <span className="min-w-0 flex-1 break-all">
+                {/* ⚠ 标签（zh「当前密码」是中文）走无衬线，只有密码值走等宽——
+                    否则中文会进入等宽族、拉取 1.3MB 的 cjk 分片；
+                    分开后中英两页都是「标签 sans + 值 mono」，天然对称。 */}
+                <p className="flex items-center gap-1.5 text-sm text-foreground">
+                  <span className="shrink-0 text-muted-foreground">
+                    {t("settingsPasswordLabel")}:
+                  </span>
+                  <span className="min-w-0 flex-1 font-mono break-all">
                     {status.password ?? "—"}
                   </span>
                   <Button

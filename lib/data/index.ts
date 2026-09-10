@@ -10,14 +10,24 @@
  */
 import {
   navLinks as rawNavLinks,
-  posts,
   profile,
   publications as rawPublications,
   projects as rawProjects,
   talks as rawTalks,
 } from "@velite/index";
 
-export { posts, profile };
+import {
+  blogArticles,
+  blogStaticParams,
+  getPost,
+  listPosts,
+  resolvePost,
+} from "@/lib/data/blog";
+
+export { profile };
+// 博客文章：多语言聚合（同一 slug 的 zh/en 视为同一篇文章的翻译版本）
+export { blogArticles, blogStaticParams, getPost, listPosts, resolvePost };
+export type { BlogArticle, LocalizedPost } from "@/lib/data/blog";
 
 type RawEntry<T> = (T extends readonly (infer E)[] ? E : never) | undefined;
 type Field<T, K extends string> = T extends Record<K, infer V> ? V : never;

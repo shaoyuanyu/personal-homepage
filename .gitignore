@@ -61,3 +61,6 @@ yarn-error.log*
 # velite content build output
 /.velite/
 next-env.d.ts
+
+# 字体子集化源文件缓存（30MB+，不入库）
+/.cache/

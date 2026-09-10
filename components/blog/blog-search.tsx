@@ -80,14 +80,14 @@ export function BlogSearch({ posts }: { posts: PostMeta[] }) {
       <div className="flex flex-col gap-3">
         {results.map((post) => (
           <Card key={post.slug}>
-            <CardHeader className="py-4">
+            <CardHeader>
               <CardTitle className="text-base">
                 <Link href={`/blog/${post.slug}`} className="hover:underline">
                   {post.title}
                 </Link>
               </CardTitle>
               <CardDescription className="flex flex-wrap items-center gap-2 text-xs">
-                <time>{formatDate(post.date, locale)}</time>
+                <time className="font-mono">{formatDate(post.date, locale)}</time>
                 {post.tags.map((tag) => (
                   <Badge key={tag} variant="outline">{tag}</Badge>
                 ))}

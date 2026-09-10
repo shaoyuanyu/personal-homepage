@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { DeadlinesList } from "@/components/deadlines/deadlines-list";
+import { DeadlinesSyncButton } from "@/components/deadlines/deadlines-sync-button";
 import {
   deadlines as builtinDeadlines,
   deadlinesFetchedAt as builtinFetchedAt,
@@ -58,30 +59,31 @@ export default function DeadlinesPage() {
 
   return (
     <div className="w-full mx-auto max-w-5xl px-4 py-12 sm:px-6">
-      <div className="mb-8 flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
-          <Badge variant="secondary" className="rounded-full">
-            {t("versionBadge")}
-          </Badge>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-bold">{t("title")}</h1>
+            <Badge variant="secondary">{t("versionBadge")}</Badge>
+          </div>
+          <p className="text-muted-foreground">{t("description")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("source")}{" "}
+            <a
+              href="https://github.com/ccfddl/ccf-deadlines"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              ccfddl/ccf-deadlines
+            </a>
+            {" · "}
+            {t("updatedAt")} {fetchedAt}
+          </p>
         </div>
-        <p className="text-muted-foreground">{t("description")}</p>
-        <p className="text-xs text-muted-foreground/80">
-          {t("source")}{" "}
-          <a
-            href="https://github.com/ccfddl/ccf-deadlines"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline underline-offset-4 hover:text-foreground"
-          >
-            ccfddl/ccf-deadlines
-          </a>
-          {" · "}
-          {t("updatedAt")} {fetchedAt}
-        </p>
+        <DeadlinesSyncButton />
       </div>
       <DeadlinesList deadlines={deadlines} />
-      <p className="mt-14 border-t pt-4 text-xs text-muted-foreground/70">
+      <p className="mt-14 border-t pt-4 text-xs text-muted-foreground">
         {t("sourceNote")}
       </p>
     </div>

@@ -18,6 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useOwnerPreferences } from "@/lib/preferences/use-owner-preferences";
+import { ccfBarClass, ccfChipClass } from "@/lib/design/grade";
 import { ccf, type CcfEntry } from "@/lib/data";
 
 type TypeFilter = "all" | "conf" | "jour";
@@ -74,28 +75,14 @@ type SavedFilters = {
   q?: string;
 };
 
-/* 级别专属配色：徽章文字 + 行首色条 */
-const LEVEL_STYLE = {
-  A: {
-    badge: "bg-red-500/10 text-red-600 ring-red-600/20 dark:bg-red-500/15 dark:text-red-400",
-    bar: "bg-red-500",
-  },
-  B: {
-    badge: "bg-blue-500/10 text-blue-600 ring-blue-600/20 dark:bg-blue-500/15 dark:text-blue-400",
-    bar: "bg-blue-500",
-  },
-  C: {
-    badge: "bg-emerald-500/10 text-emerald-600 ring-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-400",
-    bar: "bg-emerald-500",
-  },
-} as const;
+/* 级别专属配色：见 lib/design/grade.ts（与 cas / deadlines / venues 同一事实来源）*/
 
 function LevelBadge({ level }: { level: CcfEntry["l"] }) {
   const t = useTranslations("ccf.levels");
   return (
     <Badge
       variant="outline"
-      className={`w-7 shrink-0 justify-center rounded-md text-xs font-bold ring-1 ring-inset ${LEVEL_STYLE[level].badge}`}
+      className={`eyebrow-label w-7 shrink-0 justify-center rounded-md font-bold ring-1 ring-inset ${ccfChipClass(level)}`}
       aria-label={`${level} ${t("class")}`}
     >
       {level}
@@ -110,9 +97,9 @@ function EntryRow({ entry, type }: { entry: CcfEntry; type: "conf" | "jour" }) {
       {/* 级别色条 */}
       <span
         aria-hidden
-        className={`absolute inset-y-1 left-0 w-[3px] rounded-r-full opacity-0 transition-opacity group-hover:opacity-100 ${LEVEL_STYLE[entry.l].bar}`}
+        className={`absolute inset-y-1 left-0 w-[3px] rounded-r-full opacity-0 transition-opacity group-hover:opacity-100 ${ccfBarClass(entry.l)}`}
       />
-      <span className="w-16 shrink-0 truncate font-mono text-[13px] font-semibold tracking-tight sm:w-32">
+      <span className="w-16 shrink-0 truncate font-mono text-sm font-semibold tracking-tight sm:w-32">
         {entry.a}
       </span>
       <span
@@ -123,7 +110,7 @@ function EntryRow({ entry, type }: { entry: CcfEntry; type: "conf" | "jour" }) {
       </span>
       <Badge
         variant="secondary"
-        className="hidden shrink-0 text-[10px] font-normal text-muted-foreground sm:inline-flex"
+        className="hidden shrink-0 text-xs font-normal text-muted-foreground sm:inline-flex"
       >
         {type === "conf" ? t("typeConference") : t("typeJournal")}
       </Badge>
@@ -135,7 +122,7 @@ function EntryRow({ entry, type }: { entry: CcfEntry; type: "conf" | "jour" }) {
           rel="noopener noreferrer"
           aria-label={`${entry.a} on DBLP`}
           title="DBLP"
-          className="-m-1 hidden shrink-0 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-primary focus-visible:text-primary sm:flex"
+          className="-m-1 hidden shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-primary focus-visible:text-primary sm:flex"
         >
           <ExternalLinkIcon className="size-3.5" aria-hidden />
         </a>
@@ -150,7 +137,7 @@ function TypeDivider({ type }: { type: "conf" | "jour" }) {
   return (
     <li
       aria-hidden
-      className="border-t bg-muted/40 px-4 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground/70"
+      className="border-t bg-muted/40 px-4 py-1.5 text-xs font-medium tracking-wide text-muted-foreground"
     >
       {type === "conf" ? t("typeConference") : t("typeJournal")}
     </li>
@@ -171,7 +158,7 @@ function StatCard({
 }) {
   return (
     <Card
-      className={`transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+      className={`py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
         highlight ? "border-primary/30 bg-primary/5" : "hover:border-border"
       }`}
     >
@@ -186,7 +173,7 @@ function StatCard({
           <Icon className="size-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-xl leading-none font-semibold tracking-tight tabular-nums">
+          <p className="text-xl font-mono leading-none font-semibold tracking-tight">
             {value}
           </p>
           <p className="mt-1.5 truncate text-xs text-muted-foreground">{label}</p>
@@ -423,26 +410,32 @@ export function CcfDirectory() {
             <ToggleGroupItem value="C">C</ToggleGroupItem>
           </ToggleGroup>
 
+          {/* ⚠ 不要用 font-mono：本元素含中文「项」。等宽族一旦出现中文就会
+              拉取 1.3MB 的 cjk 分片（见 scripts/subset-fonts.mjs）。
+              数字对齐用 tabular-nums 即可，不必切字体族。 */}
           <Badge
             variant="outline"
-            className="ml-auto hidden shrink-0 font-normal tabular-nums text-muted-foreground lg:inline-flex"
+            className="ml-auto hidden shrink-0 tabular-nums font-normal text-muted-foreground lg:inline-flex"
           >
             {shown} {t("items")}
           </Badge>
         </div>
       </div>
 
-      {/* 领域多选筛选：可同时勾选多个领域（空 = 全部） */}
+      {/* 领域多选筛选：可同时勾选多个领域（空 = 全部）
+          ⚠ 英文字段名可长于视口宽度（如 Software Engineering, System Software &
+          ...），若不限制宽度，单个 chip 会把窄屏撑出横向溢出——
+          故 chip 统一 `max-w-full`，标签用内层 span `truncate` 省略。 */}
       <nav aria-label={t("fieldFilter")} className="flex flex-wrap gap-1.5">
         <Button
           type="button"
           variant={selectedFields.length === 0 ? "default" : "outline"}
           size="sm"
-          className="rounded-full text-xs"
+          className="max-w-full rounded-full text-xs"
           onClick={() => setSelectedFields([])}
           aria-pressed={selectedFields.length === 0}
         >
-          {t("fieldAll")}
+          <span className="truncate">{t("fieldAll")}</span>
         </Button>
         {fields.map((f) => {
           const selected = selectedFields.includes(f);
@@ -452,11 +445,11 @@ export function CcfDirectory() {
               type="button"
               variant={selected ? "default" : "outline"}
               size="sm"
-              className="rounded-full text-xs"
+              className="max-w-full rounded-full text-xs"
               onClick={() => toggleField(f)}
               aria-pressed={selected}
             >
-              {fieldName(f)}
+              <span className="truncate">{fieldName(f)}</span>
             </Button>
           );
         })}

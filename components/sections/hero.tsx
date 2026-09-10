@@ -28,7 +28,10 @@ export function Hero() {
     .filter((s) => s.icon);
 
   return (
-    <section className="flex flex-col-reverse items-center gap-8 py-12 sm:py-16 md:flex-row md:items-start md:gap-12">
+    <section
+      data-display-serif
+      className="flex flex-col-reverse items-center gap-8 py-12 sm:py-16 md:flex-row md:items-start md:gap-12"
+    >
       {/* 头像 */}
       <div className="shrink-0">
         {/* unoptimized：GIF 为动画头像，跳过图片优化以保留动画帧 */}
@@ -47,10 +50,15 @@ export function Hero() {
       <div className="flex flex-col items-center gap-4 text-center md:items-start md:text-left">
         <div className="flex flex-col gap-1.5">
           <p className="text-sm text-muted-foreground">{t("hello")}</p>
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
+          {/* 人名 + 职务行：**衬线的第二个合法角色（display serif）** ——
+              对应 Anthropic 首页 `.big-cta_title`（衬线 68.3px / **w500** / lh1.1）
+              + `.big-cta_subtitle`（衬线 24px / w400）的「品牌展示标题块」写法。
+              大字靠字号撑气场而非字重（Anthropic 用 w500），故此处 w-500 + text-6xl。
+              上方问候语仍无衬线（它是 UI 标签语气，与大字衬线形成 register 对比）。 */}
+          <h1 className="font-serif text-5xl font-medium sm:text-6xl">
             {profile.name}
           </h1>
-          <p className="text-lg text-muted-foreground">
+          <p className="font-serif text-lg text-muted-foreground">
             {profile.title[lang]} · {profile.institution[lang]}
           </p>
         </div>

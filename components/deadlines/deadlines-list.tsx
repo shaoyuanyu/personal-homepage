@@ -10,7 +10,6 @@ import {
   Globe2Icon,
   LayersIcon,
   MapPinIcon,
-  RefreshCwIcon,
   RotateCcwIcon,
 } from "lucide-react";
 
@@ -33,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Empty } from "@/components/ui/empty";
 import { SearchInput } from "@/components/ui/search-input";
+import { ccfBarClass, ccfChipClass } from "@/lib/design/grade";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/toast";
 import { useOwnerPreferences } from "@/lib/preferences/use-owner-preferences";
@@ -122,20 +122,6 @@ type LevelFilter = "all" | "A" | "B" | "C" | "none";
 // 时间轴：去年以来 → 今年以来 → 全部未来 → 未来 30 天 → 未来 90 天
 type RangeFilter = "last-year" | "this-year" | "all" | "30" | "90";
 
-const LEVEL_STYLE = {
-  A: "bg-red-500/10 text-red-600 ring-red-600/20 dark:bg-red-500/15 dark:text-red-400",
-  B: "bg-blue-500/10 text-blue-600 ring-blue-600/20 dark:bg-blue-500/15 dark:text-blue-400",
-  C: "bg-emerald-500/10 text-emerald-600 ring-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-400",
-  none: "bg-muted text-muted-foreground ring-border",
-} as const;
-
-const LEVEL_BAR = {
-  A: "bg-red-500",
-  B: "bg-blue-500",
-  C: "bg-emerald-500",
-  none: "bg-border",
-} as const;
-
 function LevelBadge({ level }: { level: "A" | "B" | "C" | "none" }) {
   const t = useTranslations("deadlines.levels");
   // 全拼显示（CCF-A）而非缩写：后期可能收录 CCF 目录之外的会议
@@ -144,7 +130,7 @@ function LevelBadge({ level }: { level: "A" | "B" | "C" | "none" }) {
   return (
     <Badge
       variant="outline"
-      className={`w-auto min-w-7 shrink-0 justify-center rounded-md px-1.5 text-[10px] font-bold ring-1 ring-inset ${LEVEL_STYLE[level]}`}
+      className={`eyebrow-label w-auto min-w-7 shrink-0 justify-center rounded-md px-1.5 font-bold ring-1 ring-inset ${ccfChipClass(level)}`}
       aria-label={level === "none" ? t("none") : `${text} ${t("class")}`}
     >
       {text}
@@ -182,7 +168,7 @@ function StatCard({
 }) {
   return (
     <Card
-      className={`transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+      className={`py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
         highlight ? "border-primary/30 bg-primary/5" : "hover:border-border"
       }`}
     >
@@ -195,7 +181,7 @@ function StatCard({
           <Icon className="size-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-xl leading-none font-semibold tracking-tight tabular-nums">
+          <p className="text-xl font-mono leading-none font-semibold tracking-tight">
             {value}
           </p>
           <p className="mt-1.5 truncate text-xs text-muted-foreground">{label}</p>
@@ -220,26 +206,6 @@ export function DeadlinesList({
   const [range, setRange] = useState<RangeFilter>("all");
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [openItem, setOpenItem] = useState<FlatItem | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState("");
-
-  /** 手动立即同步（主人专属）：POST 后刷新页面展示最新数据 */
-  const handleSync = async () => {
-    if (syncing) return;
-    setSyncing(true);
-    setSyncError("");
-    try {
-      const r = await fetch("/api/deadlines/sync", { method: "POST" });
-      const data = (await r.json().catch(() => null)) as
-        | { error?: string }
-        | null;
-      if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
-      window.location.reload();
-    } catch (err) {
-      setSyncError(err instanceof Error ? err.message : String(err));
-      setSyncing(false);
-    }
-  };
 
   const toggleField = (f: string) => {
     setSelectedFields((prev) =>
@@ -252,7 +218,6 @@ export function DeadlinesList({
     conf: DeadlineConf,
     year: DeadlineYear,
     main: MainDeadline,
-    label: string,
   ) => {
     try {
       const r = await fetch("/api/deadlines/caldav", {
@@ -262,7 +227,6 @@ export function DeadlinesList({
           a: conf.a,
           n: conf.n,
           year: year.y,
-          label,
           labelKey: main.labelKey,
           t: main.entry.t,
           tz: year.tz,
@@ -406,30 +370,6 @@ export function DeadlinesList({
 
   return (
     <div className="flex flex-col gap-8">
-      {/* 主人专属：手动立即同步数据源 */}
-      {isOwner && (
-        <div className="flex flex-col items-end gap-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSync}
-            disabled={syncing}
-          >
-            <RefreshCwIcon
-              className={syncing ? "animate-spin" : undefined}
-              data-icon="inline-start"
-            />
-            {syncing ? t("syncing") : t("syncNow")}
-          </Button>
-          {syncError && (
-            <p className="text-xs text-destructive" role="alert">
-              {t("syncFailed")}：{syncError}
-            </p>
-          )}
-        </div>
-      )}
-
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard icon={LayersIcon} value={total} label={t("statsTotal")} highlight />
@@ -490,26 +430,28 @@ export function DeadlinesList({
               <span className="hidden lg:inline">{t("range90")}</span>
             </ToggleGroupItem>
           </ToggleGroup>
+          {/* ⚠ 不要用 font-mono：本元素含中文「个会议」。 */}
           <Badge
             variant="outline"
-            className="ml-auto hidden shrink-0 font-normal tabular-nums text-muted-foreground lg:inline-flex"
+            className="ml-auto hidden shrink-0 tabular-nums font-normal text-muted-foreground lg:inline-flex"
           >
             {filtered.length} {t("items")}
           </Badge>
         </div>
       </div>
 
-      {/* 领域多选筛选：可同时勾选多个领域（空 = 全部） */}
+      {/* 领域多选筛选：可同时勾选多个领域（空 = 全部）
+          ⚠ 同 /ccf：英文字段名可超过视口宽度，chip 需 `max-w-full` + 标签 `truncate`。 */}
       <nav aria-label={t("fieldFilter")} className="flex flex-wrap gap-1.5">
         <Button
           type="button"
           variant={selectedFields.length === 0 ? "default" : "outline"}
           size="sm"
-          className="rounded-full text-xs"
+          className="max-w-full rounded-full text-xs"
           onClick={() => setSelectedFields([])}
           aria-pressed={selectedFields.length === 0}
         >
-          {t("fieldAll")}
+          <span className="truncate">{t("fieldAll")}</span>
         </Button>
         {fields.map((f) => {
           const key = FIELD_KEY(f);
@@ -520,11 +462,11 @@ export function DeadlinesList({
               type="button"
               variant={selected ? "default" : "outline"}
               size="sm"
-              className="rounded-full text-xs"
+              className="max-w-full rounded-full text-xs"
               onClick={() => toggleField(f)}
               aria-pressed={selected}
             >
-              {isZh ? f : FIELD_EN[key] ?? f}
+              <span className="truncate">{isZh ? f : FIELD_EN[key] ?? f}</span>
             </Button>
           );
         })}
@@ -552,7 +494,6 @@ export function DeadlinesList({
               range === "last-year" || range === "this-year" || !best;
             const main = isPast ? (bestPast ?? best!) : best!;
             const daysLeft = Math.ceil((main.utc - Date.now()) / DAY_MS);
-            const label = t(main.labelKey);
             const countdown = isPast
               ? t("pastDue")
               : daysLeft <= 0
@@ -562,26 +503,26 @@ export function DeadlinesList({
                   : t("daysLeft", { days: daysLeft });
             // 倒计时 urgency 配色（≤3 天红 / ≤7 天橙 / ≤14 天琥珀 / 其余弱化 / 已截止弱化）
             const urgencyClass = isPast
-              ? "text-muted-foreground/60"
+              ? "text-muted-foreground"
               : daysLeft <= 3
-                ? "text-red-600 dark:text-red-400"
+                ? "text-red-700 dark:text-red-400"
                 : daysLeft <= 7
-                  ? "text-orange-600 dark:text-orange-400"
+                  ? "text-orange-700 dark:text-orange-400"
                   : daysLeft <= 14
-                    ? "text-amber-600 dark:text-amber-400"
+                    ? "text-amber-700 dark:text-amber-400"
                     : "text-muted-foreground";
             const fieldKey = conf.f ? FIELD_KEY(conf.f) : "";
             return (
               <Card
                 key={`${conf.a}-${year.y}`}
-                className={`group relative cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                className={`group relative cursor-pointer py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
                   isPast ? "opacity-70 hover:opacity-100" : ""
                 }`}
                 onClick={() => setOpenItem({ conf, year, best, bestPast })}
               >
                 <span
                   aria-hidden
-                  className={`absolute inset-y-0 left-0 w-[3px] rounded-r-full opacity-0 transition-opacity group-hover:opacity-100 ${LEVEL_BAR[levelKey]}`}
+                  className={`absolute inset-y-0 left-0 w-[3px] rounded-r-full opacity-0 transition-opacity group-hover:opacity-100 ${ccfBarClass(levelKey)}`}
                 />
                 <CardContent className="flex h-full flex-col gap-2 p-3">
                   {/* 顶行：缩写 + 年份 + 等级 · 倒计时 */}
@@ -592,13 +533,16 @@ export function DeadlinesList({
                       </span>
                       <LevelBadge level={levelKey} />
                     </div>
-                    <span className={`shrink-0 text-xs font-medium tabular-nums ${urgencyClass}`}>
+                    {/* ⚠ 不要用 font-mono：倒计时含中文（还剩/天/明天截止）。
+                        用 tabular-nums 保持数字等宽对齐，避免拉取 cjk 分片。 */}
+                    <span className={`shrink-0 tabular-nums text-xs font-medium ${urgencyClass}`}>
                       {countdown}
                     </span>
                   </div>
-                  {/* 全称 */}
+                  {/* 全称：卡片内唯一的多行文本，弱化到 xs 与其余元数据同层，
+                      避免 3 层字阶（16 缩写 / 14 全称 / 12 元数据）挤在小卡里 */}
                   <p
-                    className="line-clamp-2 text-sm leading-snug text-muted-foreground transition-colors group-hover:text-foreground/80"
+                    className="line-clamp-2 text-xs leading-snug text-muted-foreground transition-colors group-hover:text-foreground/80"
                     title={conf.n}
                   >
                     {conf.n}
@@ -606,7 +550,7 @@ export function DeadlinesList({
                   {/* 领域徽章（独立行，细边框 + 图标；筛选命中时高亮） */}
                   {conf.f && (
                     <span
-                      className={`flex w-fit items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+                      className={`flex w-fit items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${
                         selectedFields.length > 0
                           ? "border-primary/40 bg-primary/5 text-primary"
                           : "border-border bg-muted/40 text-muted-foreground"
@@ -675,7 +619,7 @@ export function DeadlinesList({
                             onClick={(e) => {
                               // 阻止冒泡：菜单项是卡片组件树子节点，React 合成事件会冒泡到卡片（触发详情 Dialog）
                               e.stopPropagation();
-                              handleAddToCaldav(conf, year, main, label);
+                              handleAddToCaldav(conf, year, main);
                             }}
                           >
                             {t("addToCaldav")}
@@ -686,7 +630,7 @@ export function DeadlinesList({
                             e.stopPropagation();
                             const params = new URLSearchParams({
                               action: "TEMPLATE",
-                              text: `${conf.a} ${year.y} ${label}`,
+                              text: `${conf.a} ${year.y}`,
                               dates: `${toIcsUtc(main.utc)}/${toIcsUtc(main.utc + 3_600_000)}`,
                               details: `${conf.n}\nDeadline: ${main.entry.t} (${displayTz(year.tz)})\nDates: ${year.date ?? ""}\nLocation: ${year.place ?? ""}`,
                               location: year.place ?? "",
@@ -701,10 +645,12 @@ export function DeadlinesList({
                           onClick={(e) => {
                             e.stopPropagation();
                             const ics = buildIcsText({
-                              uid: `${conf.a}-${year.y}-${Date.now()}@shaoyuanyu.cn`,
-                              summary: `${conf.a} ${year.y} ${label}`,
+                              // 稳定 UID：同一会议同一节点重复下载导入不产生重复事件
+                              uid: `${conf.a}-${year.y}-${main.labelKey}@shaoyuanyu.cn`,
+                              summary: `${conf.a} ${year.y}`,
                               description: `${conf.n}\nDeadline: ${main.entry.t} (${displayTz(year.tz)})\nDates: ${year.date ?? ""}\nLocation: ${year.place ?? ""}`,
                               url: year.link,
+                              categories: [main.labelKey],
                               start: main.utc,
                               end: main.utc + 3_600_000,
                             });
@@ -736,7 +682,7 @@ export function DeadlinesList({
         open={openItem !== null}
         onOpenChange={(open) => !open && setOpenItem(null)}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           {openItem && (
             <>
               <DialogHeader>
@@ -750,7 +696,7 @@ export function DeadlinesList({
                 <div className="rounded-xl border p-3.5">
                   <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">
                     {openItem.best && (
-                      <Badge variant="secondary" className="text-[10px] font-normal">
+                      <Badge variant="secondary" className="text-xs font-normal">
                         {t("upcoming")}
                       </Badge>
                     )}
@@ -767,7 +713,7 @@ export function DeadlinesList({
                           key={`${e.t}-${i}`}
                           className="flex flex-wrap items-baseline gap-x-2 text-sm"
                         >
-                          <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+                          <Badge variant="outline" className="shrink-0 text-xs font-normal">
                             {t(e.k ?? "paper")}
                           </Badge>
                           <span className="tabular-nums">

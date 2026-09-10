@@ -59,7 +59,7 @@ test.describe("页面可达性", () => {
   });
 
   test("核心子页面：200", async ({ page }) => {
-    for (const path of ["/publications", "/talks", "/projects", "/blog", "/ccf", "/cas", "/nav", "/deadlines"]) {
+    for (const path of ["/publications", "/talks", "/projects", "/blog", "/ccf", "/cas", "/nav", "/deadlines", "/venues"]) {
       await expectPageOk(page, path);
     }
   });
@@ -80,6 +80,36 @@ test.describe("页面可达性", () => {
     await expect
       .poll(() => decodeURIComponent(page.url()))
       .toContain("#欢迎");
+  });
+
+  test("博客多语言：/blog 与 /en/blog 列出同一批文章", async ({ page }) => {
+    const notice = page.locator('[data-slot="blog-fallback-notice"]');
+
+    // ⚠ 先测无前缀（中文）路径，再测 /en 路径：访问过 /en/* 后 next-intl 会写入
+    // NEXT_LOCALE=en cookie，之后同一 context 内的无前缀路径会被重定向到 /en。
+    await page.context().clearCookies();
+
+    // 仅英文版的文章在中文列表下同样可见（回退显示英文原文）
+    await expectPageOk(page, "/blog");
+    await expect(page.getByText("Notes on Interpreting LLMs")).toBeVisible();
+    await expectPageOk(
+      page,
+      "/blog/llm-interpretability-notes",
+      "Notes on Interpreting LLMs",
+    );
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText("本文暂无中文版本");
+
+    // 反向：仅中文版的文章在英文列表下同样可见，详情页回退显示中文原文
+    await expectPageOk(page, "/en/blog");
+    await expect(page.getByText("欢迎来到我的博客")).toBeVisible();
+    await expectPageOk(page, "/en/blog/welcome", "欢迎来到我的博客");
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(/isn't available in English/);
+
+    // 文章在两种语言下成对存在（语言切换不会 404）；双语文章各显示对应版本、
+    // 不显示回退提示的行为由构建期「全部文章 × 全部语言」路由 + 手动验证覆盖
+    // （见 CLAUDE.md 博客一节）。
   });
 });
 
@@ -122,7 +152,624 @@ test.describe("旧链接与 SEO 资源", () => {
   });
 });
 
+/**
+ * 字体策略（见 CLAUDE.md「字体策略」与 app/globals.css）：
+ * **按「角色」分派，与页面语言无关** —— 同一元素在中/英页面必然同族。
+ * 对齐 Anthropic 官网范式（实测：其 `body`/`main` 默认即衬线，无衬线是覆盖层）：
+ * - 无衬线（默认，约 90% 文本）：全部页面标题（h1）、功能 UI、说明文字、
+ *   元数据（日期/计数）、**外部专名（会议/期刊全名、外链名）**
+ * - 有衬线：**两个角色** —— ① 连续阅读的长正文（≥16px + 行高 ≥1.6，载体带
+ *   `data-longform`）；② **首页 hero 的展示标题块**（人名 + 职务行，载体带
+ *   `data-display-serif`，对应 Anthropic 首页 `.big-cta_title` 的 68px 衬线）
+ * - 等宽：标识符与数字（缩写/ISSN/年份/日期）、逐字代码、品牌 Logo，
+ *   以及 `.eyebrow-label` 全大写技术眉标
+ *
+ * ⚠ 判据是「衬线**单义**」：长正文的衬线 = 「你在读一段正文」，展示标题块的
+ *   衬线 = 「这是身份/品牌签名」。两者都不得降级去承担小字说明——一旦衬线
+ *   同时是大标题又是小字说明，sans/serif 的对比就不再指向任何语义。
+ *
+ * 旧范式（按页面语言切字体 / 衬线覆盖说明文字与专名）已废弃。
+ */
+test.describe("字体策略（按角色）", () => {
+  /** 读取元素解析后的 font-family 声明值 */
+  async function family(page: Page, selector: string) {
+    return page
+      .locator(selector)
+      .first()
+      .evaluate((el) => getComputedStyle(el).fontFamily);
+  }
+
+  const SERIF = /Tinos/i; // 有衬线栈首族——**仅长正文（data-longform）合法**
+  const MONO = /Noto Sans Mono CJK SC/i; // 等宽栈首族（自托管分片）
+
+  /** 核心不变式：同一元素在中文页与英文页必须解析到同一个字体族。 */
+  test("同一元素跨中/英页面同族（核心不变式）", async ({ page }) => {
+    const pairs: [string, string][] = [
+      ["/", "/en"],
+      ["/ccf", "/en/ccf"],
+      ["/venues", "/en/venues"],
+    ];
+    const selectors = [
+      "h1",
+      "main p",
+      ".site-header a[data-slot='button']",
+      "footer p",
+      ".font-mono",
+    ];
+    for (const [zh, en] of pairs) {
+      for (const sel of selectors) {
+        // ⚠ 先中文再英文：访问 /en/* 会写 NEXT_LOCALE=en cookie，
+        // 其后的无前缀路径会被重定向到 /en，导致「中文页」其实测的是英文页。
+        await page.context().clearCookies();
+        await page.goto(zh, { waitUntil: "domcontentloaded" });
+        const zhFont = await family(page, sel).catch(() => null);
+        await page.goto(en, { waitUntil: "domcontentloaded" });
+        const enFont = await family(page, sel).catch(() => null);
+        if (zhFont === null || enFont === null) continue;
+        expect(enFont, `${sel} 在 ${zh} 与 ${en} 应同族`).toBe(zhFont);
+      }
+    }
+  });
+
+  test("功能性 UI 一律无衬线（顶部栏/页脚/区块标题/徽章/分段控件）", async ({ page }) => {
+    const probes: [string, string][] = [
+      ["/ccf", ".site-header a[data-slot='button']"],
+      ["/ccf", "footer p"],
+      ["/ccf", "h2"],
+      ["/ccf", "[data-slot='badge']"],
+      ["/ccf", "[data-slot='toggle-group-item']"],
+      ["/venues", "[data-slot='badge']"],
+    ];
+    for (const [path, sel] of probes) {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      const loc = page.locator(sel).first();
+      await expect(loc, `${path} 应存在 ${sel}`).toBeVisible();
+      const f = await loc.evaluate((el) => getComputedStyle(el).fontFamily);
+      expect(f, `${path} 的 ${sel} 属功能 UI，应为无衬线，实际: ${f}`).not.toMatch(SERIF);
+    }
+  });
+
+  /**
+   * ★ 核心不变式：衬线只有两个合法角色，且都有显式标记：
+   *   a. `[data-longform]` —— 长正文（博客/速记正文）
+   *   b. `[data-display-serif]` —— 首页 hero 的人名/职务展示标题块
+   * 其余任何地方解析到衬线栈都是违规。
+   * 这条断言把「衬线语义单义」变成机器可校验的约束，防止后续新增页面时回退。
+   */
+  test("衬线只出现在长正文或首页展示标题块内", async ({ page }) => {
+    for (const path of [
+      "/",
+      "/publications",
+      "/talks",
+      "/projects",
+      "/blog",
+      "/blog/welcome",
+      "/blog/llm-interpretability-notes",
+      "/nav",
+      "/ccf",
+      "/cas",
+      "/deadlines",
+      "/venues",
+      "/login",
+      "/en",
+      "/en/venues",
+      "/en/ccf",
+    ]) {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      const offenders = await page.locator("main *").evaluateAll((els) =>
+        els
+          .filter((el) => {
+            const s = getComputedStyle(el);
+            if (!s.fontFamily.includes("Tinos")) return false;
+            return !el.closest("[data-longform]") && !el.closest("[data-display-serif]");
+          })
+          .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 48)}`)
+          .slice(0, 6),
+      );
+      expect(offenders, `${path} 在长正文与展示标题块之外使用了衬线`).toEqual([]);
+    }
+  });
+
+  /**
+   * h1 默认无衬线（Anthropic 范式：衬线不承担页面标题）。
+   * 唯一例外：首页 hero 的人名 —— 它是「展示标题块」（data-display-serif），
+   * 对应 Anthropic 首页 `.big-cta_title` 的大字衬线写法。
+   */
+  test("h1 无衬线（首页人名除外）", async ({ page }) => {
+    for (const path of [
+      "/publications",
+      "/talks",
+      "/projects",
+      "/blog",
+      "/blog/welcome",
+      "/nav",
+      "/ccf",
+      "/cas",
+      "/deadlines",
+      "/venues",
+      "/login",
+      "/en/venues",
+    ]) {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      const f = await family(page, "h1");
+      expect(f, `${path} 的页面主标题应为无衬线，实际: ${f}`).not.toMatch(SERIF);
+    }
+
+    // 首页 hero：人名是唯一合法的「衬线 h1」，且必须带 data-display-serif 标记
+    for (const path of ["/", "/en"]) {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      const marked = await page
+        .locator("main h1")
+        .first()
+        .evaluate((el) => !!el.closest("[data-display-serif]"));
+      expect(marked, `${path} 的衬线 h1 必须位于 [data-display-serif] 内`).toBe(true);
+    }
+  });
+
+  test("等宽：Logo / 标识符 / 逐字代码统一走 Noto Sans Mono CJK SC", async ({ page }) => {
+    await page.goto("/blog/welcome", { waitUntil: "domcontentloaded" });
+    expect(await family(page, ".prose code"), "代码块应等宽").toMatch(MONO);
+    expect(await family(page, ".site-header a.font-mono"), "Logo 应等宽").toMatch(MONO);
+
+    await page.goto("/ccf", { waitUntil: "domcontentloaded" });
+    expect(await family(page, "li span.font-mono"), "CCF 缩写应等宽").toMatch(MONO);
+  });
+
+  /**
+   * 字阶下限：全站最小字号 12px（不再出现 10/11px 的「看不清」小字）。
+   * 字阶为 12/14/16/18/20/24/30/48（长正文 17px 除外）。
+   * ⚠ 排除 REUI 日历（安装产物，内部 11px 事件 chip 属第三方样式）。
+   */
+  test("正文文本不小于 12px", async ({ page }) => {
+    for (const path of ["/", "/ccf", "/cas", "/venues", "/deadlines", "/nav", "/blog"]) {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      const offenders = await page.locator("main *").evaluateAll((els) =>
+        els
+          .filter((el) => {
+            if (el.closest("[data-slot^='event-calendar']")) return false;
+            const own = [...el.childNodes]
+              .filter((n) => n.nodeType === 3)
+              .map((n) => (n.textContent ?? "").trim())
+              .join("")
+              .trim();
+            if (!own) return false;
+            const s = getComputedStyle(el);
+            if (s.visibility === "hidden" || s.display === "none") return false;
+            return parseFloat(s.fontSize) < 12;
+          })
+          .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} @${getComputedStyle(el).fontSize}`)
+          .slice(0, 6),
+      );
+      expect(offenders, `${path} 存在小于 12px 的正文文本`).toEqual([]);
+    }
+  });
+
+  /**
+   * 等宽眉标（.eyebrow-label）：全大写 + 等宽，用于数据卡片的短标签。
+   * 这是 Anthropic 范式的第三种语气（技术性标注），必须落在等宽族。
+   */
+  test("等宽眉标走等宽字体", async ({ page }) => {
+    await page.goto("/ccf", { waitUntil: "domcontentloaded" });
+    const badge = page.locator(".eyebrow-label").first();
+    await expect(badge).toBeVisible();
+    expect(await badge.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(MONO);
+    expect(await badge.evaluate((el) => getComputedStyle(el).textTransform)).toBe("uppercase");
+  });
+
+  /**
+   * 客户端切换语言（不刷新）时字体**不应变化**——角色制下字体与语言无关。
+   * 用客户端点击而非直接 goto（直接 goto 走完整 SSR，绕过客户端渲染路径）。
+   */
+  test("客户端切换语言：字体不变", async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto("/venues", { waitUntil: "domcontentloaded" });
+    const body = page.locator("main p").first();
+    const font = () => body.evaluate((el) => getComputedStyle(el).fontFamily);
+    const before = await font();
+
+    await page.getByRole("button", { name: "Switch language" }).click();
+    await page.getByRole("menuitem", { name: /English/i }).first().click();
+    await expect(page).toHaveURL(/\/en\/venues$/);
+
+    // URL 先于 RSC 提交落地，故 poll 等字体稳定
+    await expect
+      .poll(font, { message: "切换语言后字体不应变化（角色制与语言无关）" })
+      .toBe(before);
+  });
+
+  test("未匹配路由渲染站内 404（无衬线主标题 + 语言化文案 + 返回入口）", async ({ page }) => {
+    const res = await page.goto("/no-such-page");
+    expect(res?.status()).toBe(404);
+
+    // 2026-09 前项目缺根级 not-found.tsx，未匹配 URL 会落到 Next 内置 404
+    // （h1 class=next-error-h1、字体 system-ui、英文硬编码），现改为站内 404
+    const h1 = page.locator("h1");
+    await expect(h1).toBeVisible();
+    const f = await family(page, "h1");
+    expect(f, "404 主标题应为无衬线栈").not.toMatch(SERIF);
+    await expect(page.getByText("页面不存在")).toBeVisible();
+    await expect(page.getByRole("link", { name: "首页" })).toBeVisible();
+
+    // 英文语境下渲染英文文案、返回链接带 /en 前缀（字体与中文页一致）
+    const enRes = await page.goto("/en/no-such-page");
+    expect(enRes?.status()).toBe(404);
+    await expect(page.getByText("Page not found")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/en");
+    expect(await family(page, "h1")).not.toMatch(SERIF);
+  });
+});
+
+/**
+ * 排版与可访问性规格（WCAG AA 对比度 / 卡片内边距 / 字阶）
+ *
+ * 本项目没有视觉回归基线，故把「程序化取证」的结论固化成断言。
+ *
+ * ⚠ 颜色换算必须交给浏览器自己：Tailwind v4 下 `getComputedStyle` 返回的是
+ *   `lab(...)` / `oklab(...)`（不是 rgb），**手写换算极易算错并给出「全部通过」的假结果**
+ *   （项目曾据此误判浅色徽章达标，实际只有 4.35:1）。这里用 canvas 作精确转换器：
+ *   连续两次赋值 `fillStyle`（先非法哨兵、再目标值），随后 `getImageData` 得到
+ *   浏览器自己的非预乘 sRGB。暗色主题必须真测——半透明底只有合成后才知道实际对比度。
+ */
+test.describe("排版与可访问性规格", () => {
+  /** WCAG 相对亮度 */
+  const relLum = (c: number[]) => {
+    const f = (v: number) => {
+      v /= 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+  };
+  const ratio = (a: number[], b: number[]) => {
+    const [x, y] = [relLum(a), relLum(b)];
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  };
+  const flatten = (fg: number[], bg: number[]) => {
+    const a = fg[3] ?? 1;
+    return [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a));
+  };
+
+  /** 收集 main 内所有「有自有文本节点」的元素的颜色 / 祖先背景链 / 字号字重 */
+  async function collectText(page: Page) {
+    return page.evaluate(() => {
+      type Item = {
+        txt: string;
+        color: string;
+        chain: string[];
+        fs: number;
+        fw: number;
+        cls: string;
+      };
+      const out: Item[] = [];
+      const walk = (el: Element) => {
+        const cs = getComputedStyle(el);
+        if (cs.display === "none" || cs.visibility === "hidden" || cs.opacity === "0")
+          return;
+        const own = [...el.childNodes]
+          .filter((n) => n.nodeType === 3)
+          .map((n) => (n.textContent ?? "").trim())
+          .join("")
+          .trim();
+        if (own && el.getBoundingClientRect().width > 0) {
+          const chain: string[] = [];
+          let cur: Element | null = el;
+          while (cur) {
+            chain.push(getComputedStyle(cur).backgroundColor);
+            cur = cur.parentElement;
+          }
+          out.push({
+            txt: own.slice(0, 24),
+            color: cs.color,
+            chain,
+            fs: parseFloat(cs.fontSize),
+            fw: parseFloat(cs.fontWeight),
+            cls: String(el.className).slice(0, 48),
+          });
+        }
+        for (const c of el.children) walk(c);
+      };
+      const root = document.querySelector("main");
+      if (root) walk(root);
+      return out;
+    });
+  }
+
+  /** 用 canvas 把任意 CSS 颜色（lab / oklab / 带 alpha）换成精确 sRGB */
+  async function toSrgb(page: Page, colors: string[]) {
+    return page.evaluate((list: string[]) => {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 1;
+      const cx = cv.getContext("2d")!;
+      return list.map((v) => {
+        cx.fillStyle = "#123456"; // 哨兵：v 非法时保持不变，可据此判断
+        cx.fillStyle = v;
+        cx.clearRect(0, 0, 1, 1);
+        cx.fillRect(0, 0, 1, 1);
+        const d = cx.getImageData(0, 0, 1, 1).data;
+        return [d[0], d[1], d[2], d[3] / 255] as number[];
+      });
+    }, colors);
+  }
+
+  /** 返回该页面所有未达 WCAG AA 的文本（正文 4.5:1 / 大字 3:1） */
+  async function contrastFailures(page: Page, path: string, dark?: boolean) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    if (dark !== undefined)
+      await page.waitForFunction(
+        (d) => document.documentElement.classList.contains("dark") === d,
+        dark,
+      );
+    const items = await collectText(page);
+    const all = [...new Set(items.flatMap((i) => [i.color, ...i.chain]))];
+    const conv = await toSrgb(page, all);
+    const byColor = new Map(all.map((v, i) => [v, conv[i]]));
+    const bad: string[] = [];
+    for (const it of items) {
+      const fg = byColor.get(it.color);
+      if (!fg) continue;
+      let bg: number[] | null = null;
+      for (const c of it.chain) {
+        const p = byColor.get(c);
+        if (p && p[3] > 0.99) {
+          bg = p;
+          break;
+        }
+      }
+      if (!bg) bg = [255, 255, 255, 1];
+      const r = ratio(fg[3] < 1 ? flatten(fg, bg) : fg, bg);
+      const large = it.fs >= 24 || (it.fs >= 18.66 && it.fw >= 700);
+      const need = large ? 3 : 4.5;
+      if (r < need)
+        bad.push(`"${it.txt}" ${r.toFixed(2)}:1（需 ${need}）fg=${it.color} ${it.cls}`);
+    }
+    return bad;
+  }
+
+  const AA_ROUTES = [
+    "/",
+    "/blog/welcome",
+    "/ccf",
+    "/cas",
+    "/deadlines",
+    "/venues",
+    "/nav",
+    "/login",
+  ];
+
+  test("正文文本对比度达 WCAG AA（浅色 + 深色）", async ({ page }) => {
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      for (const path of AA_ROUTES) {
+        const bad = await contrastFailures(page, path, scheme === "dark");
+        expect(bad, `${scheme} 主题下 ${path} 存在未达 WCAG AA 的文本`).toEqual([]);
+      }
+    }
+  });
+
+  /**
+   * 卡片内边距四边必须对称。
+   *
+   * ⚠ 陷阱：`ui/card.tsx` 的 `Card` 自带 `py-(--card-spacing)`（16px），而 `CardContent`
+   *   基础类只有 `px-*`。故在 `CardContent` 上写 `p-3` / `py-4` / `pb-3` **只改水平方向**，
+   *   垂直方向会变成 `16 + N`（曾出现 28:12、32:16 的「上下发空」）。
+   *   正确写法是同时给 `Card` 加 `py-0`，让 CardContent 独自掌控内边距。
+   */
+  test("卡片内边距四边对称", async ({ page }) => {
+    for (const path of ["/", "/blog", "/nav", "/ccf", "/cas", "/deadlines", "/venues", "/publications"]) {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      const bad = await page.evaluate(() => {
+        const out: string[] = [];
+        for (const card of document.querySelectorAll("[data-slot=card]")) {
+          const cr = card.getBoundingClientRect();
+          const provs = [...card.children].filter((c) =>
+            /card-(header|content|footer)/.test(c.getAttribute("data-slot") ?? ""),
+          );
+          if (!provs.length) continue;
+          let t = Infinity;
+          let b = -Infinity;
+          let l = Infinity;
+          let r = -Infinity;
+          let measurable = false;
+          for (const pv of provs) {
+            const pcs = getComputedStyle(pv);
+            const pb = pv.getBoundingClientRect();
+            if (pb.width <= 0) continue;
+            measurable = true;
+            t = Math.min(t, pb.top + parseFloat(pcs.paddingTop));
+            b = Math.max(b, pb.bottom - parseFloat(pcs.paddingBottom));
+            l = Math.min(l, pb.left + parseFloat(pcs.paddingLeft));
+            r = Math.max(r, pb.right - parseFloat(pcs.paddingRight));
+          }
+          if (!measurable || !isFinite(t)) continue;
+          // 排除被 grid 拉伸到等高的卡片：内容顶对齐 → 底部留白属布局而非内边距
+          const ccs = getComputedStyle(card);
+          const gap = parseFloat(ccs.rowGap) || 0;
+          const inner = provs.reduce((s, x) => s + x.getBoundingClientRect().height, 0);
+          const natural =
+            parseFloat(ccs.paddingTop) +
+            parseFloat(ccs.paddingBottom) +
+            inner +
+            gap * Math.max(0, provs.length - 1);
+          if (cr.height > natural + 2) continue;
+
+          const vals = {
+            t: Math.round(t - cr.top),
+            b: Math.round(cr.bottom - b),
+            l: Math.round(l - cr.left),
+            r: Math.round(cr.right - r),
+          };
+          if (Math.abs(vals.t - vals.b) > 2 || Math.abs(vals.t - vals.l) > 2)
+            out.push(`上${vals.t} 下${vals.b} 左${vals.l} 右${vals.r} ${String(card.className).slice(0, 40)}`);
+        }
+        return out.slice(0, 6);
+      });
+      expect(bad, `${path} 存在内边距不对称的卡片（Card 与 CardContent 内边距叠加？）`).toEqual([]);
+    }
+  });
+
+  /**
+   * 字阶：只允许体系内的值。30/36 用于页面主标题，48/60 用于首页展示标题块。
+   * 防的是 `text-[0.8rem]`（12.8px）这类非体系、非整数的「看起来差不多」尺寸。
+   */
+  test("字阶只用体系内的值", async ({ page }) => {
+    const ALLOWED = [12, 14, 16, 17, 18, 20, 24, 30, 36, 48, 60];
+    for (const path of ["/", "/blog/welcome", "/ccf", "/cas", "/deadlines", "/venues", "/nav"]) {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      const bad = await page.evaluate(
+        (allowed: number[]) => {
+          const out = new Set<string>();
+          const walk = (el: Element) => {
+            if (el.closest("[data-slot^='event-calendar']")) return; // 第三方日历内部样式
+            const cs = getComputedStyle(el);
+            if (cs.display === "none" || cs.visibility === "hidden") return;
+            const own = [...el.childNodes]
+              .filter((n) => n.nodeType === 3)
+              .map((n) => (n.textContent ?? "").trim())
+              .join("")
+              .trim();
+            if (own && el.getBoundingClientRect().width > 0) {
+              const px = parseFloat(cs.fontSize);
+              if (!allowed.some((a) => Math.abs(a - px) < 0.01)) out.add(cs.fontSize);
+            }
+            for (const c of el.children) walk(c);
+          };
+          const root = document.querySelector("main");
+          if (root) walk(root);
+          return [...out];
+        },
+        ALLOWED,
+      );
+      expect(bad, `${path} 出现体系外的字号`).toEqual([]);
+    }
+  });
+
+  /**
+   * 最窄视口下页面内容不得横向溢出（中英文各一遍）。
+   *
+   * 顶部栏另有一条断言；这里防的是**内容区**的溢出——英文字段名比中文长得多，
+   * 单个 `shrink-0` 的筛选 chip 就能宽过 360px 视口（`/en/ccf` 曾溢出 64px）。
+   */
+  test("窄屏（360px）无横向溢出", async ({ page }) => {
+    const routes = ["/", "/publications", "/blog", "/ccf", "/cas", "/deadlines", "/venues", "/nav"];
+    await page.setViewportSize({ width: 360, height: 900 });
+
+    const overflowAt = async (path: string) => {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      return page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+    };
+
+    // ⚠ 先中文再英文：访问 /en/* 会写 NEXT_LOCALE=en cookie，
+    // 之后无前缀路径会被重定向到 /en，导致「中文页」其实测的是英文页。
+    await page.context().clearCookies();
+    for (const path of routes)
+      expect(await overflowAt(path), `${path} 在 360px 下横向溢出`).toBeLessThanOrEqual(0);
+
+    await page.context().clearCookies();
+    for (const path of routes) {
+      const en = path === "/" ? "/en" : `/en${path}`;
+      expect(await overflowAt(en), `${en} 在 360px 下横向溢出`).toBeLessThanOrEqual(0);
+    }
+  });
+});
+
 test.describe("关键资源", () => {
+  /**
+   * 等宽字体的缓存头 + **中英双语可用性**（回归点）。
+   *
+   * 背景一（缓存）：字体最初放在 `public/fonts/`，而 Next.js 对 `public/` 下的文件
+   * 默认发 `Cache-Control: public, max-age=0`——**每次访问都要发一次条件请求
+   * revalidate**（304 不重传 body，但多一次网络往返）。改到 `app/fonts/` + CSS
+   * 相对 url() 后由 webpack 接管：加内容哈希、输出到 `_next/static/media/`、
+   * 发 immutable 长缓存。⚠ 若有人把脚本改回 `public/` 或把 url() 改回绝对路径
+   * `/fonts/…`，此用例会失败。
+   *
+   * 背景二（不分片）：早期版本按 unicode-range 切成 latin + cjk 两个分片，
+   * 于是「等宽族里有没有汉字」变成了性能开关。现已改为**单文件覆盖拉丁 +
+   * 常用汉字**（Regular / Bold 各一个，那是**字重**而非覆盖分片），
+   * 代码注释里的中文必须是等宽、且不能触发额外的文件下载。
+   * ⚠ 若有人改回 unicode-range 分片，此用例的「恰好 2 个 URL 且均无
+   * unicode-range」断言会失败。
+   */
+  test("等宽字体：内容哈希 + immutable 长缓存，且单文件覆盖中英、无 unicode-range", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/ccf", { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
+
+    // 收集该字体族的全部 @font-face 规则（Regular + Bold → 两条）
+    const faces = await page.evaluate(() => {
+      const out: { url: string | undefined; unicodeRange: string }[] = [];
+      for (const sheet of document.styleSheets) {
+        let list: CSSRuleList;
+        try {
+          list = sheet.cssRules;
+        } catch {
+          continue; // 跨域表读不到，跳过
+        }
+        for (const rule of Array.from(list)) {
+          if (
+            rule instanceof CSSFontFaceRule &&
+            rule.style.fontFamily.includes("Noto Sans Mono CJK SC")
+          ) {
+            const url = rule.cssText.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
+            // unicode-range 未设置时 cssText 里不出现该属性 → 取空串
+            const ur = rule.cssText.match(/unicode-range:\s*([^;]+);/)?.[1]?.trim() ?? "";
+            out.push({ url, unicodeRange: ur });
+          }
+        }
+      }
+      return out;
+    });
+
+    expect(faces.length, `应为 Regular + Bold 两条 @font-face，实际: ${faces.length}`).toBe(2);
+    for (const f of faces) {
+      // ⚠ 不再有 unicode-range —— 单文件覆盖中英文，不存在「汉字触发大文件下载」
+      expect(f.unicodeRange, `${f.url} 不应带 unicode-range（已取消分片）`).toBe("");
+      const u = f.url ?? "";
+      expect(u, `字体 URL 应为构建产物路径（带内容哈希）: ${u}`).toMatch(
+        /^\/_next\/static\/media\/noto-sans-mono-cjk-sc(-bold)?\.[0-9a-f]{8}\.woff2$/,
+      );
+      const res = await request.get(u);
+      expect(res.status(), `${u} 应可访问`).toBe(200);
+      const cc = res.headers()["cache-control"] ?? "";
+      expect(cc, `${u} 应发 immutable 长缓存（原 public/ 方案是 max-age=0）`).toContain(
+        "immutable",
+      );
+      expect(cc).toContain("max-age=31536000");
+    }
+  });
+
+  test("等宽字体含汉字：中文按 2:1 倍宽渲染（等宽列对齐）", async ({ page }) => {
+    await page.goto("/ccf", { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
+
+    // 探针：拉丁 1 字 vs 汉字 1 字。Noto Sans Mono CJK SC 的度量是
+    // 拉丁 0.5em / 汉字 1.0em，故一个汉字必须恰好等于两个拉丁字符宽。
+    const r = await page.evaluate(() => {
+      const el = document.createElement("span");
+      el.style.cssText =
+        "position:absolute;visibility:hidden;white-space:pre;font-family:var(--font-mono);font-size:100px";
+      document.body.appendChild(el);
+      const w = (t: string) => {
+        el.textContent = t;
+        return el.getBoundingClientRect().width;
+      };
+      const oneLatin = w("i");
+      const oneHan = w("中");
+      el.remove();
+      return { oneLatin, oneHan };
+    });
+
+    expect(r.oneLatin, "拉丁字符宽应约为 0.5em = 50px").toBeCloseTo(50, 0);
+    expect(r.oneHan, "汉字宽应约为 1em = 100px（等宽字体已生效，未回退系统字体）").toBeCloseTo(
+      100,
+      0,
+    );
+    expect(r.oneHan / r.oneLatin, "汉字应恰好是 2 倍拉丁宽（2:1 对齐）").toBeCloseTo(2, 1);
+  });
+
   test("学术导航页图标（自托管 favicon）可用", async ({ page }) => {
     await expectPageOk(page, "/nav");
     // 等待所有图片加载 / fallback 完成后再检查
@@ -187,6 +834,61 @@ test.describe("关键资源", () => {
     const errors = collectPageErrors(page);
     await expectPageOk(page, "/");
     expect(errors, `首页控制台错误: ${errors.join("; ")}`).toEqual([]);
+  });
+});
+
+test.describe("Venue Explorer（期刊会议速查）", () => {
+  test("页面 200 + 默认态热门速查区", async ({ page }) => {
+    await expectPageOk(page, "/venues", "期刊会议速查");
+    // 默认不铺开列表：引导 + 热门速查区（标题常驻，chips 数据驱动）
+    await expect(
+      page.getByRole("heading", { name: "即将截稿的 CCF-A 会议" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /双顶期刊/ }),
+    ).toBeVisible();
+  });
+
+  test("搜索 CVPR：会议栏命中 + A 徽章 + 详情 Dialog", async ({ page }) => {
+    await expectPageOk(page, "/venues");
+    await page.getByLabel("搜索缩写、名称、ISSN 或领域…").fill("CVPR");
+    await expect(page).toHaveURL(/q=CVPR/);
+
+    const confRegion = page.getByRole("region", { name: "会议" });
+    const card = confRegion
+      .locator("li")
+      .filter({ hasText: "IEEE/CVF Computer Vision and Pattern Recognition Conference" });
+    await expect(card).toBeVisible();
+    await expect(card.getByLabel("CCF A")).toBeVisible();
+
+    // 点击卡片打开详情：全称 + 年份数据区
+    await card.locator("button").click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(
+      "IEEE/CVF Computer Vision and Pattern Recognition Conference",
+    );
+    await expect(dialog).toContainText(/20\d\d/);
+  });
+
+  test("搜索 TPAMI：期刊栏双评级徽章对照", async ({ page }) => {
+    await expectPageOk(page, "/venues");
+    await page.getByLabel("搜索缩写、名称、ISSN 或领域…").fill("TPAMI");
+
+    const jourRegion = page.getByRole("region", { name: "期刊" });
+    const card = jourRegion
+      .locator("li")
+      .filter({ hasText: "IEEE Transactions on Pattern Analysis and Machine Intelligence" });
+    await expect(card).toBeVisible();
+    // CCF-A（药丸）+ 中科院 1 区（方徽）双评级并排
+    await expect(card.getByLabel("CCF A")).toBeVisible();
+    await expect(card.getByLabel("中科院 1 区")).toBeVisible();
+
+    // 清空按钮恢复默认态
+    await page.getByLabel("清除搜索").click();
+    await expect(
+      page.getByRole("heading", { name: "即将截稿的 CCF-A 会议" }),
+    ).toBeVisible();
   });
 });
 
@@ -255,6 +957,77 @@ test.describe("主人登录（TOTP）", () => {
     await expect(page).toHaveURL(/\/$/);
     const cookies = await page.context().cookies();
     expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
+  });
+
+  /**
+   * 顶部栏响应式：断点 lg（1024）——<lg 收进汉堡 Sheet，≥lg 内联展开。
+   * 回归背景：英文文案（Publications / Scratchpad / Calendar）比中文长两倍以上，
+   * 登录态在 768~1023 区间内联导航放不下（实测 768px 需 910px、可用仅 705px），
+   * 曾横向溢出把「我的/主题/语言」挤出视口。此处锁定「任一视口/语言/登录态下
+   * 都不溢出」+「断点两侧入口均可达」。
+   */
+  test("响应式：多视口 × 中英文的顶部栏均不横向溢出", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    // 768/820：中宽度（iPad 竖屏等）；1024/1280/1440：内联导航展开后
+    for (const width of [768, 820, 1024, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const path of ["/", "/en"]) {
+        await page.goto(path, { waitUntil: "domcontentloaded" });
+        const { headerOverflow, docOverflow } = await page
+          .locator(".site-header > div")
+          .evaluate((el) => ({
+            headerOverflow: el.scrollWidth - el.clientWidth,
+            // scrollbar-gutter: stable 会预留滚动条宽度，故此值为 0 或负
+            docOverflow:
+              document.documentElement.scrollWidth -
+              document.documentElement.clientWidth,
+          }));
+        expect(
+          headerOverflow,
+          `${path} @ ${width}px：顶部栏内容（登录态）不应横向溢出`,
+        ).toBeLessThanOrEqual(0);
+        expect(
+          docOverflow,
+          `${path} @ ${width}px：页面不应出现横向滚动（登录态）`,
+        ).toBeLessThanOrEqual(0);
+      }
+    }
+  });
+
+  test("响应式：断点两侧入口都可达（<1024 汉堡菜单 / ≥1024 内联导航）", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    const desktopNav = page.locator(".site-header nav");
+
+    // <lg：内联导航收起，汉堡菜单出现，且 Sheet 内提供完整入口
+    // （主人专属「速记/日历」也必须在此可达，否则中宽度下功能真空）
+    await page.setViewportSize({ width: 768, height: 800 });
+    await page.goto("/");
+    await expect(desktopNav).toBeHidden();
+    await page.getByRole("button", { name: "菜单" }).click();
+    const sheetNav = page.locator(".sheet-nav");
+    for (const name of ["首页", "博客", "速记", "日历", "导航"]) {
+      await expect(
+        sheetNav.getByRole("link", { name, exact: true }),
+        `768px 汉堡菜单应含入口「${name}」`,
+      ).toBeVisible();
+    }
+    // 移动端 Sheet 内不再渲染分隔竖线（纵向列表）
+    await expect(sheetNav.locator("span.bg-border\\/60")).toBeHidden();
+
+    // ≥lg：内联导航展开，汉堡菜单消失（不再有收起的入口）
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/");
+    await expect(desktopNav).toBeVisible();
+    for (const name of ["首页", "博客", "速记", "日历", "导航"]) {
+      await expect(
+        desktopNav.getByRole("link", { name, exact: true }),
+        `1280px 内联导航应含入口「${name}」`,
+      ).toBeVisible();
+    }
+    await expect(page.getByRole("button", { name: "菜单" })).toBeHidden();
   });
 });
 

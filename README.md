@@ -47,10 +47,24 @@ pnpm start        # 生产运行
 | `content/talks.yaml` | 学术报告 | 同上 |
 | `content/projects.yaml` | 项目 | 同上 |
 | `content/nav-links.yaml` | 导航分组与链接 | 同上 |
-| `content/posts/{zh,en}/*.mdx` | 博客文章（按语言分目录） | 同上 |
+| `content/posts/{zh,en}/*.mdx` | 博客文章（按语言分目录，见下） | 同上 |
 
 > 新增论文/报告/项目/导航链接 = 编辑对应 YAML；新增博客 = 新建 MDX 文件。
 > 结构错误会在构建期由 Zod 直接报错，无需担心运行时崩溃。
+
+### 博客文章的语言与翻译
+
+`slug` 是**文章标识**，不是语言版本标识：
+
+- 同一 slug 同时出现在 `posts/zh/` 与 `posts/en/` 下 = 同一篇文章的两个语言版本；
+- slug 只需**在同一语言内唯一**（重名会在构建期抛出可定位的错误）；
+- `/blog` 与 `/en/blog` 列出**同一批文章**：某篇文章缺当前语言的版本时，
+  回退显示原文（默认语言 zh），详情页顶部会给出「暂无该语言译文」的提示；
+- 因此 `/blog/<slug>` 与 `/en/blog/<slug>` 总是成对存在，语言切换不会 404；
+  页面的 `canonical` 指向正文实际语言的 URL，避免同一内容被重复收录。
+
+例：`posts/zh/welcome.mdx`（slug `welcome`）+ `posts/en/welcome.mdx`（slug `welcome`）
+= 一篇双语文章；只建其中一侧则该文章在两种语言下都可见，另一侧显示原文。
 
 ## 📦 部署（VPS + Docker + Nginx）
 
