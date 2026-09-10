@@ -12,3 +12,33 @@ Dockerfile
 docker-compose.yml
 Caddyfile
 .gitignore
+*.tsbuildinfo
+.DS_Store
+*.pem
+
+# ---- 仅本地存在的构建/部署产物（与 .gitignore 对齐，避免拖大构建上下文）----
+# dist/：手动部署导出的镜像 tar 包（本机实测 746MB）；.og-fonts/：OG 图字体缓存
+# .cache/：字体子集化源（30MB+，仅本地 pnpm fonts:subset 需要）
+dist
+out
+build
+.og-fonts
+.cache
+coverage
+playwright-report
+test-results
+
+# ---- 绝不进构建上下文的私有数据 / 密钥 ----
+# ⚠ .env：`next build` 会把 .env 复制到 .next/standalone/.env，而 Dockerfile 会把
+#   standalone 整个拷进最终镜像 → 密钥被永久写进推送至 GHCR 的镜像层。
+#   构建期唯一需要的 SITE_URL 由 Dockerfile 的 ARG SITE_URL 提供；运行时密钥
+#   （TOTP_SECRET / AUTH_SECRET / RECOVERY_CODES / CALDAV_*）由 compose 的
+#   environment 注入。故排除 .env 既不影响构建，也不影响运行（已实测：无 .env 时
+#   `pnpm build` 成功、sitemap 内联的仍是 https://shaoyuanyu.cn）。
+.env*
+# ⚠ data：运行时状态，其中 data/caldav.json 含 CalDAV 明文密码。运行时由 compose
+#   绑定挂载 ./data:/app/data 提供；镜像内只需一个空的 /app/data（Dockerfile 创建）。
+data
+# ⚠ radicale：htpasswd 用户文件（含密码哈希）与日历集合，仅供 radicale 服务通过
+#   绑定挂载 ./radicale:/data 使用，与 web 镜像无关。
+radicale
