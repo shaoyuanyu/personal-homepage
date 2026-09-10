@@ -35,9 +35,9 @@ export default async function LoginPage({ params }: Props) {
       <div className="w-full max-w-sm">
         <Card>
           <CardContent className="flex flex-col gap-6">
-            {/* 标题区：左对齐（官方 CardTitle：text-base font-semibold leading-none + CardDescription text-sm muted） */}
+            {/* 标题区：左对齐（官方 CardTitle：text-base font-semibold + CardDescription text-sm muted） */}
             <div className="flex flex-col gap-2">
-              <h1 className="text-base font-semibold leading-none">{t("title")}</h1>
+              <h1 className="text-base font-semibold">{t("title")}</h1>
               <p className="text-balance text-sm text-muted-foreground">
                 {t("description")}
               </p>

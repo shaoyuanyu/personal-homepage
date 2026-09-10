@@ -44,7 +44,7 @@ export function SiteHeader() {
   const t = useTranslations("nav");
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="site-header sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
         {/* Logo：Y-Fork 图标 + 域名（品牌标识，不分语言） */}
         <Link
@@ -55,8 +55,12 @@ export function SiteHeader() {
           shaoyuanyu.cn
         </Link>
 
-        {/* Desktop nav */}
-        <nav className="hidden items-center gap-1 md:flex">
+        {/* Desktop nav —— ⚠ 断点为 lg（1024）而非 md：英文文案（Publications /
+            Scratchpad / Calendar）比中文长两倍以上，登录态在 768~1023 区间即使
+            收紧内边距也不够放，会横向溢出（实测 768px 英文登录态需 910px，
+            可用仅 705px）。<1024 统一收进汉堡 Sheet（内容完整，无功能缺失），
+            ≥1024 才内联展开；中宽度带另有紧凑规格，见 globals.css。 */}
+        <nav className="hidden items-center gap-1 lg:flex">
           {navItems.map((item) => (
             <Link
               key={item.key}
@@ -78,10 +82,13 @@ export function SiteHeader() {
           </div>
           <ThemeToggle />
           <LocaleSwitcher />
-          {/* Mobile nav */}
+          {/* 汉堡菜单：仅在窄于 lg（内联导航收起的区间）显示——
+              此时它是完整功能的唯一入口（含主人专属「速记/日历」），
+              故断点必须与上方 nav 的 lg 一致，否则会出现「既无内联导航、
+              又无菜单入口」的功能真空区 */}
           <Sheet>
             <SheetTrigger
-              render={<Button variant="ghost" size="icon-sm" className="md:hidden" aria-label={t("menu")} />}
+              render={<Button variant="ghost" size="icon-sm" className="lg:hidden" aria-label={t("menu")} />}
             >
               <MenuIcon data-icon="default" />
             </SheetTrigger>

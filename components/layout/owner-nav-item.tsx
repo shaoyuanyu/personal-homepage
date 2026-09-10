@@ -102,9 +102,10 @@ export function OwnerNavItem({ className }: { className?: string }) {
   }, [pathname]);
 
   // 分隔竖线 + 间距：把「导航」与左侧功能导航区（博客/日历）分隔。
-  // 移动端 Sheet 中隐藏（纵向列表无需分隔）。
+  // 仅在桌面内联导航（≥lg，见 site-header.tsx）中显示；移动端 Sheet 与
+  // 中宽度汉堡菜单中均隐藏（纵向列表无需分隔）。
   const sep = (
-    <span aria-hidden="true" className="mx-1.5 hidden h-4 w-px bg-border/60 md:block" />
+    <span aria-hidden="true" className="mx-1.5 hidden h-4 w-px bg-border/60 lg:block" />
   );
 
   return (

@@ -95,7 +95,9 @@ export function LoginForm() {
           autoFocus
           disabled={loading}
           aria-invalid={error != null}
-          className="h-12 font-mono"
+          /* ⚠ tabular-nums 而非 font-mono：placeholder 是中文（如「6 位验证码」），
+             等宽族一旦出现中文就会拉取 cjk 分片；数字对齐用 tabular-nums 即可 */
+          className="h-12 tabular-nums"
         />
         {error && (
           <p role="alert" className="text-sm text-destructive">

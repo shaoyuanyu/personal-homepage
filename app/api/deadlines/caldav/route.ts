@@ -22,8 +22,7 @@ type CalDavBody = {
   a: string;
   n: string;
   year: number;
-  label: string;
-  labelKey?: string;
+  labelKey?: "abstract" | "paper";
   t: string;
   tz: string;
   date?: string;
@@ -55,8 +54,7 @@ export async function POST(req: Request) {
     typeof body.a !== "string" ||
     typeof body.n !== "string" ||
     typeof body.year !== "number" ||
-    typeof body.utc !== "number" ||
-    typeof body.label !== "string"
+    typeof body.utc !== "number"
   ) {
     return NextResponse.json({ error: "参数不合法" }, { status: 400 });
   }
@@ -81,9 +79,13 @@ export async function POST(req: Request) {
 
   const ics = buildIcsText({
     uid: `${uid}@shaoyuanyu.cn`,
-    summary: `${body.a} ${body.year} ${body.label}`,
+    // 标题刻意语言中立（会议 + 年份），不嵌入界面语言节点词——
+    // 否则事件会显示写入时语言的文案（zh 写入的「全文」在 en 界面无法翻译）；
+    // 节点类型（abstract/paper）走标准 iCal CATEGORIES 属性，由日历端本地化展示
+    summary: `${body.a} ${body.year}`,
     description: `${body.n}\nDeadline: ${body.t} (${body.tz})\nDates: ${body.date ?? ""}\nLocation: ${body.place ?? ""}`,
     url: body.link,
+    categories: [body.labelKey ?? "paper"],
     start: body.utc,
     end: body.utc + 3_600_000,
   });

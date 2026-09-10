@@ -53,7 +53,7 @@ export function PublicationCard({
 
   return (
     <Card className="group">
-      <CardContent className="flex flex-col gap-2 py-4">
+      <CardContent className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="min-w-0 flex-1 text-base font-medium leading-snug">
             <a
@@ -102,7 +102,7 @@ export function PublicationCard({
                 </Button>
               }
             />
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>{pub.title}</DialogTitle>
                 <DialogDescription>{pub.venue}, {pub.year}</DialogDescription>

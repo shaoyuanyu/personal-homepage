@@ -23,7 +23,7 @@ export default function ProjectsPage() {
   return (
     <div className="w-full mx-auto max-w-5xl px-4 py-12 sm:px-6">
       <div className="mb-8 flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
+        <h1 className="text-3xl font-bold">{t("title")}</h1>
         <p className="text-muted-foreground">{t("description")}</p>
       </div>
 
@@ -32,7 +32,7 @@ export default function ProjectsPage() {
       <div className="grid gap-4 sm:grid-cols-2">
         {projects.map((project) => (
           <Card key={project.name} className="flex flex-col transition-colors hover:border-primary/40">
-            <CardHeader className="pb-2">
+            <CardHeader>
               <CardTitle className="font-mono text-base">
                 <a
                   href={project.github ?? project.url ?? "#"}
@@ -45,7 +45,7 @@ export default function ProjectsPage() {
               </CardTitle>
               <CardDescription className="text-sm">{project.description[lang]}</CardDescription>
             </CardHeader>
-            <CardContent className="mt-auto flex flex-col gap-3 pt-2">
+            <CardContent className="mt-auto flex flex-col gap-3">
               <div className="flex flex-wrap gap-1.5">
                 {project.tags.map((tag) => (
                   <Badge key={tag} variant="secondary">{tag}</Badge>

@@ -23,33 +23,12 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useOwnerPreferences } from "@/lib/preferences/use-owner-preferences";
 import { cas, type CasEntry, type CasSub, type CasZone } from "@/lib/data";
+import { casBarClass, casChipClass, casDotClass } from "@/lib/design/grade";
 
 type ZoneFilter = "all" | "1" | "2" | "3" | "4";
 type TopFilter = "all" | "top" | "non";
 
-/* ---- 分区专属配色（徽章文字 + 行首色条；与 CCF 页 A/B/C 用色同一体系）---- */
-const ZONE_STYLE = {
-  1: {
-    badge:
-      "bg-red-500/10 text-red-600 ring-red-600/20 dark:bg-red-500/15 dark:text-red-400",
-    bar: "bg-red-500",
-  },
-  2: {
-    badge:
-      "bg-blue-500/10 text-blue-600 ring-blue-600/20 dark:bg-blue-500/15 dark:text-blue-400",
-    bar: "bg-blue-500",
-  },
-  3: {
-    badge:
-      "bg-emerald-500/10 text-emerald-600 ring-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-400",
-    bar: "bg-emerald-500",
-  },
-  4: {
-    badge:
-      "bg-amber-500/10 text-amber-600 ring-amber-600/20 dark:bg-amber-500/15 dark:text-amber-400",
-    bar: "bg-amber-500",
-  },
-} as const;
+/* ---- 分区专属配色：见 lib/design/grade.ts（与 ccf / deadlines / venues 同一事实来源）---- */
 
 /** Top 期刊徽章（行内标题旁金色胶囊） */
 function TopBadge({ show }: { show: boolean }) {
@@ -58,7 +37,7 @@ function TopBadge({ show }: { show: boolean }) {
   return (
     <Badge
       variant="outline"
-      className="shrink-0 rounded-full px-2 py-0 text-[10px] font-semibold text-amber-600 ring-amber-600/30 dark:text-amber-500 dark:ring-amber-500/30"
+      className="eyebrow-label shrink-0 px-2 py-0 font-semibold text-amber-700 ring-amber-700/30 dark:text-amber-500 dark:ring-amber-500/30"
     >
       {t("topBadge")}
     </Badge>
@@ -74,9 +53,9 @@ function WosChip({ w }: { w: string }) {
   return (
     <Badge
       variant="secondary"
-      className={`hidden shrink-0 text-[10px] font-normal sm:inline-flex ${
+      className={`eyebrow-label hidden shrink-0 font-normal sm:inline-flex ${
         onHold
-          ? "text-amber-600 dark:text-amber-500"
+          ? "text-amber-700 dark:text-amber-500"
           : isS
             ? "text-primary"
             : "text-muted-foreground"
@@ -90,13 +69,7 @@ function WosChip({ w }: { w: string }) {
 
 /* ---- 小类（JCR 学科）chips 展示（超宽屏常驻列；窄屏收进图标 tooltip） ---- */
 
-/** 学科分区点色（Tailwind 静态类，须整串写出；与 ZONE_STYLE 徽章色同源） */
-const SUB_DOT: Record<CasZone, string> = {
-  1: "bg-red-500",
-  2: "bg-blue-500",
-  3: "bg-emerald-500",
-  4: "bg-amber-500",
-};
+/** 学科分区点色：整串静态类由 lib/design/grade.ts 提供 */
 
 /** 学科本地化显示名 */
 function subName(sub: CasSub, isZh: boolean) {
@@ -119,7 +92,7 @@ function Subjects({ entry }: { entry: CasEntry }) {
         {entry.s.map((sub) => (
           <span
             key={sub.en}
-            className="inline-flex max-w-full items-center gap-1.5 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-none text-muted-foreground"
+            className="inline-flex max-w-full items-center gap-1.5 overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-none text-muted-foreground"
             title={t("subjectTooltip", {
               zh: sub.zh,
               en: sub.en,
@@ -129,10 +102,10 @@ function Subjects({ entry }: { entry: CasEntry }) {
           >
             <span
               aria-hidden
-              className={`size-1 shrink-0 rounded-full ${SUB_DOT[sub.l]}`}
+              className={`size-1 shrink-0 rounded-full ${casDotClass(sub.l)}`}
             />
             <span className="truncate">{subName(sub, isZh)}</span>
-            <span className="shrink-0 tabular-nums text-muted-foreground/70">
+            <span className="shrink-0 tabular-nums text-muted-foreground">
               {sub.l} [{sub.r}/{sub.t}]
             </span>
           </span>
@@ -154,7 +127,9 @@ function Subjects({ entry }: { entry: CasEntry }) {
         </TooltipTrigger>
         <TooltipContent side="left" align="start" className="max-w-xs">
           <span className="flex w-full flex-col gap-1.5 py-0.5">
-            <span className="text-[10px] font-semibold tracking-wide text-background/70 uppercase">
+            {/* 小类学科标题：**不用 .eyebrow-label**——zh 文案是中文，放等宽会拉取
+                1.3MB 的 cjk 分片，且中英文案（小类学科 / JCR Subjects）会不对称。 */}
+            <span className="block text-xs font-semibold text-background/85">
               {t("subjectsLabel")}
             </span>
             {entry.s.map((sub) => (
@@ -164,7 +139,7 @@ function Subjects({ entry }: { entry: CasEntry }) {
               >
                 <span
                   aria-hidden
-                  className={`mt-1.5 size-1 shrink-0 self-start rounded-full ${SUB_DOT[sub.l]}`}
+                  className={`mt-1.5 size-1 shrink-0 self-start rounded-full ${casDotClass(sub.l)}`}
                 />
                 {/* 中英对照名（当前语言在前） */}
                 <span className="min-w-0 leading-snug">
@@ -190,7 +165,7 @@ function ZoneBadge({ zone }: { zone: CasZone }) {
     <span className="flex shrink-0 items-center gap-1.5">
       <Badge
         variant="outline"
-        className={`w-7 shrink-0 justify-center rounded-md text-xs font-bold ring-1 ring-inset ${ZONE_STYLE[zone].badge}`}
+        className={`eyebrow-label w-7 shrink-0 justify-center rounded-md font-bold ring-1 ring-inset ${casChipClass(zone)}`}
         aria-label={`${zone} ${t("zone")}`}
       >
         {zone}
@@ -209,18 +184,18 @@ function EntryRow({ entry }: { entry: CasEntry }) {
       {/* 分区色条 */}
       <span
         aria-hidden
-        className={`absolute inset-y-1 left-0 w-[3px] rounded-r-full opacity-0 transition-opacity group-hover:opacity-100 ${ZONE_STYLE[mainZone].bar}`}
+        className={`absolute inset-y-1 left-0 w-[3px] rounded-r-full opacity-0 transition-opacity group-hover:opacity-100 ${casBarClass(mainZone)}`}
       />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate font-medium text-[13px] tracking-tight">
+          <span className="min-w-0 truncate text-sm font-medium tracking-tight">
             {entry.n}
           </span>
           <TopBadge show={entry.top} />
         </span>
-        <span className="truncate text-[11px] text-muted-foreground/70">
+        <span className="truncate text-xs text-muted-foreground">
           {entry.i ? `ISSN ${entry.i}` : ""}
-          <span className="mx-1.5 text-muted-foreground/30">·</span>
+          <span className="mx-1.5 text-muted-foreground">·</span>
           {t("rank")} {mainRank}/{mainTotal}
           <WosChip w={entry.w} />
         </span>
@@ -245,7 +220,7 @@ function StatCard({
 }) {
   return (
     <Card
-      className={`transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+      className={`py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
         highlight ? "border-primary/30 bg-primary/5" : "hover:border-border"
       }`}
     >
@@ -260,7 +235,7 @@ function StatCard({
           <Icon className="size-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-xl leading-none font-semibold tracking-tight tabular-nums">
+          <p className="text-xl font-mono leading-none font-semibold tracking-tight">
             {value}
           </p>
           <p className="mt-1.5 truncate text-xs text-muted-foreground">{label}</p>
@@ -421,9 +396,10 @@ export function CasDirectory() {
             <ToggleGroupItem value="non">{t("topNone")}</ToggleGroupItem>
           </ToggleGroup>
 
+          {/* ⚠ 不要用 font-mono：本元素含中文「本」（同 CCF 页的「项」）。 */}
           <Badge
             variant="outline"
-            className="ml-auto hidden shrink-0 font-normal tabular-nums text-muted-foreground lg:inline-flex"
+            className="ml-auto hidden shrink-0 tabular-nums font-normal text-muted-foreground lg:inline-flex"
           >
             {shown} {t("items")}
           </Badge>

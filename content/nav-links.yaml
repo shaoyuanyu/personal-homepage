@@ -92,6 +92,13 @@ groups:
       en: Conferences & Deadlines
     links:
       - name:
+          zh: 期刊会议速查
+          en: Venue Explorer
+        url: "/venues"
+        desc:
+          zh: CCF 等级 / 中科院分区 / 会议截稿与会期速查（站内版）
+          en: CCF class, CAS zones & conference deadlines at a glance (local)
+      - name:
           zh: CCF 推荐目录
           en: CCF Directory
         url: "/ccf"

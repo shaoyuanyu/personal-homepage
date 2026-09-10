@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-import { posts } from "@/lib/data";
+import { blogStaticParams, getPost } from "@/lib/data";
 import { loadOgFonts, FONT_FAMILY } from "@/lib/og-fonts";
 
 export const size = { width: 1200, height: 630 };
@@ -8,8 +8,9 @@ export const contentType = "image/png";
 // 构建期需要 fs 读字体缓存，使用 nodejs runtime
 export const runtime = "nodejs";
 
+// 与文章页一致：每个语言下都有 URL（内容可能回退为原文）
 export function generateStaticParams() {
-  return posts.map((post) => ({ locale: post.locale, slug: post.slug }));
+  return blogStaticParams();
 }
 
 export const alt = "Yu Shaoyuan's blog post";
@@ -36,7 +37,7 @@ export default async function BlogOpenGraphImage({
   params: Promise<{ locale: string; slug: string }>;
 }) {
   const { locale, slug } = await params;
-  const post = posts.find((p) => p.locale === locale && p.slug === slug);
+  const post = getPost(locale, slug);
   if (!post) return new ImageResponse(<div>Not found</div>, size);
 
   const fonts = await loadOgFonts();

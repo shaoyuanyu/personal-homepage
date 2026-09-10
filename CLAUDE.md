@@ -22,10 +22,10 @@
 ```bash
 pnpm lint            # 0 error（允许既有 2 个 warning）
 pnpm build           # 类型检查 + 构建（同步生成 velite 内容层）
-pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 个用例）
+pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 个用例）
 ```
 
-- E2E 覆盖：页面可达性、301 跳转、SEO 资源、登录（TOTP 正确/错误码、限流）、管理员菜单登出、Idea 速记 CRUD、控制台无错误。
+- E2E 覆盖：页面可达性、301 跳转、SEO 资源、登录（TOTP 正确/错误码、限流）、管理员菜单登出、Idea 速记 CRUD、控制台无错误、字体策略（按角色）、**排版与可访问性规格**（对比度 / 卡片内边距 / 字阶）。
 - **测试前清空 3000 端口**：`fuser -k 3000/tcp`。残留 standalone 进程会让测试跑在旧代码上；脚本结束后有时残留 node 子进程，重跑前先清理。
 - 测试密钥：`e2e/smoke.spec.ts` 读取环境变量或本地 `.env` 的 `TOTP_SECRET`，未配置时登录相关用例自动跳过。
 
@@ -68,10 +68,10 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 
 - **路由**：`/deadlines`（公开页面，`force-dynamic` 动态渲染）；入口：学术导航页「会议 Deadline 日历」链接（未加入顶部导航）。
 - **数据流**：`scripts/fetch-deadlines.mjs`（零依赖行级 YAML 解析）每 12 小时从 ccfddl/ccf-deadlines 的 `allconf.yml` 拉取 → 归一化时区 → 只保留当年+次年 → 写入 `lib/data/deadlines.json`（提交入库）。同步命令：`pnpm fetch:deadlines`；工作流 `sync-deadlines.yml`（每 12 小时，有变化提交 PR）。
-- **手动立即同步（主人专属）**：`/deadlines` 页面登录后显示「立即同步」按钮 → `POST /api/deadlines/sync`（`isOwner` 守卫，60 秒限流）拉取最新数据并合并覆盖层 → 原子写入运行时文件 `data/deadlines.json`（`DATA_DIR` 或 cwd/data，VPS 上即 compose 挂载的 `./data`，持久化）。页面动态渲染优先读该文件（缺失/损坏回退构建时数据），刷新即生效，无需等待部署。同步按钮 UI 在 `deadlines-list.tsx`（`useOwnerPreferences().isOwner` 控制显示）。
+- **手动立即同步（主人专属）**：`/deadlines` 页面登录后显示「立即同步」按钮 → `POST /api/deadlines/sync`（`isOwner` 守卫，60 秒限流）拉取最新数据并合并覆盖层 → 原子写入运行时文件 `data/deadlines.json`（`DATA_DIR` 或 cwd/data，VPS 上即 compose 挂载的 `./data`，持久化）。页面动态渲染优先读该文件（缺失/损坏回退构建时数据），刷新即生效，无需等待部署。**按钮位置（勿改回）**：独立客户端组件 `components/deadlines/deadlines-sync-button.tsx`（`useOwnerPreferences().isOwner` 控制，游客返回 `null` 不占位），由**服务端**页面 `app/[locale]/deadlines/page.tsx` 渲染在页面头部右列——header 为 `flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between`（左列 = 标题/徽章/描述/来源，右列 = 按钮，宽屏与标题顶部对齐，`sm` 以下堆叠到描述下方左对齐）。**勿把按钮放回 `deadlines-list.tsx`**：该组件位于 header 之后（`gap-8`），按钮只能在那儿独占一行；页面头部是服务端组件，故按钮须独立成客户端组件才能排进右列。
 - **覆盖层**：`content/deadlines-overrides.yaml`（velite 校验）按缩写整体替换/新增会议（非 CCF 会议、修正错误数据用；字段 l/f/d 缺省时沿用自动数据）。合并逻辑 `mergeDeadlines()` 在 `lib/data/index.ts`，构建时与手动同步共用（保证规则一致）。
 - **时区约定**：fetch 时归一化为 IANA 名（AoE→`Etc/GMT+12`、PT/PST→`America/Los_Angeles`、UTC±X→`Etc/GMT∓X` 注意符号反转）；UI 用 `Intl.DateTimeFormat(timeZone)` 转访客本地时间，零依赖。
-- **UI**：`components/deadlines/deadlines-list.tsx`——等级 A/B/C/未收录 + 时间范围（30/90 天）+ 领域多选筛选、倒计时、详情 Dialog、Google 日历 / .ics 导出。领域词表与 CCF 目录一致（官方中文名，短键取 `/` 前段）。
+- **UI**：`components/deadlines/deadlines-list.tsx`——等级 A/B/C/未收录 + 时间范围（30/90 天）+ 领域多选筛选、倒计时、详情 Dialog、Google 日历 / .ics 导出。领域词表与 CCF 目录一致（官方中文名，短键取 `/` 前段）。⚠ **领域筛选 chip 必须 `max-w-full` + 内层 `<span className="truncate">`**（`/ccf` 与 `/deadlines` 同一份写法）：英文字段名（如 "Software Engineering, System Software & …"）可长过 360px 视口，单个 `shrink-0` 的 chip 会把窄屏撑出横向溢出（`/en/ccf` 曾溢出 64px）。**卡片内只有两层字阶（勿加层）**：16px 缩写（`font-mono font-bold`）+ 12px 其余（会议全称 `line-clamp-2`、领域徽章、倒计时、deadline/地点/会期、底部链接）。⚠ 会议全称曾用 14px，在 3 列窄卡（317px）里 2 行显得过大过重、且与卡片其余 12px 元数据割裂，已降为 `text-xs`——**勿升回 14px**（`/venues` 的 L2 全称是 14px，但那是宽行单行截断，与卡片场景不同）。⚠ 倒计时含中文（还剩/天/明天截止），用 `tabular-nums` 而非 `font-mono`（避免拉取 cjk 字体分片）。
 - **注意**：allconf.yml 缩进风格不统一（数组项可与父键同级），解析器按内容模式驱动而非绝对缩进；若解析结果为空会直接报错退出（防提交空数据）。数据源（ccfddl.com）偶发连接超时，脚本内置 3 次重试；可用 `DEADLINES_URL` 环境变量覆盖源地址（CLI 另支持 `--url`）。
 
 ## 中科院 SCI 分区表（公开功能，`/cas`）
@@ -84,6 +84,23 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 - **偏好持久化**：key `cas:filters`（`{q?, zone?, top?, subjects?}` 结构同 `ccf:filters`），已在 `lib/preferences/registry.ts` 注册 sanitize；URL 参数 `?zone=&top=&q=&subjects=`（中文学科名逗号分隔，encode 后入 URL）可分享/刷新恢复。
 - **⚠ 数据解构陷阱**：`entry.m` 元组是 `[大类名, 分区, 排名, 总数]`——取分区是 `m[1]` 不是 `m[0]`。曾因 `const [mainZone, ...] = entry.m` 把**大类中文名**当分区索引 `ZONE_STYLE[zone]`，服务端渲染直接抛 `Cannot read properties of undefined (reading 'bar')` 整页 500（本地 build 不报错，SSG 预渲染也不报——因为客户端组件，报错发生在 standalone 运行时）。凡「按索引取 tuple 字段再当 key 索引对象」的模式，务必核对数据列序。
 - **⚠ Tailwind 动态类**：小类点色/徽章色必须整串静态写出（`SUB_DOT`/`ZONE_STYLE` map，key 为 1-4 字面量），勿用 `var(--color-zone-N)` 之类未定义 CSS 变量或模板字符串拼类名（Tailwind 扫描不到会丢样式）。
+
+## 期刊会议速查（公开功能，`/venues`，Venue Explorer）
+
+- **定位**：三源数据（CCF / 中科院 / ccfddl）的**搜索驱动**速查页（非目录浏览页）——输入关键词即对照展示会议/期刊的 CCF 等级 + 中科院分区 + 会议截稿/会期/地点。入口：学术导航页「会议与投稿」组首条链接（未加入顶部导航）。原 `/ccf`、`/cas`、`/deadlines` 三页保留，页面底部 sourceNote 互链回三页。静态 SSG（deadline 相对时间客户端算，不依赖运行时同步文件）。
+- **数据整合层**：`lib/data/venue.ts`（纯数据模块，import `lib/data/index.ts` 的 ccf/cas/deadlines）：
+  - 会议 `venueConferences` = CCF 386 ∪ ccfddl 313（union 422），连接键 = **缩写规范化**（小写去非字母数字）；ccfddl-only 会议 `inCcf: false`、等级可仍为 A/B/C（ccfddl 侧别名）。行含完整 `years`（DeadlineYear[]）供客户端算 deadline。
+  - 期刊 `venueJournals` = CAS 758 ∪ CCF 295（union 842：295 + 547 CAS-only），连接键 = **确定性规范化刊名**（`normName`：小写 → 去前导 The → `&`→` and ` → 去标点折叠空格）。⚠ **只做精确等值匹配**：曾验证 token 序列嵌入匹配会张冠李戴（The Computer Journal 被嵌入到 "Future Generation Computer Systems-The International Journal of eScience"），禁止用模糊/嵌入匹配。当前精确命中 214/295（72.5%）；其余 81 本多为不在中科院计算机大类（医学/生物等归他类）或写法系统性差异。
+  - `venue.ts` 导出：类型 `VenueConference`/`VenueJournal`、`venueConferences`/`venueJournals`/`venueStats`、`FIELD_EN`（领域完整英文名，搜索用）、`normSearch`（搜索词归一：去 & 与标点直拼）。`make*` 纯函数可在测试/脚本复用。领域短键 `FIELD_KEY`/`FIELD_EN` 与 ccf/deadlines 页同源（各页各自内联，改动需三处同步）。
+- **UI**：`components/venues/venue-explorer.tsx` + `app/[locale]/venues/page.tsx`（server 层读 venueStats 渲染 meta 行）。
+  - **默认态（无查询）不铺列表**：引导文案 + 热门速查 chips——「即将截稿的 CCF-A 会议」6 个（按未来最近 deadline 排序）+「双顶期刊（CCF-A ∩ 中科院 1 区 Top）」6 个（按大类排名）。
+  - 结果态：会议 | 期刊 **两栏**（lg 起，每侧上限 24 条 + tooMany 提示）；只查 URL `?q=`（**无偏好持久化**——搜索页打开即恢复旧词不友好；注册表勿加）。
+  - 搜索评分：缩写/全称完全等于 0 < 缩写前缀 1 < 名称前缀 2 < 包含 3 < 领域/ISSN/学科包含 4；领域搜索命中 zh 短键与 FIELD_EN 英文名。
+  - **会议卡**（button，点击开 Dialog）：左等级色条 + L1 **届别标题**（缩写 + 届年份小号弱化紧随其后、同基线，如 `CVPR 2027`——年份来自 `main.year.y`（未来最近/已过最近 deadline 所属年份），**用户指定方案：年份字号小于缩写且弱化为 muted，只作附属标注不抢缩写主视觉**；无年份数据（`years` 为空）时不显示年份；无简称的会议直接以全称作标题行，如 IEEE World Haptics Conference，此时不重复第二行全称）+ `CCF-A/B/C` 药丸徽章（**会议与期刊统一带 CCF- 前缀文字，用户指定勿改回**；无 = 灰「未收录」徽章，label 仍为 `CCF A` 供 E2E）+ 领域（sm 起）→ L2 全称 → **仅一行「最近一次会议举办时间」**（📅 `main.year.date` 原文，即该届会期；卡片**不显示倒计时与截稿时间**——用户指定勿改回，截稿各节点时间只在点开卡片后的 Dialog 展示）。Dialog：标题缩写/无简称全名 + 年份块（未来有截稿年份优先，降序，最多 3 届）——每块 date/place/官网 + timeline 全列表（过去条目 55% 透明）+ DBLP 链接。
+  - **期刊卡**（不可点）：左色条（CAS 分区色优先，无 CAS 用 CCF 等级色）+ L1 刊名 + 右侧中科院分区方徽（1-4；无 = 灰「—」title 解释）→ L2 `CCF-A/B/C` 药丸徽章（**带 CCF- 前缀文字，与分区数字方徽区分**；无 = 「非 CCF」灰徽章）+ Top 金 pill + 缩写·ISSN·中科院大类排名 x/y + DBLP 尾链 → L3 小类学科点列（最多 2 +N，title 全量）。⚠ 徽章体系（勿改回）：CCF 等级（会议/期刊统一）= 红蓝绿药丸带 `CCF-` 前缀文字；中科院分区 = 无前缀数字方徽（1-4）——两者靠前缀文字区分。
+  - ⚠ **Dialog 宽度与溢出**：`DialogContent` 默认含 `sm:max-w-sm`，传无前缀的 `max-w-lg` 会被其覆盖（≥640px 永远 384px 宽）——宽度覆盖必须写 **`sm:max-w-lg`** 这类同变体类；共享组件已加 `grid-cols-[minmax(0,1fr)]`（单列轨道按内容 min-content 撑破内容盒的共性根因——含 truncate/nowrap 长文本的 Dialog 会溢出 10~26px，如 IEEE CEC 的 Maastricht 会场行，曾致内容越出卡片边界；改动 DialogContent 后勿移除该列模板）。
+  - 时区函数 `zonedToUtcMs`/`localTzOffset`、领域短名表 `FIELD_EN_SHORT` 均从 deadlines-list 同源复制（改动需两处同步）；`fmtDateTime` 模块级缓存 Intl。
+- **E2E**：`/venues` 可达（zh h1「期刊会议速查」）+ 3 用例——默认态热门区标题、搜 CVPR（会议栏命中 + `CCF A` 徽章 label + 卡片点开 Dialog 含年份）、搜 TPAMI（期刊栏 + `CCF A` 与 `中科院 1 区` 双 label + 清空按钮复位）。⚠ 断言用 **CCF 目录全称**（如 CVPR = "IEEE/CVF Computer Vision and Pattern Recognition Conference"，与 ccfddl 的 "…Conference on Computer Vision…" 名序不同）；TPAMI 分区为 1 区 Top（数据更新若改变需同步改断言）。
 
 ## 部署（GitHub Actions → GHCR → VPS）
 
@@ -175,23 +192,142 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（23 �
 6. **VPS 只读检查**：`ssh -i ~/.ssh/vps-deploy ysy@106.14.135.32 "..."`；compose 目录 `~/personal-homepage/`。
 7. **生产验证**：`curl -s -o /dev/null -w "%{http_code}" https://shaoyuanyu.cn/xxx`、`curl -s https://shaoyuanyu.cn/api/auth/me`；登录后创建/删除 idea 验证落盘（测试后清理）。
 
+## 博客（多语言文章，`/blog` 与 `/en/blog` 同一批文章）
+
+- **语义（勿改回「按语言各列各的」旧行为）**：`slug` 是**文章标识**而非语言版本标识——同一 slug 出现在 `content/posts/zh/` 与 `content/posts/en/` 下即同一篇文章的两个语言版本。`/blog` 与 `/en/blog` 列出**同一批文章**；某篇文章缺当前语言版本时**回退显示原文**（默认语言 zh），即「只有中文版的文章在 `/en/blog` 下也显示中文原文」。因此 `/blog/<slug>` 与 `/en/blog/<slug>` 总是成对存在（`generateStaticParams` 返回 `全部文章 × 全部语言`），语言切换不会 404。
+- **聚合层**：`lib/data/blog.ts`（`lib/data/index.ts` 转出）——`blogArticles`（按 slug 聚合）、`resolvePost(article, locale)`（目标语言 → 默认语言 zh → 任一版本）、`listPosts(locale)`（该语言可见的全部文章，按**实际展示版本**的日期倒序）、`getPost(locale, slug)`、`blogStaticParams()`。**旧的 `posts` 直出数组已移除**，页面一律改用这些函数；新增消费方也勿再直接 import `@velite/index`。
+- **⚠ velite slug 唯一性坑（`velite.config.ts`）**：`s.slug("posts")` 的唯一性校验是**集合级**的——`zh/welcome.mdx` 与 `en/welcome.mdx` 同为 `slug: welcome` 会被判 `duplicate value`（构建期报错、且其中一条被丢弃），**这正是早期「中英文博客内容不一样」争论的根因之一**。故 schema 已改为普通字段 `s.string().min(3).max(200).regex(slug 正则)`（保留格式约束、去掉唯一性），改由 `lib/data/blog.ts` 按 `(locale, slug)` 校验：同语言重名抛带文件路径的错误，跨语言同名合法。**勿改回 `s.slug()`**。
+- **⚠ velite 忽略下划线开头的文件**：`content/posts/zh/_probe.mdx` 这类文件名不会被收录，且**不报任何错**（曾误判为「slug 重复导致静默丢弃」）。做临时验证时勿用 `_` 前缀命名。
+- **回退提示**：正文语言与页面语言不一致时（`post.locale !== locale`），详情页正文上方显示虚线框提示（`blog.fallbackNotice` + `blog.contentLanguage.{zh,en}` 文案，`LanguagesIcon`）。新增语言时同步补这两个 key。
+- **canonical（SEO）**：详情页 `alternates.canonical` 指向**正文实际语言**的 URL——回退页（如 `/en/blog/<仅中文的 slug>`）canonical 指回 `/blog/<slug>`，避免同一内容在两种语言下被重复收录；JSON-LD 的 `inLanguage` 同样用 `post.locale`（正文语言）而非页面 locale。`siteUrl` 已有 `metadataBase`，故 canonical 用相对路径即可。
+- **同步改动点**：`app/[locale]/blog/page.tsx`（列表）、`app/[locale]/blog/[slug]/page.tsx`（详情 + 相邻文章 + JSON-LD + 回退提示）、`app/[locale]/blog/[slug]/opengraph-image.tsx`、`app/[locale]/page.tsx`（首页最新文章）、`app/sitemap.ts`、`app/feed.xml/route.ts`（feed 以默认语言视角列出全部文章，链接指向正文语言 URL）。
+- **E2E（`e2e/smoke.spec.ts` 博客多语言用例）**：回退提示框带 `data-slot="blog-fallback-notice"`，**断言必须用该属性**（`page.locator('[data-slot="blog-fallback-notice"]')`）——next-intl 会把整个 `blog` 消息字典注入 RSC payload（客户端组件 `BlogSearch` 用 `useTranslations("blog")`），故页面上即使没有渲染提示框，`getByText(/本文暂无中文版本/)` 也可能命中 payload 文本而误通过。
+- **⚠ E2E 混用 `/en/*` 与无前缀路径会串 locale**：访问 `/en/*` 后 next-intl 写入 `NEXT_LOCALE=en` cookie，同一 browser context 内**之后**的无前缀路径会被重定向到 `/en`（`playwright.config.ts` 的 `locale: "zh-CN"` 只影响首次、无 cookie 时的判定）。该用例因此**先测中文（无前缀）再测英文（/en）**，并在开头 `page.context().clearCookies()`。此前 `/blog/welcome` 的中文标题断言一直被掩盖——因为 `/en/blog/welcome` 回退后也显示中文标题。
+- **双语文章的手动验证**（E2E 不含双语样本，内容侧只有 welcome 仅中文、llm-interpretability-notes 仅英文）：临时 `content/posts/en/welcome.mdx`（`slug: welcome`）→ `pnpm build` → 确认输出含 `/en/blog/welcome` 与 `/zh/blog/welcome` 两组路由（**跨语言同名 slug 不再报 duplicate value**）→ `pnpm start` 后 `/blog/welcome` h1 为中文标题、`/en/blog/welcome` h1 为英文标题且**无**回退提示 → 验证完删除该临时文件。
+- **新增语言**：`lib/i18n/routing.ts` 加 locale → `content/posts/<locale>/` → `messages/<locale>.json` → `blog.contentLanguage` 补语言名 → `lib/data/blog.ts` 的 `FALLBACK_LOCALE` 无需改（仍为站点原文语言）。领域外的新语言目录（如 `content/posts/jp/`）会触发 `[blog] 无法识别的语言目录` 构建期报错。
+
 ## 开发规范
 
-- **内容即代码**：`content/` 下 YAML/MDX 由 velite 编译，结构错误构建期即报错。新增博客 = 新建 MDX；改论文/报告/导航 = 改 YAML。
+- **内容即代码**：`content/` 下 YAML/MDX 由 velite 编译，结构错误构建期即报错。新增博客 = 在 `content/posts/{zh,en}/` 下新建 MDX（多语言同名 slug 即翻译版本，见上节）；改论文/报告/导航 = 改 YAML。
 - **i18n**：`messages/zh.json` 与 `messages/en.json` 同步修改（先 zh 后 en）；文案一律走 `useTranslations`/`getTranslations`，不硬编码。**页面 tab 标题已本地化**：页面 metadata 用 `generateMetadata` + `lib/i18n/metadata.ts` 的 `pageMetadata(params, "namespace")`（复用 section 的 `title`/`description` key），zh 显示中文标题；新增页面时沿用该模式，勿再写硬编码英文 `export const metadata`。首页标签页用 `title: { absolute: "Yu Shaoyuan" }` 只显示姓名（absolute 绕过父布局 template 后缀），`meta.defaultTitle`（首页/Home）仅作兜底。
 - **UI**：优先使用 `components/ui/` 下的 shadcn 封装（Button、Card、Input、DropdownMenu、ToggleGroup 等）；lucide-react 图标传 `data-icon="default"`（与既有组件一致）。
+- **顶部栏响应式断点 = lg（1024），勿改回 md（768）**：`site-header.tsx` 的内联桌面导航用 `hidden lg:flex`，汉堡 Sheet 触发器同步用 `lg:hidden`（**两者必须同断点**，否则同宽度下「既无内联导航又无菜单入口」出现功能真空，主人专属「速记/日历」将无法到达）；`owner-nav-item.tsx` 的 `sep` 分隔竖线也是 `lg:block`。原因：**英文文案比中文长两倍以上**——`Publications` / `Scratchpad` / `Calendar` 在登录态下，768~1023 区间即使收紧内边距也放不下（实测 768px 英文登录态内容需 910px、容器可用仅 705px；英文游客态单靠 `md` 也溢出 50px），横向溢出会把「我的/主题/语言」挤出视口。⚠ 旧版是 `md` 断点，**线上英文 768px 一直存在此 bug**（生产实测溢出 116px），换 Inter 后（比 Tinos 宽）进一步放大。修复后 <lg 全部收进汉堡 Sheet（内容完整、无功能缺失）。
+- **顶部栏字号 = 14px / w500（`globals.css` 的 `.site-header [data-slot="button"]`，勿改 15px）**：
+  - **字号不能脱离栏高单独决定。** 实测「栏高 / 字号」比：Anthropic 69px÷15px=**4.60**、Linear 72÷16=4.50、Vercel 64÷16=4.00、Stripe 64÷16=4.00、GitHub 50÷16=3.13。
+  - 本站栏高固定 **56px**（`h-14`，被 4 处 `sticky top-14` 依赖）。曾照抄 Anthropic 的导航 15px，但**没抄它的 69px 栏高** → 比值跌到 **3.73**，文字在栏里显得挤、钝（用户反馈「太大、呆呆的」）。14px 时比值 **4.0**，与 Vercel / Stripe 一致。
+  - **另一层原因（双语站特有）：中文字形在相同字号下视觉上大于拉丁**——汉字几乎撑满 em 框，拉丁 x-height 只占约一半。所以 15px 的中文导航观感接近 16.5px 的英文。（参考：Vercel/Stripe/Linear/GitHub 的导航都是 16px，但那是纯拉丁站。）
+  - **w500 而非 400**：栏高偏矮时，中等字重的汉字比常规字重更有分量、不发「平」。层级上低于 Logo（`font-mono` w600），不冲突。
+  - 实测余量（改后）：最紧组合 `1024px + 英文 + 登录态` 余量 **100px**（改前 15px 时约 68px）；中文登录态 284px。
+- **桌面导航紧凑档（`globals.css`，`@media (min-width: 1024px)`）**：收紧 `.site-header nav` 的 `gap`（0.25rem→0.125rem）与 nav 内 `[data-slot="button"]` 的 `padding-inline`（0.625rem→0.5rem）。⚠ 字号从 15px 回到 14px 后，`gap` 已放宽回默认 4px（`gap-0.25rem`，与 `gap-1` 相同，该条现为 no-op，保留以便日后需要时再收紧）；`padding-inline` 仍为 8px。⚠ 该媒体查询只命中桌面内联 nav（移动端 Sheet 已 portal 到 body、不在 `.site-header` 内，走 `.sheet-nav` 规则不受影响）。**新增导航项前先按 `1024 视口 + 英文登录态` 核算余量**（最紧组合，当前 100px）。
+- **E2E 回归**（`e2e/smoke.spec.ts` 的「主人登录（TOTP）」describe）：两个用例锁定该行为——①「多视口 × 中英文的顶部栏均不横向溢出」（768/820/1024/1280/1440 × `/` 与 `/en`，断言 `.site-header > div` 的 `scrollWidth - clientWidth <= 0`，需登录态）；②「断点两侧入口都可达」（<lg 断言内联 nav 隐藏 + 点开汉堡后 `.sheet-nav` 内「首页/博客/速记/日历/导航」齐备且竖线隐藏；≥lg 断言内联 nav 可见且入口齐备、汉堡消失）。**改动顶部栏布局/导航文案时必须重跑**。
+- **字体策略（对齐 Anthropic 官网范式；按「角色」分派，与页面语言无关；勿改回按语言切换）**：
+  - **⚠ 先弄清 Anthropic 的真实做法（实测计算样式，与直觉相反）**：它的 `body`/`main` **默认字体就是衬线**（`Anthropic Serif` 20px）——**无衬线是「覆盖层」**，只用在「功能性 UI + 编辑型标题」上。三族实际落点：
+    | 角色 | 字体 | 实测值 |
+    |---|---|---|
+    | `h1` 首页大标题 | **无衬线** | 60.9px / 700 / lh 1.1 |
+    | `h2`/`h3` 文章标题 | **无衬线** | 32px/700、23px/600 |
+    | 导航链接 / 页脚 / 元数据 | **无衬线** | 15px、12px |
+    | **`.big-cta_title` 品牌展示标题** | **衬线** | **68.3px / 500 / lh 1.1** |
+    | `.big-cta_subtitle` 其副标题 | **衬线** | 24px / 400 |
+    | 文章正文 | **衬线** | **17px / 400 / lh 1.55** |
+    | eyebrow 标签（DATE/CATEGORY） | 等宽 + 全大写 | 16px / 400 |
+    ⇒ 所以它**有两个衬线角色**：**大字展示标题**（品牌/身份签名）与**长正文**。
+  - **核心原则：sans/serif 的对比必须单义。** 我们的分配：
+    1. **无衬线**（默认，约 90% 文本）——**全部页面标题（`h1` 默认无衬线）**、全部功能性 UI（顶部栏、按钮、菜单、标签页、分段/多选控件、下拉与命令面板、徽章与 chip、表单、提示/Toast、日历网格与工具栏）、全部说明性文字（页面 description、卡片描述、空态文案、副标题）、全部元数据（日期、分类、计数、页脚）、**全部外部专名（会议/期刊全名、地名、论文标题/作者/venue、导航站外链名）**。
+    2. **有衬线（两个角色，其余场景一律不用）**：
+       a. **长正文** —— 博客正文、速记正文（含输入框）。载体必须带 **`data-longform`**，且字号 ≥16px、行高 ≥1.6（衬线 x-height 小、笔画细，同字号下需更大字号 + 更松行距才达同等可读性；Anthropic 文章正文即 17px/1.55）。
+       b. **展示标题块（display serif）** —— **仅**首页 hero 的人名 + 职务行。载体必须带 **`data-display-serif`**。这是「个人站的名即品牌」的签名式用法，对应 Anthropic 的 `.big-cta_title`（68px/500 衬线）+ `.big-cta_subtitle`（24px 衬线）。⚠ **全站只此一处**，**不要**把它扩散到其它页面标题（会退回「衬线既是大标题又是小字说明」的语义混乱）。
+    3. **等宽**——标识符与数字（缩写、ISSN、年份、日期、凭据、统计数值）、逐字代码（`pre`/`code`/`kbd`、BibTeX）、品牌 Logo，以及 `.eyebrow-label` 全大写技术眉标。
+  - **兜底：未列举的一律无衬线。**
+  - **`data-longform` / `data-display-serif` 是机器可校验的边界**：E2E 断言「`main` 内任何解析到衬线的元素都必须位于 `[data-longform]` **或** `[data-display-serif]` 内」。新增任何使用衬线的场景时**必须**加对应属性，否则测试红。
+  - **关键收益：同一元素在中/英页面必然同族**（三族字体栈各自都同时含拉丁与中文）。这正是旧范式做不到的——旧范式下「CCF 会议全名」在 `/ccf` 是 Inter、在 `/en/ccf` 是 Tinos，同一份数据两种观感。
+  - 由 `app/globals.css` 承载，两层：`--font-stack-sans/serif/mono`（`:root`，真实字体栈）→ `--font-sans` / `--font-serif` / `--font-mono`（`@theme inline` 映射）。
+  - 历史（勿改回）：曾用「注入 `<style>` 覆盖 `--font-body`」实现「英文页整页衬线」（`components/layout/locale-font-style.tsx`，已整体删除）。⚠ 若将来真需要按语言切字体，**勿用**「在 `<html>` 上渲染 `data-locale` 属性 + CSS 选择器」：React 客户端导航不会 diff `<html>` 的属性（`<html lang>` 同样如此），实测切语言后字体不更新、必须刷新。
+  - `--font-heading` 已删除（它曾与 `--font-sans` 逐字相同、纯空转层）；Card/Dialog/Sheet/Empty 的标题直接走 `--font-sans`。
+  - **`<html lang>` 由根 layout 的 `getLocale()` 渲染**（`app/layout.tsx`，`HTML_LANG` 映射 zh→`zh-CN`）。此前硬编码 `lang="en"`，中文页也声明 en（a11y/SEO 问题）。性能：本站所有页面本就是每请求 SSR（构建产物中零个页面级预渲染 `.body`、响应头 `Cache-Control: no-store`），故 `getLocale()` 不引入额外开销（实测注入前后每请求服务端处理时间 62~68ms 不变）。⚠ 客户端切语言后 `lang` 不会更新（同上 React 不 diff html 属性），刷新即正；如需修复得加客户端同步。
+  - ⚠ **⚠ 逐页静态化：已尝试并确认「不是补 setRequestLocale 就能解决」，暂缓（重要）**：本项目**没有任何页面被预渲染**——`prerender-manifest.json` 只有 10 条（6 张 OG 图 + feed/robots/sitemap/icon），standalone 产物中零个页面级 `.body`，响应 `Cache-Control: no-store`。`pnpm build` 的路由表把它们标成 `● (SSG)` 且日志打印 `Generating static pages (53)`，**这个标记具有误导性**，别据此判断（判定只看 `.body`/`prerender-manifest`/响应头）。每请求服务端处理 ~70ms（对比预渲染路由 ~1ms、实测 78~93ms vs 8.8ms 墙钟）。
+    - **2026-09 已完整尝试并回退**（下面记录的尝试组合**全部无效**，勿重复）：① 去掉根 layout 的 `getLocale()`（根级动态源）；② `getMessages({ locale })` 显式传参；③ `NextIntlClientProvider locale={locale}`；④ **给全部 14 个页面补 `setRequestLocale(locale)`**（同步页用「薄 async 包装 + 同步子组件」保持 hooks 合法）。结果仍为 0 个页面级 `.body`。
+    - **诊断方法（关键）**：`pnpm exec next build --debug`，然后 `grep "Static generation failed due to dynamic usage"` —— 它会直接给出原因（本项目为 `reason: headers` 24 条、`cookies` 6 条、`force-dynamic` 2 条）。`cookies`（login/ideas/calendar 的 `requireOwner`）与 `force-dynamic`（deadlines）属预期，**只需关注 `headers`**。
+    - **根因**：next-intl 的 `getConfig` 里 `requestLocale` 是个 getter——`locale ? Promise.resolve(locale) : getRequestLocale()`，而 `getRequestLocale() = getCachedRequestLocale() || headers()`（`RequestLocaleCache.js` 用 `React.cache` 存）。`setRequestLocale` 写入的缓存**在静态生成阶段取不到**，于是回退 `headers()` → 动态。决定性证据：连一个只有 `setRequestLocale` + 静态 JSX 的**最小探针页**（`app/[locale]/probe/page.tsx`）也会报 `reason: headers`；去掉 `middleware.ts` 同样如此。即**不是页面级补丁能解决的**，属 next-intl 与 Next 打包/静态分析层面的交互问题。
+    - **不要用 `export const dynamic = "force-static"` 绕过**：它会让 `headers()`/`cookies()` 返回空值 → `useTranslations`（未显式传 locale）解析成**默认语言**，`/en/*` 页面会静默渲染成中文内容；且会破坏 `requireOwner` 的守卫语义。
+    - 若日后重启此项：先确认 next-intl 版本是否有相关修复，或评估换用 `i18n` 配置方式（如把 locale 通过 `params` 显式传给每个 `getTranslations`/`useTranslations` 调用、彻底不依赖 `requestLocale`）；无论哪种都必须全量回归（28 个页面×语言组合）并保留 `<html lang>` 的正确性。
+    - **性能评估（决定暂缓的依据）**：VPS 为 4 核 / 7.2GB，实测 load average 0.01，web 容器 CPU 0%；按最坏 85ms CPU/请求估单核 ≈12 req/s、4 核 ≈47 req/s，个人学术站峰值远低于此。故此项是「优化」而非「瓶颈」，收益（~78ms→~1ms）与 14 个文件的改动风险不成比例。
+  - `app/not-found.tsx`（根级 404）渲染在 `[locale]/layout` 之外，但字体来自全站 CSS（`html` 上的字体栈），无需额外处理。
+  - **字源（三族）**：
+    - 无衬线：西文 **Inter**（`@fontsource-variable/inter`）；中文**不引入 webfont**、走系统回退：`PingFang SC` → `Hiragino Sans GB` → `Noto Sans CJK SC` → `Source Han Sans SC` → `Microsoft YaHei`。⚠ **勿把 `Microsoft YaHei` 提前**——Linux 上若装了雅黑会命中较老的雅黑而非思源黑体。
+    - 有衬线：西文 **Tinos**（Times 度量兼容）；中文 **自托管 `@fontsource-variable/noto-serif-sc`**——不用系统回退是因为 Windows 会落到 SimSun（点阵味、小字号明显差）。现只用于长正文（17px，面积小、字号大、行距松），这两族在此场景下表现稳定。
+    - 等宽：**全站唯一等宽字体 `Noto Sans Mono CJK SC`**（自托管，见下条）。
+  - **用变量版 `index.css` 而非分字重 `latin-400.css`**：变量 CSS 内含按 `unicode-range` 切分的分片 `@font-face`，浏览器只下载实际用到的分片。⚠ Inter 的 `latin-ext` 分片是必需的——`lib/data/deadlines.json` 含 Montréal / Türkiye / Malmö / Poznań 等带变音符号地名。（Inter / Tinos / Noto Serif SC 保持上游分片不变；只有**等宽族**做了单文件处理，理由见下。）
+  - **⚠ 等宽字体必须自己子集化（`scripts/subset-fonts.mjs` + `pnpm fonts:subset`）**：
+    - **没有任何现成 webfont 来源**：npm 上 `@fontsource/noto-sans-mono-cjk-sc` 等 8 个候选包全部 404；**Google Fonts 完全没有 CJK Mono 变体**（`Noto Sans Mono CJK SC/JP/KR/TC/HK` 全部 HTTP 400，只有拉丁版 `Noto Sans Mono`）。唯一源是 notofonts 官方仓库的 `NotoSansMonoCJKsc-{Regular,Bold}.otf`（16/17MB 静态）或 `-VF.otf`（28.9MB 可变字重）。
+    - **选它的理由**：拉丁 **0.5em** / 汉字 **1.0em** = **恰好 2:1**，中英混排精确对齐；且一个字体同时提供拉丁与汉字，无需第二个等宽族（多数等宽字体无 CJK 字形）。⚠ 若拉丁用普通等宽字体（0.6em）+ 中文系统回退（1.0em）= **1.667:1 非整数，汉字永远落不到拉丁的列网格**——这是选它的决定性原因。E2E 有「汉字按 2:1 倍宽渲染」回归。
+    - ⚠ **单文件、不做 `unicode-range` 分片（2026-09 改，勿改回分片）**：早期版本切 latin + cjk 两个分片，期望「只在等宽遇到汉字时才下载 cjk」。**实测该期望落空**——`font-mono` 曾被错用在若干**含中文的 UI 文案**上（`还剩 2 天`、`681 项`、`758 本`、`63 个会议`、「当前密码」标签、验证码的中文 placeholder），于是 /ccf、/cas、/deadlines、/login **每次访问都多下 1.3MB**。那些用法已改回无衬线（**数字对齐用 `tabular-nums`，不必切字体族**，见「排版/颜色/组件规格」），但分片机制本身是脆的：它把「等宽族里有没有汉字」变成性能开关，而**代码注释里写中文完全正常**（含中文注释的代码块必须等宽显示）。故改为**单文件**：一次下载 + immutable 长期缓存，不存在「误拉大文件」这种失败模式。
+      - 输出两个文件：`noto-sans-mono-cjk-sc.woff2`（**894KB**，`font-weight: 400 500`）与 `noto-sans-mono-cjk-sc-bold.woff2`（**911KB**，`font-weight: 600 700`）。这是**字重**划分而非覆盖分片，每个文件都是完整字体。
+      - 覆盖范围 = 拉丁/标点/符号 + 21 个日期汉字 + `scripts/fonts/han-common.txt` 的 3100 常用汉字（约 6220 码位）。
+      - ⚠ **静态字体的 `font-weight` 必须写具体区间**（`400 500` / `600 700`），写 `100 900` 会让浏览器以为一个字重全支持，从而对粗体不做任何处理（粗体与常规长得一样）。不用合成粗体是因为合成粗体在中文上观感明显发虚。
+      - 实测：**每页 2 个文件 / 约 1.8MB**（Regular + Bold 都用到时）；`/nav`、`/login`、`/calendar` 只用 Regular = 911KB。全部 `font-display: swap`，**不阻塞首屏**（同页 JS+CSS 386KB，FCP 428ms / CLS 0.0004 的旧实测仍成立）。用 `--lean` 可退化为「拉丁 + 日期汉字」（≈80KB/字重，仅当确认不需要中文等宽时）。
+    - ⚠ **必须输出到 `app/fonts/`，且 CSS 里必须用相对 `url("./fonts/…")`（勿改回 `public/` + 绝对路径）**：`public/` 下的文件不经构建管线，Next.js 对其默认发 `Cache-Control: public, max-age=0`——**每次访问都要发一次条件请求 revalidate**（304 不重传 body，但多一次往返）。相对 url() 会被 webpack 当作 asset 处理：自动加**内容哈希**重命名 → 输出到 `_next/static/media/` → 发 `Cache-Control: public, max-age=31536000, immutable`（与 @fontsource 的 Inter/Tinos 待遇一致）。内容哈希同时解决「重跑脚本后文件名不变、已缓存用户永远拿到旧字体」的隐患。E2E 断言：恰好 2 条 `@font-face`、**均无 `unicode-range`**、URL 带哈希、响应头含 immutable。
+    - ⚠ **`pyftsubset --unicodes` 的区间末尾不能再写 `U+`**：写 `U+4E0A-4E0B`（对），**不要**写 `U+4E0A-U+4E0B`（错）。fontTools 的 `parse_unicodes` 会把 `+U` 等字符一律替换成空格再按空白切分，于是后者被劈成 `4E0A-` 与 `4E0B` 两个 token，前者空 end 直接抛 `int('', 16)` 的 ValueError。`compactRanges()` 已按此产出。
+    - ⚠ **源字体下载慢/不可达**（`raw.githubusercontent.com` 国内易超时）：源字体缓存在 `.cache/`（已在 `.gitignore`，30MB+ 不入库）。可用 `--regular <path> --bold <path>` 指定本地静态字体绕过；需 Python fontTools 提供 `pyftsubset`（`PYFTSUBSET` 指定路径）。
+    - ⚠ **`pyftmerge` 无法合并可变字体**（`VarStore` 无 `mergeMap`），所以「把旧的两个 VF 分片合并成一个」这条路走不通；`font-weight: 100 900` 的单文件只能从 VF 源重新子集化。
+    - **OG 图字体**：`lib/og-fonts.ts` 用 `@fontsource/tinos` + `@fontsource/noto-serif-sc` 的 **woff** 子集（satori/fontkit 不支持 woff2），`FONT_FAMILY = "Tinos, Noto Serif SC"` 按列表回退；两包在 `devDependencies`（仅构建期用，不进运行时容器）。
+  - ⚠ **新增页面时主标题 `h1` 不要加 `font-serif`**（无衬线是默认，如 `className="text-3xl font-bold tracking-tight"`）。新增**内容类**元素（描述文字、外部专名、元数据）同样**不要**加；仅当确实是「连续阅读的长正文」时才加 `font-serif` **并同时加 `data-longform`**。首页 hero 的人名/职务行是唯一的「展示标题块」例外（已在 `data-display-serif` 内，勿再增其它元素）。
+  - ⚠ **根级 404（`app/not-found.tsx`）是必需的，勿删**：`not-found.tsx` 只对「该路由段内调用 `notFound()`」生效——`app/[locale]/not-found.tsx` 处理的是语言前缀非法等场景；而**未匹配任何路由**的 URL（手输错地址、失效外链）会落到根级 not-found，缺失时渲染 Next 内置 404（英文硬编码文案、`next-error-h1` + 内置 `system-ui` 字体 → 无站点样式、无返回入口）。根级文件渲染在 `app/layout.tsx` 之内（有全站 CSS 与字体，但**没有** SiteHeader/SiteFooter——二者在 `[locale]/layout.tsx`），语言用 `getLocale()` 取，首页回链需按 `as-needed` 规则自行拼前缀（zh 无前缀、en 加 `/en`），故用 `next/link` 而非 i18n 的 `Link`。
+  - **E2E 回归**（`e2e/smoke.spec.ts` 的「字体策略（按角色）」describe，9 个用例）：① **核心不变式**——同一元素在 `/`、`/ccf`、`/venues` 与各自 `/en` 版本下解析到**同一个** `font-family`；② 功能性 UI（顶部栏链接 / 页脚 / `h2` / 徽章 / 分段控件）**不得**匹配 `Tinos`；③ ★ **衬线只在长正文或首页展示标题块内**——遍历 16 条路由的 `main *`，任何解析到 `Tinos` 的元素必须位于 `[data-longform]` 或 `[data-display-serif]` 内；④ **`h1` 无衬线（首页人名除外）**——12 条路由断言无衬线，`/` 与 `/en` 断言衬线 h1 **必须在 `[data-display-serif]` 内**；⑤ 等宽（`.prose code`、Logo、CCF 缩写）须匹配 `Noto Sans Mono CJK SC`；⑥ **正文不小于 12px**（字阶下限，扫描 7 条路由；排除 REUI 日历内部 11px chip）；⑦ **等宽眉标**（`.eyebrow-label`）走等宽且 `text-transform: uppercase`；⑧ **客户端切换语言字体不变**（角色制与语言无关；用**点击语言菜单**而非直接 `goto`——直接 goto 走完整 SSR、会绕过客户端路径；URL 先于 RSC 提交落地，故用 `expect.poll`）；⑨ `/no-such-page` 返回 404 且渲染站内 404（`h1` **无衬线**、文案随语言、回链带 `/en`）。⚠ 断言要选**该页面实际存在**的元素（如 `/ccf` 无 `card-title`、`/` 的 CardTitle 仅在博客卡片存在）——否则 `locator.evaluate` 会等 30s 超时；⚠ **先访问中文（无前缀）再访问 `/en`**——访问 `/en/*` 会写 `NEXT_LOCALE=en` cookie，之后无前缀路径会被重定向到 `/en`（本项目已因此误判过两次）。
+  - 历史坑：曾把 `--font-sans`/`--font-heading`/`--font-serif` 三个 token 全设为同一套 Tinos+宋体栈，导致组件里散落的 `font-serif` 实为空操作、全站正文都是宋体观感。改动字体前先 grep `font-serif` 确认引用点。
+
+### 排版 / 颜色 / 组件规格（2026-09 统一）
+
+> 起因：网站各页「细节不协调但说不清哪里不对」。程序化取证（逐页抓计算样式 + 几何）定位到四类系统性漂移，均已收敛。**新增页面/组件时必须遵守以下约定，勿新增例外。**
+
+- **字阶（唯一允许的值）**：`12 / 14 / 16 / 18 / 20 / 24 / 30 / 36 / 48 / 60 px`（`text-xs/sm/base/lg/xl/2xl/3xl/4xl/5xl/6xl`）。体系外一律不许出现。
+  - 用途分层：`12/14` = 元数据与密集列表；`16` = 正文与卡片主信息（缩写）；`17` = 长正文（`.prose`，**唯一的非 Tailwind 标准值**）；`18/20` = 区块标题；`24` = 大区块标题；`30` = **页面主标题（全站 h1 默认）**；`36` = **文章标题（`/blog/<slug>` 的 `sm:text-4xl`，比页面标题高一级）**；`48/60` = **首页展示标题块（hero 人名，`data-display-serif`）**。
+  - ⚠ **最小字号 12px**——清理前全站存在 10px(1629)、11px(4132)、以及 `text-[0.8rem]` 造成的 **12.8px** 非整数值，密集列表在 10/11px 下已影响可读性。E2E 有「正文不小于 12px」与「字阶只用体系内的值」两条回归。
+  - ⚠ **不要再写 `text-[Npx]` / `text-[0.Nrem]`**（`components/ui/*.tsx` 内为 shadcn 上游产物，保持原样即可）。
+- **行高**：标题 `1.15`（`globals.css` 的 `@layer base` 给了 `h1..h4` 默认值）、UI `1.43`（Tailwind 默认）、长正文 `1.7`、密集列表 `1.4`。
+- **等宽眉标 `.eyebrow-label`**（`globals.css`）：12px 等宽 + `font-weight 500` + `letter-spacing .06em` + `text-transform: uppercase`。用于数据卡片的短标签（CCF 等级 `CCF-A`、中科院分区数字、WoS 收录 `SCIE`、`Top`、博客目录标题）。⚠ 只用于 ≤8 字符的短标签；中文无大小写，`uppercase` 对其无效，靠等宽 + 字距区分。
+- **等级 / 分区配色：单一事实来源 `lib/design/grade.ts`**（`TONE_CHIP` / `TONE_BAR` / `TONE_DOT` + `ccfChipClass` / `casChipClass` / `casDotClass` / `ccfBarClass` / `casBarClass`）。ccf · cas · deadlines · venues **四页共用**——此前四处各自内联定义了同一套色板，改一处颜色需同步四个文件。
+  - 色相语义固定：**A / 1区 = 红（最高）→ B / 2区 = 蓝 → C / 3区 = 绿 → 4区 = 琥珀**；`none`（未收录）必须中性灰，不得借彩色（否则会被误读为「有等级」）。
+  - ⚠ 类名必须**整串静态写出**（Tailwind 扫描不到模板拼接的类名）。
+- **对比度基线（WCAG AA）**：浅/深色下全部正文文本 ≥4.5:1（大字号 ≥3:1），图标类交互元素 ≥3:1。E2E 有「正文文本对比度达 WCAG AA（浅色 + 深色）」回归（8 条路由 × 2 主题）。
+  - ⚠ **彩色小徽章是最大陷阱**：用 `text-*-700` on `bg-*-50`（浅色，4.85~6.65:1）+ `text-*-400` on `bg-*-500/15`（深色，≥6.8:1）。**不要**用 `text-*-600` + `bg-*-500/10`（浅色下仅 **4.02:1**，未达 AA，且半透明底叠在灰底上会发脏）——日历 `CATEGORY[].badgeClass` 曾漏改这一版（`calendar-view.tsx`），已统一。
+  - ⚠ **次级色文字压在中性灰底上会擦线**：`--muted-foreground`（浅色 `oklch(0.556)` = rgb(115)）原本只对白底达标（4.74:1），一旦落在 `bg-muted`/`bg-secondary`/`bg-accent`（都 = `oklch(0.97)` = rgb(245)）的表面（如 `/ccf`、`/cas` 的「会议/期刊」「ESCI」徽章、`/deadlines` 的未收录徽章）就只有 **4.35:1**。已把浅色 token **调深到 `oklch(0.54)` = rgb(111)**：灰底上 4.64:1、白底上 5.04:1，两处均达标且观感无变化。**新增「muted 底 + muted 字」的组合前先按 4.5:1 核算。**
+  - ⚠ **不要用 `text-muted-foreground/70` 之类给「真文本」降透明度**（`/70` 合成后仅 2.71:1，远低于 AA）。`muted-foreground` 本身已是次级色，再叠 alpha 只用于**纯装饰**（如 `·` 分隔符，且现统一用全色 `/`）。新增次级文字层级请新增 token，勿叠 alpha。CCF 行的 DBLP 图标链也曾用 `/80`（3.05:1），已改全色。
+  - 清理前：浅色 **49.8%** 文本不达标；2026-09 用 canvas 精确复测后仍有 3 类徽章停在 4.35:1，均已修复 → **现状 0%**（浅/深色均为 0）。
+- **组件规格统一**：
+  - `Badge` 基础圆角 = `rounded-full`（胶囊）；需要「方块编码」样式（如 CCF 等级 `w-7 justify-center`）时显式覆写 `rounded-md`。⚠ 此前基础值是 `rounded-4xl`（26px），在 20px 高的徽章上被浏览器裁到 10px、与 `rounded-full` 视觉相同，属**假第三种形状**。
+  - 按钮 `size="sm"` 字号 = `text-sm`（14px）。⚠ 上游默认是 `text-[0.8rem]`（**12.8px**，非整数、非体系值）；顶部栏另有 `globals.css` 覆盖为 14px。
+  - 图标栅格（有意保留的 4 档）：**12px** = 徽章内联（`badge.tsx` 的 `[&>svg]:size-3!`）、**14px** = 小控件/内联、**16px** = 默认控件、**20px** = 特征图标（统计卡、悬浮导航）。
+  - ⚠ **`Card` + `CardContent` 的上下内边距会叠加（易踩）**：`ui/card.tsx` 的 `Card` 自带 `py-(--card-spacing)`（默认 `py-4` = 16px），而 `CardContent` 基础类只有 `px-(--card-spacing)`（与 shadcn 上游一致，垂直由 Card 提供）。故调用方若写 `<CardContent className="p-3">`，**只会覆盖水平方向**，垂直变成 `16 + 12 = 28px` 而水平仍 12px —— 卡片上下明显发空、与左右不对称（`/deadlines` 会议卡曾是 28:12，统计卡是 32:16 正好 2 倍）。**凡在 `CardContent`/`CardHeader` 上用 `p-*`/`py-*`/`pt-*`/`pb-*` 控制内边距时，必须同时给 `Card` 加 `py-0`**，让内层独自掌控；若本就只想要默认的 16px，**直接删掉那些多余的类**（`Card` 已给）。
+  - 两轮清理覆盖：`/deadlines` 会议卡（`p-3` → 12px 均齐）、`StatCard`（`deadlines`/`ccf`/`cas` 三处 `p-3.5 sm:p-4` → 14/16px 均齐）；以及**冗余类删除**——`/` 与 `/blog` 的 `CardHeader className="py-4"`、`/publications` 的 `CardContent … py-4`（两者都在把 16 变成 32）、`/nav` 的 `CardHeader pb-2` + `CardContent pb-3`（本意是收紧间距，实际是加大：`8+16=24`）、`/projects` 的 `pb-2`+`pt-2`、`/talks` 的 `py-5`。E2E 有「卡片内边距四边对称」回归（8 条路由）。
+  - 纯 `CardContent` + 交由其控制的全出血卡片（如 `calendar-view.tsx`）用的是 `Card className="py-0"` + `CardContent className="p-0"`，同一约定。
+  - ⚠ 审查时注意排除**被 grid 拉伸到等高**的卡片（如 `/nav` 的链接卡）：内容顶对齐导致的底部留白属布局，不是内边距问题——E2E 断言已内置该排除。
+- **取证方法（可复用，含一个必须避开的坑）**：本项目**没有**视觉回归基线，故 UI 改动靠「程序化取证」验证——用 Playwright 逐页 `getComputedStyle` 抓 `fontFamily / fontSize / fontWeight / lineHeight / letterSpacing / color / padding / borderRadius` + `getBoundingClientRect` 几何，聚合成直方图对比，并自算 WCAG 对比度。多宽度（360~1920）× 中英文 × 明暗，均应无横向溢出。已有三条断言固化在 E2E（对比度 / 卡片内边距 / 字阶）。
+  - ⚠ **颜色换算必须交给浏览器，绝不能手写**：Tailwind v4 下 `getComputedStyle` 返回的是 **`lab(...)`（`oklch()` 的序列化形式）和 `oklab(...)`，不是 `rgb()`**。任何只会 `match(/^rgba?\(/)` 的解析器都会返回 null，进而回退成「前景=背景=白」→ 算出对比度 1:1 或干脆全部跳过，**给出假的「全部通过」**（本项目据此误判过一次，真实情况是浅色徽章 4.35:1 未达 AA）。正确做法：`canvas.fillStyle` 依次赋「非法哨兵 → 目标颜色」，再 `fillRect` + `getImageData`，即可得到浏览器自己的**非预乘 sRGB（含 alpha）**；`lab(50 40 30)` → `187,88,70` 与手工值一致，可作正确性自检。
+  - ⚠ **暗色主题必须真测**：暗色徽章大量使用 `bg-*-500/15` 这类**半透明底**，只有把祖先背景链逐层合成后才是实际背景色；只看元素自身 `backgroundColor` 必然算错。查询背景时要沿祖先向上找**第一个 alpha ≥ 0.99** 的层。
+
 - **客户端组件**（`"use client"`）放 `components/`；服务端页面守卫在 page.tsx 中。
 - **SSG**：`cookies()` 使页面动态渲染（如 /login、/ideas），属预期；其余页面保持静态。
 - **Lint**：`eslint-plugin-react-hooks` 缺失为既有 warning（非阻塞），勿改 package.json；保持 0 error。
 
 ## 常见问题
 
+- **`app/page.tsx` 已于 2026-09 删除（曾是 create-next-app 遗留模板页）**：其内容是 Next.js 默认的「Get started by editing app/page.tsx」，与首页无关——首页由 `app/[locale]/page.tsx` 提供，`middleware.ts` 把 `/` 重写到 `/[locale]`。删除前已验证：全仓库无任何 import 引用该文件，且 E2E「首页：200 + 中文内容」通过。⚠ 删除后构建路由表中不再有独立的 `/` 条目（由 `[locale]` 段承担），属预期，不要为此加回文件。
 - 本地 `localhost:3000` 反复 EADDRINUSE：残留 next-server 进程，`fuser -k 3000/tcp` 后再起。
 - Base UI `ToggleGroup` 的 `value` 恒为数组（单选也传 `[value]`），onValueChange 取 `v[0]`。
 - VS Code 集成浏览器对部分元素点击会因稳定性检查超时（如 DropdownMenu trigger）：用 Playwright `evaluate(el => el.click())` 或直接跑 E2E 验证，勿误判为代码问题。
 - standalone 构建会把 `.env` 复制到 `.next/standalone/.env` 并被 server.js 加载（本地 standalone 读取密钥的原因）；VPS 密钥来自 compose 的 environment 注入。
 - 登录/登出 E2E 会真实写入会话与 Idea 数据，用例内自清理；跑完可检查 `data/ideas.json` 应为 `[]`。
-- **E2E 勿开 fullyParallel**：所有用例共享同一 standalone 服务器的 `preferences.json`/`ideas.json`，多 worker 并行写会互相覆盖导致随机失败（曾致偏好恢复用例间歇红）。playwright.config.ts 保持默认单文件串行（27 用例约 12 秒）。
+- **E2E 勿开 fullyParallel**：所有用例共享同一 standalone 服务器的 `preferences.json`/`ideas.json`，多 worker 并行写会互相覆盖导致随机失败（曾致偏好恢复用例间歇红）。playwright.config.ts 保持默认单文件串行（66 用例约 1.4 分钟）。
+
+## 排版与可访问性规格的 E2E 回归（`e2e/smoke.spec.ts` 的「排版与可访问性规格」describe，4 个用例）
+
+这几条把「肉眼说不清、靠取证才发现」的漂移固化为机器断言。**改动 `ui/card.tsx`、`globals.css` 的颜色 token、或任何卡片的 `p-*` 时必须重跑**；**三条都做过「反向验证」**（人为改回错误值 → 确认断言真的红），不是一个只会绿的摆设。
+
+1. **正文文本对比度达 WCAG AA（浅色 + 深色）**——8 条路由 × 2 主题，逐元素比 `fg` 与其**祖先链上第一个不透明背景**。判据：正文 4.5:1、≥24px（或 ≥18.66px 且 w≥700）为 3:1。⚠ 用 `page.emulateMedia({ colorScheme })` 后必须 `waitForFunction` 等 `html.dark` 就位（`defaultTheme="system"`），否则测的还是浅色。
+2. **卡片内边距四边对称**——取每张卡片 `[data-slot=card]` 的 `card-header/content/footer` 直系子元素，按各自 padding 算出墨迹边界，比对上/下/左/右四个内缩量。⚠ 已内置**排除被 grid 拉伸到等高**的卡片（内容顶对齐 → 底部留白属布局）。
+3. **字阶只用体系内的值**——扫描 `main *` 中「有自有文本节点」的元素，字号必须在 `12/14/16/17/18/20/24/30/36/48/60` 内（排除 REUI 日历子树）。防的是 `text-[0.8rem]`（12.8px）这类非体系值。
+4. **窄屏（360px）无横向溢出**——8 条路由 × 中英双语。顶部栏另有一条自己的溢出断言；这条防的是**内容区**：英文字段名比中文长得多，单个 `shrink-0` 的筛选 chip 就能宽过 360px 视口（`/en/ccf` 曾溢出 64px，已用 chip `max-w-full` + 内层 `<span className="truncate">` 修好）。⚠ 同样遵守「先中文再 `/en`」的 cookie 顺序。
 - **顶部栏跳转横向抖动**：三个叠加根因——(1) `OwnerNavItem` 曾每次路由变化先 `setOwner(null)` 回退占位态（3×36px≈116px）再异步查询恢复（游客仅「登录」≈46px），nav 居中布局下所有链接左右横移；修复为**保留上次登录态、后台静默刷新**（登录/登出由 `owner-auth-changed` 事件驱动，此时宽度变化属合理反馈）。(2) **刷新页面时的占位跳变**：组件重挂载后 `owner=null` 渲染 4 个 `size-9` 占位方块，真实按钮要等 `/api/auth/me` 网络往返（dev 数百 ms），刷新必现「入口消失→出现」的抽搐。**最终方案（双布局 + 内联 script，登录/游客均零跳变且不破坏 SSG）**：`OwnerNavItem` 将游客布局与登录布局**在 SSR 都渲染**（结构固定 → 无 hydration mismatch），可见性由 CSS 类控制（`.guest-only`/`.owner-only`，`display:none` 不占宽，首帧宽度即最终宽度）；`app/layout.tsx` 的**内联 script 在首帧 paint 前**同步读 localStorage（键 `owner:auth`）设置 `<html>.owner-logged-in`，故登录用户刷新时首帧即登录布局。组件只负责挂载后同步 html class 与缓存（读缓存、`/api/auth/me` 校验、事件驱动），会话过期/跨设备以服务器为准（此时会修正布局一次，属预期）。⚠ 内联 script 键名必须与组件 `OWNER_CACHE_KEY` 一致；游客时隐藏布局的按钮仍在 DOM（`display:none`），E2E 用 `getByRole` 按可访问性断言不受影响（勿改用 `getByText`/`locator` 数 DOM 存在性）。(3) 长/短页面切换时滚动条消失/出现使视口宽度变化，居中内容偏移约 7.5px；已用 `html { scrollbar-gutter: stable }` 恒定预留滚动条空间。验证方法：Playwright 2ms 高频采样 nav 宽度 + console 错误监听（hydration mismatch）。
 - **本地 E2E 日历用例需要 Radicale 容器在跑**：`.env` 已含 `CALDAV_*`（指向 `http://127.0.0.1:5232`、用户名 caladmin），容器 `ysy-personal-homepage-radicale-1` 停止时——「删除日程返回 503」变 502（连接失败）、「/calendar 月视图/日期格聚焦」失败（页面显示「日历服务未配置」不渲染网格）。跑日历用例前 `docker start ysy-personal-homepage-radicale-1`；若仅跑非日历用例可临时注释 `.env` 的 `CALDAV_*`。
 
@@ -204,6 +340,7 @@ pnpm lint                # ESLint
 pnpm test:e2e:local      # 本地全量冒烟（构建+启动+Playwright）
 E2E_BASE_URL=https://shaoyuanyu.cn pnpm exec playwright test  # 对生产跑冒烟
 pnpm totp:setup          # 生成/重生成 TOTP 密钥与恢复码
+pnpm fonts:subset        # 重新生成等宽字体（Noto Sans Mono CJK SC，单文件不分片，见「字体策略」）
 pnpm fetch:publications  # 同步 Semantic Scholar 论文
 pnpm fetch:ccf-dblp      # 同步 CCF 目录（DBLP）
 pnpm fetch:deadlines     # 同步会议 deadline（ccfddl）

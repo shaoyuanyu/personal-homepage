@@ -177,8 +177,25 @@ type DdlCategory =
   | "notification"
   | "other";
 
-/** 按 summary 关键词归类；个人日程（无 DDL 节点词）归 other */
+/** CATEGORIES 属性值（语言中立）→ DdlCategory */
+const CATEGORY_BY_KEY: Record<string, DdlCategory> = {
+  abstract: "abstract",
+  paper: "paper",
+  registration: "registration",
+  camera: "camera",
+  notification: "notification",
+};
+
+/**
+ * 按 CATEGORIES 属性（新写入事件，标题语言中立，分类权威）归类；
+ * 缺失时回退 summary 关键词（兼容旧数据——旧标题如 "ASPLOS 2027 全文" 嵌入过界面语言词）。
+ * 个人日程（无 DDL 节点词）归 other。
+ */
 function categorizeAppointment(ev: ParsedIcsAppointment): DdlCategory {
+  for (const c of ev.categories ?? []) {
+    const cat = CATEGORY_BY_KEY[c.trim().toLowerCase()];
+    if (cat) return cat;
+  }
   const s = ev.summary.toLowerCase();
   if (/摘要|abstract|submission/.test(s)) return "abstract";
   if (/全文|论文|paper/.test(s)) return "paper";
@@ -188,7 +205,11 @@ function categorizeAppointment(ev: ParsedIcsAppointment): DdlCategory {
   return "other";
 }
 
-/** 类别 → 颜色/图标/标签（badgeClass 为完整类名，避免动态拼接 Tailwind 类） */
+/** 类别 → 颜色/图标/标签（badgeClass 为完整类名，避免动态拼接 Tailwind 类）
+ *
+ * ⚠ badgeClass 的浅色方案与 `lib/design/grade.ts` 同一套：实色 50 号底 + 700 号字。
+ *   曾用 `bg-*-500/10 text-*-600`，浅色下只有 ~4.0:1（未达 AA），且半透明底叠在灰底上会变脏。
+ */
 const CATEGORY: Record<
   DdlCategory,
   {
@@ -203,33 +224,33 @@ const CATEGORY: Record<
     color: "var(--color-violet-500)",
     icon: <FileTextIcon className="size-3.5" aria-hidden="true" />,
     badgeClass:
-      "bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400",
+      "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400",
   },
   paper: {
     labelKey: "catPaper",
     color: "var(--color-sky-500)",
     icon: <FileCheckIcon className="size-3.5" aria-hidden="true" />,
-    badgeClass: "bg-sky-500/10 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400",
+    badgeClass: "bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400",
   },
   registration: {
     labelKey: "catRegistration",
     color: "var(--color-amber-500)",
     icon: <ClipboardCheckIcon className="size-3.5" aria-hidden="true" />,
     badgeClass:
-      "bg-amber-500/10 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
+      "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
   },
   camera: {
     labelKey: "catCamera",
     color: "var(--color-emerald-500)",
     icon: <CameraIcon className="size-3.5" aria-hidden="true" />,
     badgeClass:
-      "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400",
+      "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
   },
   notification: {
     labelKey: "catNotification",
     color: "var(--color-rose-500)",
     icon: <BellIcon className="size-3.5" aria-hidden="true" />,
-    badgeClass: "bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400",
+    badgeClass: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
   },
   other: {
     labelKey: "catOther",
@@ -909,7 +930,7 @@ function CategoryBadge({ category }: { category: DdlCategory }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[10px] font-semibold",
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-xs font-semibold",
         CATEGORY[category].badgeClass,
       )}
     >
@@ -1015,7 +1036,7 @@ function DayAppointmentsList({
               {/* 时间块 */}
               <div className="flex w-14 shrink-0 items-center justify-center sm:w-16">
                 {prefix ? (
-                  <span className="text-sm font-semibold tabular-nums">
+                  <span className="font-mono text-sm font-semibold">
                     {prefix}
                   </span>
                 ) : (
@@ -1175,10 +1196,10 @@ function UpcomingAppointmentsList({
                     >
                       {/* 日期块：muted 灰底（shadcn 中性） */}
                       <div className="flex w-14 shrink-0 flex-col items-center rounded-lg bg-muted/70 py-1.5 sm:w-16">
-                        <span className="text-sm leading-5 font-semibold tabular-nums text-foreground">
+                        <span className="font-mono text-sm leading-5 font-semibold text-foreground">
                           {dayFmt.format(d)}
                         </span>
-                        <span className="text-[10px] font-medium text-muted-foreground">
+                        <span className="text-xs font-medium text-muted-foreground">
                           {weekdayFmt.format(d)}
                         </span>
                       </div>
@@ -1197,7 +1218,7 @@ function UpcomingAppointmentsList({
                       {/* 时间 */}
                       <div className="shrink-0 text-right">
                         {prefix ? (
-                          <p className="text-xs font-semibold tabular-nums text-foreground">
+                          <p className="font-mono text-xs font-semibold text-foreground">
                             {prefix}
                           </p>
                         ) : (

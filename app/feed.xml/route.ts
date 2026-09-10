@@ -1,4 +1,4 @@
-import { posts, profile } from "@/lib/data";
+import { listPosts, profile } from "@/lib/data";
 import { routing } from "@/lib/i18n/routing";
 
 // 静态生成（构建时输出 feed.xml，无需运行时）
@@ -21,8 +21,9 @@ function escapeXml(value: string): string {
 }
 
 export function GET() {
-  const items = [...posts]
-    .sort((a, b) => b.date.localeCompare(a.date))
+  // feed 以默认语言（zh）视角列出全部文章：缺中文版本的条目回退显示原文，
+  // 链接指向正文实际语言所在的 URL（post.locale 即实际展示版本的语言）
+  const items = listPosts(routing.defaultLocale)
     .map((post) => {
       const url = `${SITE_URL}${localePrefix(post.locale)}/blog/${post.slug}`;
       return `    <item>

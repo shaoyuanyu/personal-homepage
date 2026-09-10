@@ -24,7 +24,7 @@ export default function PublicationsPage() {
     <div className="w-full mx-auto max-w-5xl px-4 py-12 sm:px-6">
       <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
+          <h1 className="text-3xl font-bold">{t("title")}</h1>
           <p className="text-muted-foreground">{t("description")}</p>
         </div>
         <Link

@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { routing } from "@/lib/i18n/routing";
-import { posts } from "@velite/index";
+import { listPosts } from "@/lib/data";
 
 // 站点对外 URL：构建时通过 SITE_URL 注入（见 Dockerfile ARG）；默认 HTTPS
 const BASE_URL = process.env.SITE_URL ?? "https://shaoyuanyu.cn";
@@ -15,6 +15,7 @@ const staticRoutes = [
   "/ccf",
   "/cas",
   "/deadlines",
+  "/venues",
 ] as const;
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -31,7 +32,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
         priority: route === "" ? 1 : 0.8,
       });
     }
-    for (const post of posts.filter((p) => p.locale === locale)) {
+    // 全部文章在每个语言下都有 URL（缺译文的回退显示原文，见 lib/data/blog.ts）
+    for (const post of listPosts(locale)) {
       entries.push({
         url: `${BASE_URL}${prefix}/blog/${post.slug}`,
         lastModified: new Date(post.date),

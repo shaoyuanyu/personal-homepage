@@ -1,0 +1,29 @@
+/* ⚠ 本文件由 scripts/subset-fonts.mjs 生成，请勿手动编辑。
+   重新生成：pnpm fonts:subset
+   （等宽字体族 Noto Sans Mono CJK SC；单文件、无 unicode-range 分片，见脚本头注释） */
+
+/* Regular：400 / 500（站内 font-normal / font-medium） */
+@font-face {
+  font-family: "Noto Sans Mono CJK SC";
+  font-style: normal;
+  /* ⚠ 静态字体必须写具体字重区间：写 `100 900` 会让浏览器以为一个字重全支持，
+     从而对粗体也不做任何处理（粗体与常规长得一样）。见脚本头注释「字重」。 */
+  font-weight: 400 500;
+  font-display: swap;
+  /* ⚠ 相对路径（./fonts/…）——由 webpack 接管：加内容哈希、发 immutable 缓存头。
+     改回绝对路径 /fonts/… 会退化为 public/ 语义（max-age=0、无哈希）。 */
+  src: url("./fonts/noto-sans-mono-cjk-sc.woff2") format("woff2");
+}
+
+/* Bold：600 / 700（站内 font-semibold / font-bold） */
+@font-face {
+  font-family: "Noto Sans Mono CJK SC";
+  font-style: normal;
+  /* ⚠ 静态字体必须写具体字重区间：写 `100 900` 会让浏览器以为一个字重全支持，
+     从而对粗体也不做任何处理（粗体与常规长得一样）。见脚本头注释「字重」。 */
+  font-weight: 600 700;
+  font-display: swap;
+  /* ⚠ 相对路径（./fonts/…）——由 webpack 接管：加内容哈希、发 immutable 缓存头。
+     改回绝对路径 /fonts/… 会退化为 public/ 语义（max-age=0、无哈希）。 */
+  src: url("./fonts/noto-sans-mono-cjk-sc-bold.woff2") format("woff2");
+}

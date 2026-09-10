@@ -46,7 +46,15 @@ const posts = defineCollection({
       date: s.isodate(),
       tags: s.array(s.string()).default([]),
       summary: s.string().max(300).optional(),
-      slug: s.slug("posts"),
+      // slug 是「文章标识」而非「语言版本标识」：同一 slug 出现在 zh/ 与 en/ 下表示
+      // 同一篇文章的两个语言版本（见 lib/data/blog.ts）。
+      // 故不能用 s.slug("posts")——它的唯一性校验是集合级（跨语言同名也判冲突），
+      // 这里只保留格式约束，唯一性由 lib/data/blog.ts 按 (locale, slug) 校验。
+      slug: s
+        .string()
+        .min(3)
+        .max(200)
+        .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/i, "Invalid slug"),
       body: s.mdx({ rehypePlugins: [headingIdPlugin] }),
       // 目录（标题锚点树）与阅读统计，由 Velite 从 MDX 自动提取
       toc: s.toc(),
@@ -56,7 +64,8 @@ const posts = defineCollection({
       // content/posts/{zh|en}/{slug}.mdx → locale 从路径推断
       const rel = relative(meta.config.root, meta.path).replace(/\\/g, "/");
       const locale = rel.split("/")[1];
-      return { ...data, locale };
+      // source 供 lib/data/blog.ts 在校验失败时给出可定位的文件路径
+      return { ...data, locale, source: rel };
     }),
 });
 
