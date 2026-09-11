@@ -702,6 +702,67 @@ test.describe("排版与可访问性规格", () => {
   });
 });
 
+test.describe("主题切换（顶部栏）", () => {
+  /**
+   * 触发按钮显示的是「**所选设置**」（浅色/深色/跟随系统），与下拉菜单选项一一
+   * 对应，**不是**「当前生效主题」。
+   *
+   * 背景（曾看起来像 bug）：next-themes（`attribute="class"` + `enableSystem`）
+   * 只把**解析后**的主题写进 DOM——选「跟随系统」时它先读 `prefers-color-scheme`，
+   * 把结果写成 `.dark`，**「system」这个设置值在 DOM 里根本不存在**（只活在
+   * `localStorage["theme"]` 与 React state）。此前触发按钮按 `.dark` 判断
+   * （`dark:hidden` / `hidden dark:block`），于是「跟随系统 + 系统为浅色」时显示
+   * 太阳，看似设置未生效。现由 `app/layout.tsx` 的内联 script 在首帧 paint 前
+   * 标记 `<html class="theme-{light,dark,system}">`，按钮据此以 CSS 择一显示
+   * 太阳 / 月亮 / 半日半夜（`data-theme-icon`，见 globals.css）。
+   */
+  test("按钮图标反映「所选设置」（跟随系统 ≠ 当前生效的浅/深色）", async ({ page }) => {
+    const html = page.locator("html");
+    const trigger = page.getByRole("button", { name: "切换主题" });
+    const icon = (name: string) => trigger.locator(`[data-theme-icon="${name}"]`);
+    // next-themes 写的 .dark 才是「当前生效主题」，与设置标记是两回事
+    const effectiveDark = () => html.evaluate((el) => el.classList.contains("dark"));
+
+    // 默认（新 context，无 localStorage["theme"]）= 跟随系统
+    await gotoReady(page, "/");
+    await expect(html).toHaveClass(/theme-system/);
+    await expect(icon("system")).toBeVisible();
+    await expect(icon("light")).toBeHidden();
+    await expect(icon("dark")).toBeHidden();
+
+    // ★ 关键回归：系统为深色时「跟随系统」仍显示半日半夜图标（而非月亮），
+    //   与此同时生效主题确实是深色
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect.poll(effectiveDark).toBe(true);
+    await expect(html).toHaveClass(/theme-system/);
+    await expect(icon("system")).toBeVisible();
+    await expect(icon("dark")).toBeHidden();
+
+    // 手动选「深色」→ 月亮
+    await trigger.click();
+    await page.getByRole("menuitem", { name: "深色" }).click();
+    await expect(html).toHaveClass(/theme-dark/);
+    await expect(icon("dark")).toBeVisible();
+    await expect(icon("system")).toBeHidden();
+    await expect.poll(effectiveDark).toBe(true);
+
+    // 手动选「浅色」→ 太阳（系统此时仍是深色，说明确实按设置而非按系统）
+    await trigger.click();
+    await page.getByRole("menuitem", { name: "浅色" }).click();
+    await expect(html).toHaveClass(/theme-light/);
+    await expect(icon("light")).toBeVisible();
+    await expect(icon("system")).toBeHidden();
+    await expect.poll(effectiveDark).toBe(false);
+
+    // 回到「跟随系统」→ 半日半夜，生效主题跟随系统回到深色
+    await trigger.click();
+    await page.getByRole("menuitem", { name: "跟随系统" }).click();
+    await expect(html).toHaveClass(/theme-system/);
+    await expect(icon("system")).toBeVisible();
+    await expect.poll(effectiveDark).toBe(true);
+  });
+});
+
 test.describe("关键资源", () => {
   /**
    * 等宽字体的缓存头 + **中英双语可用性**（回归点）。
