@@ -331,6 +331,16 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
 - **顶部栏跳转横向抖动**：三个叠加根因——(1) `OwnerNavItem` 曾每次路由变化先 `setOwner(null)` 回退占位态（3×36px≈116px）再异步查询恢复（游客仅「登录」≈46px），nav 居中布局下所有链接左右横移；修复为**保留上次登录态、后台静默刷新**（登录/登出由 `owner-auth-changed` 事件驱动，此时宽度变化属合理反馈）。(2) **刷新页面时的占位跳变**：组件重挂载后 `owner=null` 渲染 4 个 `size-9` 占位方块，真实按钮要等 `/api/auth/me` 网络往返（dev 数百 ms），刷新必现「入口消失→出现」的抽搐。**最终方案（双布局 + 内联 script，登录/游客均零跳变且不破坏 SSG）**：`OwnerNavItem` 将游客布局与登录布局**在 SSR 都渲染**（结构固定 → 无 hydration mismatch），可见性由 CSS 类控制（`.guest-only`/`.owner-only`，`display:none` 不占宽，首帧宽度即最终宽度）；`app/layout.tsx` 的**内联 script 在首帧 paint 前**同步读 localStorage（键 `owner:auth`）设置 `<html>.owner-logged-in`，故登录用户刷新时首帧即登录布局。组件只负责挂载后同步 html class 与缓存（读缓存、`/api/auth/me` 校验、事件驱动），会话过期/跨设备以服务器为准（此时会修正布局一次，属预期）。⚠ 内联 script 键名必须与组件 `OWNER_CACHE_KEY` 一致；游客时隐藏布局的按钮仍在 DOM（`display:none`），E2E 用 `getByRole` 按可访问性断言不受影响（勿改用 `getByText`/`locator` 数 DOM 存在性）。(3) 长/短页面切换时滚动条消失/出现使视口宽度变化，居中内容偏移约 7.5px；已用 `html { scrollbar-gutter: stable }` 恒定预留滚动条空间。验证方法：Playwright 2ms 高频采样 nav 宽度 + console 错误监听（hydration mismatch）。
 - **本地 E2E 日历用例需要 Radicale 容器在跑**：`.env` 已含 `CALDAV_*`（指向 `http://127.0.0.1:5232`、用户名 caladmin），容器 `ysy-personal-homepage-radicale-1` 停止时——「删除日程返回 503」变 502（连接失败）、「/calendar 月视图/日期格聚焦」失败（页面显示「日历服务未配置」不渲染网格）。跑日历用例前 `docker start ysy-personal-homepage-radicale-1`；若仅跑非日历用例可临时注释 `.env` 的 `CALDAV_*`。
 
+## E2E 与 hydration 时序（CD Smoke Test 稳定性，2026-09）
+
+- **症状**：`deploy.yml` 的 Smoke Test（对生产跑）3 条用例红——「客户端切换语言：字体不变」（点语言菜单后等不到 menuitem，30s 超时）、「/venues 搜索 CVPR」（`toHaveURL(/q=CVPR/)` 收到 `https://shaoyuanyu.cn/venues`）、「/venues 搜索 TPAMI」（期刊卡 not found）。**同一套用例在本地 66/66 全过**。
+- **根因（不是代码回归，是测试的时序假设错了）**：测试用 `waitUntil: "domcontentloaded"` 导航后**立刻** click / fill。此时 SSR 出的 HTML 已完整可见，但 **React 合成事件尚未挂载**——此窗口内派发的 click / fill 会被**静默丢弃**（不抛错、无 console 警告，Playwright 的 click/fill 自身还正常返回），失败延后到后面的断言，表现为「URL 没变」「菜单没弹开」「元素找不到」，极难归因。本机（离 VPS 近）hydration ≈ DCL + 100ms，恰好盖住该窗口故本地全绿；**CI runner 在海外、站点在国内 VPS，JS chunk 晚到数秒 → 首个交互必丢**。
+- **复现方法（可复用）**：用 `page.route` 拦截 `_next/static/chunks` 下的 JS chunk 人为加延迟，`domcontentloaded` 后立刻 `fill("CVPR")` → URL 永不更新（与 CD 报错逐字一致）。⚠ 集成浏览器工具里 Playwright 的路由处理会串行化，多个 chunk 各加 800ms 会把 hydration 拖到分钟级；只给**单个** chunk 加延迟即可看清。
+- **修复：应用侧提供机器可校验的就绪信号**——`components/providers.tsx` 挂载后用 `useEffect` 置 `document.documentElement.dataset.hydrated = "true"`。Providers 是 hydration 提交中最外层的客户端组件，其 effect 在已 hydration 的子组件**之后**执行，故属性置位 = 整棵树可交互。⚠ **该属性只能由客户端设置，SSR HTML 中必须为 0**（`curl -s …/venues | grep -c data-hydrated` → `0`），否则它就不是 hydration 信号。
+- **E2E 侧**：`e2e/smoke.spec.ts` 新增 `waitForHydration(page)`（等 `data-hydrated="true"`，20s 超时）与 `gotoReady(page, path)`（= `goto` + 等待），`expectPageOk` 末尾也补了该等待。**任何 click / fill 之前都必须先就绪**——`loginWithCode`、语言切换、汉堡菜单、日历设置与日期格、CalDAV 菜单、Idea CRUD、偏好恢复等所有「导航后即交互」处已全部改用 `gotoReady`。日历用例里原先的 `waitForTimeout(1000)` 定时 hack 已由该信号取代——**勿再加回定时等待**。
+- **局限**：`data-hydrated` 只在**整页加载**时置位，客户端路由跳转后的新树不会重新置位（同一页面内本就是 SPA，交互能力在，无需重置）。故测试一律用 `page.goto` 整页加载；若将来有用例依赖「客户端跳转后新树已就绪」，需改成按 pathname 置位（如 `data-hydrated={pathname}`）再断言。
+- **耦合**：该等待要求线上镜像包含 `data-hydrated`，所以「对生产跑冒烟」只能与同一次部署一起跑（`deploy.yml` 的 `smoke-test` 排在 `build-and-deploy` 之后，满足）。若在新镜像上线前手动 `E2E_BASE_URL=https://shaoyuanyu.cn pnpm exec playwright test`，会看到「等待 hydration 超时」——那是版本落后，不是 bug。
+
 ## 常用命令速查
 
 ```bash
