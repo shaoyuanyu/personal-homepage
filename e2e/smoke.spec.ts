@@ -8,6 +8,33 @@ import { TOTP } from "otpauth";
  * 通过 E2E_BASE_URL 在本地（localhost）或线上（https://shaoyuanyu.cn）运行。
  */
 
+/**
+ * 等待客户端 hydration 完成（React 合成事件已挂载）。
+ *
+ * ⚠ **任何 click / fill 之前都必须先等它**：SSR 出的 HTML 在 `domcontentloaded`
+ * 时已完整可见，但此刻 React 还没接管 DOM，此时派发的交互会被**静默丢弃**——
+ * Playwright 的 click / fill 自身会正常返回（元素确实可见可点），失败会延后到
+ * 后面的断言，表现为「URL 没变」「菜单没弹开」「元素找不到」，极难归因。
+ * 本机（离 VPS 近）hydration ≈ DCL + 100ms，恰好盖住该窗口，测试侥幸全过；
+ * CI runner 在海外、站点在国内 VPS，JS chunk 晚到数秒，故 CD Smoke Test 必红。
+ * 复现方式：用 `page.route` 拦截 `_next/static/chunks` 下的 JS chunk 并加 2.5s
+ * 延迟，`domcontentloaded` 后立刻 `fill("CVPR")` → URL 永不更新（与 CD 报错一致）。
+ * 就绪信号由 `components/providers.tsx` 在挂载（= hydration 提交）后置位。
+ */
+async function waitForHydration(page: Page) {
+  await page.waitForFunction(
+    () => document.documentElement.dataset.hydrated === "true",
+    undefined,
+    { timeout: 20_000 },
+  );
+}
+
+/** 整页导航到站内页面（`[locale]` 下的页面）并等待可交互 = goto + hydration。 */
+async function gotoReady(page: Page, path: string) {
+  await page.goto(path, { waitUntil: "domcontentloaded" });
+  await waitForHydration(page);
+}
+
 async function expectPageOk(page: Page, path: string, heading?: string) {
   const res = await page.goto(path, { waitUntil: "domcontentloaded" });
   expect(res?.status(), `${path} 应返回 200`).toBe(200);
@@ -17,6 +44,8 @@ async function expectPageOk(page: Page, path: string, heading?: string) {
       `${path} 应渲染 h1: ${heading}`,
     ).toBeVisible();
   }
+  // 「可达」= 服务端 200 + 客户端已 hydration（其后往往紧跟交互断言）
+  await waitForHydration(page);
 }
 
 /** 收集页面 console 错误 / 未捕获异常 */
@@ -43,7 +72,7 @@ const totpSecret = (() => {
 
 /** 用 TOTP 码登录，成功后落在首页 */
 async function loginWithCode(page: Page, code: string) {
-  await page.goto("/login");
+  await gotoReady(page, "/login");
   await page.locator("#auth-code").fill(code);
   await expect(page).toHaveURL(/\/$/);
 }
@@ -362,7 +391,7 @@ test.describe("字体策略（按角色）", () => {
    */
   test("客户端切换语言：字体不变", async ({ page }) => {
     await page.context().clearCookies();
-    await page.goto("/venues", { waitUntil: "domcontentloaded" });
+    await gotoReady(page, "/venues");
     const body = page.locator("main p").first();
     const font = () => body.evaluate((el) => getComputedStyle(el).fontFamily);
     const before = await font();
@@ -907,7 +936,7 @@ test.describe("主人登录（TOTP）", () => {
   });
 
   test("错误验证码被拒绝且不设会话", async ({ page }) => {
-    await page.goto("/login");
+    await gotoReady(page, "/login");
     await page.locator("#auth-code").fill("000000");
     // 限定在表单内：避免命中 Next.js 路由播报器（role=alert，shadow root）
     await expect(page.locator("form").getByRole("alert")).toBeVisible();
@@ -1004,7 +1033,7 @@ test.describe("主人登录（TOTP）", () => {
     // <lg：内联导航收起，汉堡菜单出现，且 Sheet 内提供完整入口
     // （主人专属「速记/日历」也必须在此可达，否则中宽度下功能真空）
     await page.setViewportSize({ width: 768, height: 800 });
-    await page.goto("/");
+    await gotoReady(page, "/");
     await expect(desktopNav).toBeHidden();
     await page.getByRole("button", { name: "菜单" }).click();
     const sheetNav = page.locator(".sheet-nav");
@@ -1019,7 +1048,7 @@ test.describe("主人登录（TOTP）", () => {
 
     // ≥lg：内联导航展开，汉堡菜单消失（不再有收起的入口）
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/");
+    await gotoReady(page, "/");
     await expect(desktopNav).toBeVisible();
     for (const name of ["首页", "博客", "速记", "日历", "导航"]) {
       await expect(
@@ -1054,7 +1083,7 @@ test.describe("Idea 速记（主人专属）", () => {
   test("创建 → 标记完成 → 编辑 → 删除", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
-    await page.goto("/ideas");
+    await gotoReady(page, "/ideas");
 
     const marker = String(Date.now());
     const origin = `E2E 测试 Idea ${marker}：对比学习中的灾难性遗忘`;
@@ -1147,7 +1176,7 @@ test.describe("主人偏好持久化（服务器）", () => {
     expect(r.status()).toBe(200);
 
     // 无 URL 参数访问 /ccf：应恢复服务器偏好，只显示人工智能分组
-    await page.goto("/ccf");
+    await gotoReady(page, "/ccf");
     await expect(
       page.getByRole("heading", { name: "人工智能", level: 2 }),
     ).toBeVisible();
@@ -1166,7 +1195,7 @@ test.describe("Deadline 手动同步（主人专属）", () => {
   test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
 
   test("游客访问 /deadlines：无同步按钮", async ({ page }) => {
-    await page.goto("/deadlines");
+    await gotoReady(page, "/deadlines");
     await expect(
       page.getByRole("button", { name: "立即同步" }),
     ).toHaveCount(0);
@@ -1176,7 +1205,7 @@ test.describe("Deadline 手动同步（主人专属）", () => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
 
-    await page.goto("/deadlines");
+    await gotoReady(page, "/deadlines");
     await expect(
       page.getByRole("button", { name: "立即同步" }),
     ).toBeVisible();
@@ -1204,7 +1233,7 @@ test.describe("Deadline 手动同步（主人专属）", () => {
         .click();
     };
 
-    await page.goto("/deadlines");
+    await gotoReady(page, "/deadlines");
     await openMenu();
     await expect(
       page.getByRole("menuitem", { name: "添加到我的日历" }),
@@ -1212,7 +1241,7 @@ test.describe("Deadline 手动同步（主人专属）", () => {
 
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
-    await page.goto("/deadlines");
+    await gotoReady(page, "/deadlines");
     await openMenu();
     await expect(
       page.getByRole("menuitem", { name: "添加到我的日历" }),
@@ -1294,7 +1323,7 @@ test.describe("我的日历（主人专属）", () => {
     await page.request.patch("/api/preferences", {
       data: { "calendar:weekStart": "sunday" },
     });
-    await page.goto("/calendar");
+    await gotoReady(page, "/calendar");
 
     const header = page.locator("[data-slot=event-calendar-month-header]");
     // 第一列表头即每周起始日（zh/en 默认统一周日）。注意 cell 内含窄屏缩写
@@ -1328,7 +1357,7 @@ test.describe("我的日历（主人专属）", () => {
   test("点击日期格聚焦：下方联动显示当天日程，可返回总览", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
-    await page.goto("/calendar");
+    await gotoReady(page, "/calendar");
 
     // 动态取「当月某日」（20 号，避免硬编码日期跨月失效）；
     // 日历页默认显示当前月（今天所在月）。REUI 标题格式 zh: yyyy年M月
@@ -1341,9 +1370,9 @@ test.describe("我的日历（主人专属）", () => {
       page.getByRole("heading", { name: "本月及未来日程" }),
     ).toBeVisible();
 
-    // 等待客户端 hydration 完成（heading 是 SSR 渲染的，此时 React 事件
-    // 可能尚未挂载；dispatchEvent 需在 hydration 后才能命中 onSlotClick）
-    await page.waitForTimeout(1000);
+    // 日期格用 dispatchEvent 派发（REUI cell 的可操作性检查会超时），必须在
+    // hydration 完成后才能命中 onSlotClick——上面的 gotoReady 已确保
+    // （原实现是这里 `waitForTimeout(1000)` 定时等待）
 
     /** 点击当月某日日期格（聚焦/取消聚焦）——REUI 月视图 cell：非当月带
         data-outside，日期号在 [data-slot=event-calendar-month-day-number] */
@@ -1408,7 +1437,7 @@ test.describe("我的日历（主人专属）", () => {
   test("登录后可在日历页设置 CalDAV 凭证", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
-    await page.goto("/calendar");
+    await gotoReady(page, "/calendar");
 
     // 工具栏有设置入口
     await page.getByRole("button", { name: "设置" }).click();
