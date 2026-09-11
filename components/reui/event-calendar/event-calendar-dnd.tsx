@@ -71,8 +71,17 @@ interface Surface {
   scrollTop: number
 }
 
-/** Module flag so chip onClick can ignore the click that ends a drag. */
-let lastGestureEndedAt = 0
+/**
+ * Module flag so chip onClick can ignore the click that ends a drag.
+ *
+ * ⚠ 初值必须是「很久以前」而非 0（本项目对上游 REUI 的修复，勿改回 0）：
+ * `performance.now()` 以**导航开始**为原点，而哨兵只在真实手势后才被写值。
+ * 初值取 0 时，页面加载后 250ms 内 `performance.now() - 0 < 250` 恒为真 →
+ * **这段时间内的点击会被当成「刚结束的拖拽」静默丢弃**（实测：standalone
+ * 首屏 hydration 完成约 250ms，此时点击日期格无任何反应；同属一个时间窗口的
+ * `wasRecentChipPress`（300ms）更宽）。E2E「点击日期格聚焦」曾因此间歇性变红。
+ */
+let lastGestureEndedAt = Number.NEGATIVE_INFINITY
 function wasRecentDrag(): boolean {
   return performance.now() - lastGestureEndedAt < 250
 }
@@ -83,8 +92,10 @@ function wasRecentDrag(): boolean {
  * trailing native click retargets to the empty grid does NOT open a create
  * dialog. Refreshed on release so it covers long presses; the chip's own
  * click-to-edit is unaffected (only grid slot-clicks check it).
+ *
+ * ⚠ 初值同上，必须是「很久以前」而非 0（本项目对上游 REUI 的修复）。
  */
-let lastChipPressAt = 0
+let lastChipPressAt = Number.NEGATIVE_INFINITY
 function markChipPress(): void {
   lastChipPressAt = performance.now()
   window.addEventListener(
