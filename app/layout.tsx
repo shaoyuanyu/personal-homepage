@@ -73,13 +73,18 @@ export default async function RootLayout({
   return (
     <html lang={HTML_LANG[locale] ?? "zh-CN"} suppressHydrationWarning>
       <body className="antialiased">
-        {/* 首帧登录态布局：在 paint 前同步读 localStorage 设置 <html> class，
-            与 OwnerNavItem 的 .guest-only/.owner-only（globals.css）联动，
-            使刷新时首帧即正确导航布局（游客/登录均零跳变）。
-            键名须与 components/layout/owner-nav-item.tsx 的 OWNER_CACHE_KEY 一致。 */}
+        {/* 首帧标记：在 paint 前同步读 localStorage 设置 <html> class，避免首帧跳变。
+            - owner-logged-in → 与 OwnerNavItem 的 .guest-only/.owner-only 联动，
+              使刷新时首帧即正确导航布局（游客/登录均零跳变）。
+              键名须与 components/layout/owner-nav-item.tsx 的 OWNER_CACHE_KEY 一致。
+            - theme-light/dark/system → 与 ThemeToggle 的 [data-theme-icon]
+              可见性规则联动。next-themes 只把「解析后的主题」写成 .dark
+              （选「跟随系统」时 DOM 里没有「system」这个值），故「所选设置」
+              须自己标记。
+              键名 "theme" 即 next-themes 的默认 storageKey（Providers 未覆盖）。 */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem("owner:auth")==="1"){document.documentElement.classList.add("owner-logged-in")}}catch(e){}`,
+            __html: `try{var d=document.documentElement;if(localStorage.getItem("owner:auth")==="1"){d.classList.add("owner-logged-in")}var t=localStorage.getItem("theme");d.classList.add(t==="light"||t==="dark"?"theme-"+t:"theme-system")}catch(e){}`,
           }}
         />
         {children}

@@ -304,6 +304,41 @@ html.owner-logged-in .owner-only {
   display: inline-flex;
 }
 
+/* ---- 主题按钮图标（ThemeToggle）----
+   触发按钮显示的是「**所选设置**」（浅色 / 深色 / 跟随系统），与下拉菜单的三个
+   选项一一对应；**不是**「当前生效主题」。
+
+   ⚠ 为什么不能靠 `.dark` 判断：next-themes（attribute="class" + enableSystem）
+   只把**解析后**的主题写进 DOM —— 选「跟随系统」时它先读 prefers-color-scheme，
+   把结果（light/dark）写成 class，**「system」这个设置值在 DOM 里根本不存在**
+   （只活在 localStorage["theme"] 与 React state 里）。若按 `.dark` 判断，跟随
+   系统时会显示成「浅色/深色」图标，看起来像设置没生效。
+
+   故由 app/layout.tsx 的内联 script 在首帧 paint 前读 localStorage["theme"]
+   给 <html> 加 theme-light / theme-dark / theme-system 标记 —— 与上方
+   .guest-only/.owner-only 同一套零跳变机制（SSR 三个图标都渲染、结构固定，
+   可见性由 CSS 决定，故既无 hydration mismatch 也无首帧闪烁；同一时刻仅一个
+   图标 display:inline-flex，按钮宽度恒定）。
+   默认（无标记，如 localStorage 被禁用）：跟随系统。
+   ⚠ data-theme-icon 是 E2E 的断言钩子（「跟随系统 → 半日半夜图标」回归），
+   改动时同步 e2e/smoke.spec.ts。 */
+.theme-icon {
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+[data-theme-icon="system"] {
+  display: inline-flex;
+}
+html.theme-light [data-theme-icon="system"],
+html.theme-dark [data-theme-icon="system"] {
+  display: none;
+}
+html.theme-light [data-theme-icon="light"],
+html.theme-dark [data-theme-icon="dark"] {
+  display: inline-flex;
+}
+
 /* ---- 顶部栏：桌面导航的紧凑档（≥lg）----
    内联导航断点为 lg（1024，见 site-header.tsx）。英文文案（Publications /
    Scratchpad / Calendar）明显更长：若不收紧，登录态在 1024~1280px 视口下
