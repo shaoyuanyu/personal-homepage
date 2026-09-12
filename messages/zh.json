@@ -383,7 +383,7 @@
     "dueTomorrow": "明天截止",
     "pastDue": "已截止",
     "deadlinePassedSuffix": "已过",
-    "sourceNote": "本页整合 <ccf>CCF 推荐目录</ccf>、<cas>中科院分区表</cas>（计算机科学大类）与 <deadlines>会议 Deadline 数据</deadlines>（ccfddl）三份来源：会议评级与领域以 CCF 2026 第七版为准；期刊仅当其同时收录于中科院分区表时才展示分区/排名信息；截稿与会期信息如有出入请以各会议官网为准。"
+    "sourceNote": "本页整合 <ccf>CCF 推荐目录</ccf>、<cas>中科院 SCI 分区表</cas>（计算机科学大类）与 <deadlines>会议 Deadline 日历</deadlines>（ccfddl）三份来源：会议评级与领域以 CCF 2026 第七版为准；期刊仅当其同时收录于中科院分区表时才展示分区/排名信息；截稿与会期信息如有出入请以各会议官网为准。"
   },
   "misc": {
     "soon": "即将上线",

@@ -100,21 +100,21 @@ groups:
           en: CCF class, CAS zones & conference deadlines at a glance (local)
       - name:
           zh: CCF 推荐目录
-          en: CCF Directory
+          en: CCF Recommended List
         url: "/ccf"
         desc:
           zh: CCF 会议与期刊目录（站内版）
-          en: CCF recommended venues & journals (local)
+          en: CCF recommended conferences & journals (local)
       - name:
           zh: 中科院 SCI 分区表
-          en: CAS Journal Zones
+          en: CAS SCI Journal Zones
         url: "/cas"
         desc:
-          zh: 中科院分区表计算机科学大类（站内版）
-          en: CAS journal zones — Computer Science (local)
+          zh: 中科院 SCI 分区表计算机科学大类（站内版）
+          en: CAS SCI journal zones — Computer Science (local)
       - name:
           zh: 会议 Deadline 日历
-          en: Conference Deadline Calendar
+          en: Conference Deadlines
         url: "/deadlines"
         desc:
           zh: CCF 会议投稿截止时间（站内版）
