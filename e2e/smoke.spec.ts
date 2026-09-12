@@ -9,6 +9,18 @@ import { TOTP } from "otpauth";
  */
 
 /**
+ * ⚠ **超时预算（CD 与本地的网络差异）**：CD 的 Smoke Test 跑在海外 runner 上、
+ *   站点在国内 VPS，单次整页导航约 1s（本地约 0.1s），故用例耗时近似与
+ *   「整页导航次数」成正比。**凡是跨 ≥12 次导航的用例都标了 `test.slow()`**
+ *   （30s → 90s）：这不是掩盖问题，而是「遍历 N 条路由」这类结构性成本在跨海
+ *   链路上必然放大。新增此类用例时同样标 slow，或先把导航次数压下来。
+ *
+ *   反面教材：字体「跨中/英同族」用例曾对「3 对页面 × 5 个选择器」逐个导航
+ *   （30 次）——本地全绿、CD 必红（30s 超时）。同类成本高但不该盲加 slow 的
+ *   场景：能用**一次导航 + 一次 evaluate** 取代「逐元素导航」的，先重构。
+ */
+
+/**
  * 等待客户端 hydration 完成（React 合成事件已挂载）。
  *
  * ⚠ **任何 click / fill 之前都必须先等它**：SSR 出的 HTML 在 `domcontentloaded`
@@ -211,8 +223,32 @@ test.describe("字体策略（按角色）", () => {
   const SERIF = /Tinos/i; // 有衬线栈首族——**仅长正文（data-longform）合法**
   const MONO = /Noto Sans Mono CJK SC/i; // 等宽栈首族（自托管分片）
 
-  /** 核心不变式：同一元素在中文页与英文页必须解析到同一个字体族。 */
+  /**
+   * 一次导航内抓取多个选择器的解析字体族（元素不存在 → null，**不等待**）。
+   *
+   * ⚠ 不要用 `locator.evaluate` 做这件事：元素缺失时它会一直等到**用例超时**
+   *   （30s）才抛错，在跨海 CI 上会把「选择器写错」伪装成「用例超时」。
+   */
+  async function families(page: Page, selectors: readonly string[]) {
+    return page.evaluate((sels) => {
+      const out: Record<string, string | null> = {};
+      for (const s of sels) {
+        const el = document.querySelector(s);
+        out[s] = el ? getComputedStyle(el).fontFamily : null;
+      }
+      return out;
+    }, selectors as string[]);
+  }
+
+  /**
+   * 核心不变式：同一元素在中文页与英文页必须解析到同一个字体族。
+   *
+   * ⚠ 成本：跨 3 对页面。若「每个选择器各走一轮」（原始的 3 × 5 写法），仅 5 个
+   *   选择器就要 **30 次整页导航** —— 本地够快、CD 上必碰 30s 超时。
+   *   故改为**每对页面各导航一次、一次抓完全部选择器**（6 次导航）。
+   */
   test("同一元素跨中/英页面同族（核心不变式）", async ({ page }) => {
+    test.slow();
     const pairs: [string, string][] = [
       ["/", "/en"],
       ["/ccf", "/en/ccf"],
@@ -224,19 +260,28 @@ test.describe("字体策略（按角色）", () => {
       ".site-header a[data-slot='button']",
       "footer p",
       ".font-mono",
-    ];
+    ] as const;
+
     for (const [zh, en] of pairs) {
+      // ⚠ 先中文再英文：访问 /en/* 会写 NEXT_LOCALE=en cookie，
+      // 其后的无前缀路径会被重定向到 /en，导致「中文页」其实测的是英文页。
+      await page.context().clearCookies();
+      await page.goto(zh, { waitUntil: "domcontentloaded" });
+      const zhFonts = await families(page, selectors);
+      await page.goto(en, { waitUntil: "domcontentloaded" });
+      const enFonts = await families(page, selectors);
+
+      let compared = 0;
       for (const sel of selectors) {
-        // ⚠ 先中文再英文：访问 /en/* 会写 NEXT_LOCALE=en cookie，
-        // 其后的无前缀路径会被重定向到 /en，导致「中文页」其实测的是英文页。
-        await page.context().clearCookies();
-        await page.goto(zh, { waitUntil: "domcontentloaded" });
-        const zhFont = await family(page, sel).catch(() => null);
-        await page.goto(en, { waitUntil: "domcontentloaded" });
-        const enFont = await family(page, sel).catch(() => null);
+        const zhFont = zhFonts[sel];
+        const enFont = enFonts[sel];
         if (zhFont === null || enFont === null) continue;
+        compared++;
         expect(enFont, `${sel} 在 ${zh} 与 ${en} 应同族`).toBe(zhFont);
       }
+      // 防假绿：选择器全部失效（类名改动、元素被移除）时上面会全部 continue 掉，
+      // 用例「通过」却什么都没测。故要求每对页面至少比较到一个元素。
+      expect(compared, `${zh} 与 ${en} 未比较到任何元素，选择器可能已失效`).toBeGreaterThan(0);
     }
   });
 
@@ -266,6 +311,7 @@ test.describe("字体策略（按角色）", () => {
    * 这条断言把「衬线语义单义」变成机器可校验的约束，防止后续新增页面时回退。
    */
   test("衬线只出现在长正文或首页展示标题块内", async ({ page }) => {
+    test.slow(); // 16 条路由整页导航，见文件顶部「超时预算」
     for (const path of [
       "/",
       "/publications",
@@ -305,6 +351,7 @@ test.describe("字体策略（按角色）", () => {
    * 对应 Anthropic 首页 `.big-cta_title` 的大字衬线写法。
    */
   test("h1 无衬线（首页人名除外）", async ({ page }) => {
+    test.slow(); // 14 条路由整页导航，见文件顶部「超时预算」
     for (const path of [
       "/publications",
       "/talks",
@@ -565,6 +612,7 @@ test.describe("排版与可访问性规格", () => {
   ];
 
   test("正文文本对比度达 WCAG AA（浅色 + 深色）", async ({ page }) => {
+    test.slow(); // 8 条路由 × 2 主题 = 16 次导航，见文件顶部「超时预算」
     for (const scheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme: scheme });
       for (const path of AA_ROUTES) {
@@ -678,6 +726,7 @@ test.describe("排版与可访问性规格", () => {
    * 单个 `shrink-0` 的筛选 chip 就能宽过 360px 视口（`/en/ccf` 曾溢出 64px）。
    */
   test("窄屏（360px）无横向溢出", async ({ page }) => {
+    test.slow(); // 8 条路由 × 2 语言 = 16 次导航，见文件顶部「超时预算」
     const routes = ["/", "/publications", "/blog", "/ccf", "/cas", "/deadlines", "/venues", "/nav"];
     await page.setViewportSize({ width: 360, height: 900 });
 
