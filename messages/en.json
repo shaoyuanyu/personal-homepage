@@ -123,7 +123,7 @@
   },
   "ccf": {
     "title": "CCF Recommended List",
-    "description": "CCF recommended international conferences and journals (2026, 7th edition, approved March 2026)",
+    "description": "The CCF Recommended List of international conferences and journals (2026, 7th edition, approved March 2026)",
     "versionBadge": "2026 · 7th Edition",
     "source": "Data source:",
     "searchPlaceholder": "Search abbreviation or full name...",
@@ -354,9 +354,9 @@
     "confItems": "matches",
     "jourItems": "matches",
     "confNotRanked": "Not ranked",
-    "confNotRankedTitle": "Not in the CCF recommended list (deadline data from ccfddl)",
+    "confNotRankedTitle": "Not in the CCF Recommended List (deadline data from ccfddl)",
     "jourNotRanked": "Non-CCF",
-    "jourNotRankedTitle": "Not in the CCF recommended list",
+    "jourNotRankedTitle": "Not in the CCF Recommended List",
     "casNotRanked": "Not ranked",
     "casNotRankedTitle": "Not in the CAS Computer Science zone table (may not be WoS-indexed or grouped under another category)",
     "zoneAria": "CAS Zone {zone}",
@@ -381,7 +381,7 @@
     "dueTomorrow": "Due tomorrow",
     "pastDue": "Closed",
     "deadlinePassedSuffix": "passed",
-    "sourceNote": "This page combines the <ccf>CCF Recommended List</ccf>, the <cas>CAS Journal Zones</cas> (Computer Science) and the <deadlines>conference deadline data</deadlines> (ccfddl). Conference classes and fields follow the CCF 2026 7th edition; journals only show CAS zone/rank when listed in the CAS table; deadlines and event info are subject to official conference websites."
+    "sourceNote": "This page combines the <ccf>CCF Recommended List</ccf>, the <cas>CAS SCI Journal Zones</cas> (Computer Science) and the <deadlines>Conference Deadlines</deadlines> (ccfddl). Conference classes and fields follow the CCF 2026 7th edition; journals only show CAS zone/rank when listed in the CAS table; deadlines and event info are subject to official conference websites."
   },
   "misc": {
     "soon": "Coming Soon",
