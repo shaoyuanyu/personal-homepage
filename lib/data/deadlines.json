@@ -1965,6 +1965,18 @@
               "t": "2025-11-18 17:00:00"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://dac.com/2027/authors/call-for-contributions",
+          "tz": "Etc/GMT+8",
+          "date": "July 11-14, 2027",
+          "place": "San Jose, CA",
+          "timeline": [
+            {
+              "t": "2026-11-18 17:00:00"
+            }
+          ]
         }
       ]
     },
@@ -6280,7 +6292,7 @@
           "y": 2026,
           "link": "https://neurips.cc/Conferences/2026",
           "tz": "UTC",
-          "date": "December 6, 2026",
+          "date": "December 6-12, 2026",
           "place": "Sydney, Australia",
           "timeline": [
             {
