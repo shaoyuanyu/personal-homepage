@@ -21,6 +21,12 @@ import { TOTP } from "otpauth";
  */
 
 /**
+ * 单次等待 hydration 的超时（ms）。
+ * 本站 hydration 实测约 2s（CI runner；本机 ~0.1s），8s 留了 4 倍余量。
+ */
+const HYDRATION_TIMEOUT_MS = 8_000;
+
+/**
  * 等待客户端 hydration 完成（React 合成事件已挂载）。
  *
  * ⚠ **任何 click / fill 之前都必须先等它**：SSR 出的 HTML 在 `domcontentloaded`
@@ -32,13 +38,49 @@ import { TOTP } from "otpauth";
  * 复现方式：用 `page.route` 拦截 `_next/static/chunks` 下的 JS chunk 并加 2.5s
  * 延迟，`domcontentloaded` 后立刻 `fill("CVPR")` → URL 永不更新（与 CD 报错一致）。
  * 就绪信号由 `components/providers.tsx` 在挂载（= hydration 提交）后置位。
+ *
+ * ⚠ **允许「重新整页加载一次」**：CI 上出现过单次加载 20s 内不完成的情况
+ *   （同一轮里同一条路由此前只用 ~2s 就完成、且本地在同等条件下连跑 9 次全过 →
+ *   属**偶发停滞**而非代码缺陷，怀疑与浏览器↔Node 之间的 keep-alive 连接复用竞态
+ *   有关：SSR 已返回、后续静态资源请求卡住）。此时重新整页加载一次即可恢复；
+ *   **确定性缺陷会在第二次同样失败**（不会因此被掩盖），且失败信息带诊断上下文。
  */
 async function waitForHydration(page: Page) {
-  await page.waitForFunction(
-    () => document.documentElement.dataset.hydrated === "true",
-    undefined,
-    { timeout: 20_000 },
-  );
+  const wait = () =>
+    page.waitForFunction(
+      () => document.documentElement.dataset.hydrated === "true",
+      undefined,
+      { timeout: HYDRATION_TIMEOUT_MS },
+    );
+
+  try {
+    await wait();
+    return;
+  } catch {
+    // 首次超时 → 重新整页加载一次（保留当前 URL）
+  }
+
+  const url = page.url();
+  await page.reload({ waitUntil: "domcontentloaded" }).catch(() => {});
+  try {
+    await wait();
+  } catch (err) {
+    // 仍失败：带上诊断信息再抛，便于下次失败时直接定位
+    const diag = await page
+      .evaluate(() => ({
+        url: location.href,
+        title: document.title,
+        htmlClasses: document.documentElement.className,
+        scripts: document.querySelectorAll('script[src*="/_next/"]').length,
+        bodyChildren: document.body?.childElementCount ?? null,
+        nextErrorOverlay: !!document.querySelector("nextjs-portal, #nextjs__container_errors"),
+        visibleText: (document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 160),
+      }))
+      .catch(() => null);
+    throw new Error(
+      `等待 hydration 超时（已整页重载重试一次仍失败）\n  重试前 URL: ${url}\n  诊断: ${JSON.stringify(diag)}\n  原始错误: ${String(err)}`,
+    );
+  }
 }
 
 /** 整页导航到站内页面（`[locale]` 下的页面）并等待可交互 = goto + hydration。 */
@@ -760,6 +802,7 @@ test.describe("空态与可点区域（防「看不见的文案」「点不动�
    *   这里统一断言「空态容器里必须有可见文字」。
    */
   test("空态容器内必须有可见文案（多个页面）", async ({ page }) => {
+    test.slow(); // 9 条路由整页导航 + 其中 6 条要填搜索框，见文件顶部「超时预算」
     const cases: { path: string; search?: string }[] = [
       { path: "/publications" },
       { path: "/talks" },
@@ -1711,9 +1754,9 @@ test.describe("我的日历（主人专属）", () => {
   test("加载态：数据到达前给出可见提示（网格降透明度 + 「正在读取日程…」）", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
-    // 人为延迟日历接口，观察中间态
+    // 人为延迟日历接口，观察中间态（6s 足够宽：hydration 后才发请求，断言在其后立刻执行）
     await page.route("**/api/calendar?*", async (route) => {
-      await new Promise((r) => setTimeout(r, 2500));
+      await new Promise((r) => setTimeout(r, 6000));
       await route.continue();
     });
     await page.goto("/calendar", { waitUntil: "domcontentloaded" });
@@ -1730,7 +1773,7 @@ test.describe("我的日历（主人专属）", () => {
     await expect(spinner).toHaveAttribute("aria-label", "正在读取日程…");
 
     // ③ 加载完成后提示消失，且不残留 data-loading
-    await expect(page.getByText("正在读取日程…")).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByText("正在读取日程…")).toHaveCount(0, { timeout: 20_000 });
     await expect(grid).not.toHaveAttribute("data-loading", "true");
   });
 
