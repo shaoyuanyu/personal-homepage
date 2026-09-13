@@ -83,6 +83,29 @@ async function waitForHydration(page: Page) {
   }
 }
 
+/**
+ * standalone 运行时的数据目录。
+ * `pnpm start` 以 `.next/standalone` 为 cwd（见 scripts/start-standalone.mjs），
+ * 故运行时 data/ 落在其下（与仓库根的 data/ 不是同一个）。
+ * ⚠ 勿写死绝对路径——CI 的工作目录不是本机路径（曾因写死 `/home/ysy/...`
+ *   而在 CI 必红，只是当时这些用例被 TOTP_SECRET 跳过而没暴露）。
+ */
+const STANDALONE_DATA_DIR = join(process.cwd(), ".next", "standalone", "data");
+
+/**
+ * 日历服务是否**真的**可用（真实探测，而非只看环境变量）：
+ * `/api/calendar` 在「未配置 CALDAV_URL」时返回 503、「配了但连不上」返回 502，
+ * 两者都渲染不出月视图。需要真实日历服务的用例据此跳过——
+ * 本地未起 Radicale（`docker start <容器>`）或 CI 未起服务时不再假红。
+ * ⚠ 必须在登录后调用（该接口是站主专属，游客会得到 401）。
+ */
+async function calendarAvailable(page: Page) {
+  const r = await page.request.get(
+    "/api/calendar?start=2026-01-01&end=2026-01-02",
+  );
+  return r.status() === 200;
+}
+
 /** 整页导航到站内页面（`[locale]` 下的页面）并等待可交互 = goto + hydration。 */
 async function gotoReady(page: Page, path: string) {
   await page.goto(path, { waitUntil: "domcontentloaded" });
@@ -1734,6 +1757,7 @@ test.describe("我的日历（主人专属）", () => {
   test("登录后访问 /calendar：页面 200 + 月视图可见", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
+    test.skip(!(await calendarAvailable(page)), "日历服务不可用（本地需先 docker start <radicale 容器>）");
 
     const res = await page.goto("/calendar", { waitUntil: "domcontentloaded" });
     expect(res?.status()).toBe(200);
@@ -1754,6 +1778,7 @@ test.describe("我的日历（主人专属）", () => {
   test("加载态：数据到达前给出可见提示（网格降透明度 + 「正在读取日程…」）", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
+    test.skip(!(await calendarAvailable(page)), "日历服务不可用（本地需先 docker start <radicale 容器>）");
     // 人为延迟日历接口，观察中间态（6s 足够宽：hydration 后才发请求，断言在其后立刻执行）
     await page.route("**/api/calendar?*", async (route) => {
       await new Promise((r) => setTimeout(r, 6000));
@@ -1780,6 +1805,7 @@ test.describe("我的日历（主人专属）", () => {
   test("周起始日设置：默认周日，可切换为周一并实时生效", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
+    test.skip(!(await calendarAvailable(page)), "日历服务不可用（本地需先 docker start <radicale 容器>）");
     // 重置为默认周日（防御上次运行残留的 monday 偏好）
     await page.request.patch("/api/preferences", {
       data: { "calendar:weekStart": "sunday" },
@@ -1818,6 +1844,7 @@ test.describe("我的日历（主人专属）", () => {
   test("点击日期格聚焦：下方联动显示当天日程，可返回总览", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
+    test.skip(!(await calendarAvailable(page)), "日历服务不可用（本地需先 docker start <radicale 容器>）");
     await gotoReady(page, "/calendar");
 
     // 动态取「当月某日」（20 号，避免硬编码日期跨月失效）；
@@ -1889,6 +1916,7 @@ test.describe("我的日历（主人专属）", () => {
   test("会议节点日程弹窗：显示该届会议时间线，可跳转同届其它节点日程", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
+    test.skip(!(await calendarAvailable(page)), "日历服务不可用（本地需先 docker start <radicale 容器>）");
 
     // 找一对「同一届会议的节点日程」（时间线跳转需要成对数据），且该届**同时含
     // 已过与尚未发生的节点**（线段深浅断言需要两类线段才能比对）：
@@ -2295,6 +2323,7 @@ test.describe("我的日历（主人专属）", () => {
   test("时间线：同一天有多个节点时，光晕只给点开的那一个、标题带轮次名加以区分", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
+    test.skip(!(await calendarAvailable(page)), "日历服务不可用（本地需先 docker start <radicale 容器>）");
 
     // 找一届「同一本地日有 ≥2 个节点」的会议（如 ADMA 2026 的 Poster / Encore 同在 9/12）
     const now = new Date();
@@ -2452,10 +2481,7 @@ test.describe("我的日历（主人专属）", () => {
     await page.request.delete("/api/calendar/credentials");
     // 同时清掉本次 PUT 登记的同步队列文件，避免残留影响后续用例
     const fs = await import("node:fs");
-    fs.rmSync(
-      "/home/ysy/Projects/ysy-personal-homepage/.next/standalone/data/caldav-reset.json",
-      { force: true },
-    );
+    fs.rmSync(join(STANDALONE_DATA_DIR, "caldav-reset.json"), { force: true });
   });
 
   test("登录后可在日历页设置 CalDAV 凭证", async ({ page }) => {
@@ -2549,10 +2575,7 @@ test.describe("我的日历（主人专属）", () => {
     const fs = await import("node:fs");
     const queue = (() => {
       try {
-        return fs.readFileSync(
-          "/home/ysy/Projects/ysy-personal-homepage/.next/standalone/data/caldav-reset.json",
-          "utf8",
-        );
+        return fs.readFileSync(join(STANDALONE_DATA_DIR, "caldav-reset.json"), "utf8");
       } catch {
         return null;
       }
@@ -2564,9 +2587,6 @@ test.describe("我的日历（主人专属）", () => {
 
     // 清理：删除网站凭证与队列文件
     await page.request.delete("/api/calendar/credentials");
-    fs.rmSync(
-      "/home/ysy/Projects/ysy-personal-homepage/.next/standalone/data/caldav-reset.json",
-      { force: true },
-    );
+    fs.rmSync(join(STANDALONE_DATA_DIR, "caldav-reset.json"), { force: true });
   });
 });

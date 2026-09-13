@@ -3,8 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
+    # 纯文档改动不跑流水线（不涉及代码路径），也避免无谓地占 CI 时长
+    paths-ignore:
+      - "**/*.md"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
 
 jobs:
   lint-and-build:
@@ -13,6 +18,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 需要完整历史：scripts/e2e-select.mjs 用 base..HEAD 判断本次改动以挑选
+          # E2E 子集（浅克隆拿不到 base）
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -45,15 +54,64 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # 站主功能用例（登录 / 速记 / 日历 / 偏好）需要三样东西：
+      #   1. TOTP_SECRET —— 能生成验证码（仓库 Secret）
+      #   2. AUTH_SECRET  —— 会话 Cookie 的 HMAC 密钥（下面随机生成：CI 服务器
+      #      生命周期只有几分钟，无需跨运行一致）
+      #   3. 可用的 CalDAV 服务 —— 用仓库自带的 radicale/config 现场起一个（
+      #      users/collections 均 gitignore，CI 里不存在，故在此现场创建账号与集合）
+      - name: Start Radicale (CalDAV) for E2E
+        run: |
+          CALDAV_PASS=ci-caldav-pass
+          mkdir -p radicale/collections
+          printf 'caladmin:%s\n' "$(openssl passwd -5 "$CALDAV_PASS")" > radicale/users
+          docker run -d --name radicale-ci -p 5232:5232 \
+            -u "$(id -u):$(id -g)" -v "$PWD/radicale:/data" \
+            kozea/radicale:latest --config /data/config
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null -u "caladmin:$CALDAV_PASS" http://127.0.0.1:5232/; then break; fi
+            sleep 1
+          done
+          # 集合：Radicale 的 URL 即存储路径；MKCOL 必须带标准 CalDAV XML
+          COLLECTION=http://127.0.0.1:5232/caladmin/conference-ddl/
+          curl -s -u "caladmin:$CALDAV_PASS" -X MKCOL \
+            -H 'Content-Type: application/xml; charset=utf-8' \
+            --data '<?xml version="1.0" encoding="utf-8" ?><D:mkcol xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:set><D:prop><D:resourcetype><D:collection/><C:calendar/></D:resourcetype></D:prop></D:set></D:mkcol>' \
+            "$COLLECTION" -o /dev/null
+          curl -s -u "caladmin:$CALDAV_PASS" -X PROPPATCH \
+            -H 'Content-Type: application/xml; charset=utf-8' \
+            --data '<?xml version="1.0" encoding="utf-8" ?><D:propertyupdate xmlns:D="DAV:"><D:set><D:prop><D:displayname>会议 Deadline</D:displayname></D:prop></D:set></D:propertyupdate>' \
+            "$COLLECTION" -o /dev/null
+          if curl -sf -u "caladmin:$CALDAV_PASS" -X PROPFIND -H 'Depth: 0' "$COLLECTION" -o /dev/null; then
+            echo "✔ Radicale 就绪（日历用例将真跑）"
+          else
+            echo "⚠ Radicale 集合不可用（日历用例会自行跳过，不会假红）"
+          fi
+
       - name: Smoke test (local standalone)
-        # 构建产物冒烟：启动 standalone server 跑 Playwright（无需重新构建）
+        # 构建产物冒烟：启动 standalone server 跑 Playwright（无需重新构建）。
+        # 测试范围由 scripts/e2e-select.mjs 按本次推送的改动挑选：跨模块的结构性用例
+        # （字体/排版/可访问性/空态/可达性/资源）始终跑，改动命中共享代码时退化为全量；
+        # 全量仍是 `pnpm test:e2e:local`（推送前的本地验收）与手动 `pnpm test:e2e`。
+        env:
+          TOTP_SECRET: ${{ secrets.TOTP_SECRET }}
+          CALDAV_URL: http://127.0.0.1:5232
+          CALDAV_USER: caladmin
+          CALDAV_PASSWORD: ci-caldav-pass
         run: |
           pnpm exec playwright install --with-deps chromium
+          # 会话签名密钥：CI 容器是一次性的，随机生成即可
+          export AUTH_SECRET="$(openssl rand -hex 32)"
           pnpm start > /tmp/e2e-server.log 2>&1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do
-            curl -s -o /dev/null http://localhost:3000/ && break
+            if curl -s -o /dev/null http://localhost:3000/; then break; fi
             sleep 1
           done
-          pnpm exec playwright test
+          BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE=HEAD~1
+          fi
+          GREP="$(node scripts/e2e-select.mjs --base "$BASE" || true)"
+          pnpm exec playwright test --grep "$GREP"

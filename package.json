@@ -16,6 +16,8 @@
     "fetch:cas": "node scripts/fetch-cas.mjs",
     "totp:setup": "node scripts/totp-setup.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:changed": "playwright test --grep \"$(node scripts/e2e-select.mjs)\"",
+    "test:e2e:select": "node scripts/e2e-select.mjs --dry-run",
     "fonts:subset": "node scripts/subset-fonts.mjs",
     "test:e2e:local": "bash scripts/e2e-local.sh"
   },
