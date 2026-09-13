@@ -108,10 +108,30 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
 
 | 工作流 | 触发 | 内容 |
 |---|---|---|
-| `ci.yml` | push/PR 到 main | lint、typecheck、构建、本地 standalone 冒烟 |
-| `deploy.yml` | push 到 main | 构建推 GHCR → SSH 到 VPS pull + `docker compose up -d --no-deps web` → 对生产跑冒烟 |
+| `ci.yml` | push/PR 到 main（**忽略纯文档改动**） | lint、typecheck、构建、本地 standalone 冒烟（**按改动挑选 E2E 子集**） |
+| `deploy.yml` | push 到 main（**忽略纯文档改动**） | 构建推 GHCR → SSH 到 VPS pull + `docker compose up -d --no-deps web` → 对生产跑冒烟（固定子集，见下） |
 | `sync-papers.yml` | 定时 | 每周同步 arXiv 论文 |
 | `sync-deadlines.yml` | 定时 | 每 12 小时同步 CCF 会议 deadline（ccfddl） |
+
+#### E2E 测试范围：CI 按改动挑选，本地/手动全量
+
+> 起因：此前 CI 没有 `TOTP_SECRET`，**78 条里 41 条（登录/速记/日历/凭证）全被跳过**——站主功能实际只有本地验收。用户加了仓库 Secret 后接上，同时把「每次都全跑」这点也一并解决。
+
+- **`scripts/e2e-select.mjs`（单一事实来源，CI 与本地共用）**：按 `base..HEAD` + 工作区改动挑选要跑的 describe，产出 `--grep` 正则（空 = 全量）。
+  - **保守优先**：① 跨模块结构性用例（`ALWAYS`：字体策略 / 排版与可访问性规格 / 空态与可点区域 / 页面可达性 / 主题切换 / 关键资源 / 旧链接与 SEO）**永远跑**——它们逐页扫描大量路由，是「任何改动都可能影响」的部分，也恰好是整套里最耗时的部分；② 命中共享代码（`SHARED`：`components/ui`、`layout`、`providers`、`globals.css`、`messages`、`lib/utils`、`lib/data/index.ts`、`e2e/`、`scripts/`、配置文件…）→ **直接全量**；③ 判不出（force push、浅克隆、无改动、改动不在已知功能目录内）→ **全量**。
+  - 因此收窄**只会剪掉与该改动无关的功能用例**（日历 / Deadline / 速查 / 速记 / 登录 / 偏好），不会漏掉跨模块检查。**改映射表时新增功能组要给出其专属路径**；把路径挪进 `SHARED` 会让改动它的提交退化为全量（安全方向）。
+  - 本地用法：`pnpm test:e2e:changed`（收窄跑）、`pnpm test:e2e:select`（只看决策，不跑）。
+  - ⚠ **全量仍是推送前的本地铁律**（`pnpm test:e2e:local`，1.8 分钟）与手动 `pnpm test:e2e`；CI 的收窄只是省 CI 时长，不是「可以不跑全量」。
+- **CI 的站主用例前置条件**（`ci.yml` 的 `Start Radicale` + 冒烟步骤 env）：
+  1. `TOTP_SECRET` ← 仓库 Secret（用户已配置）；
+  2. **`AUTH_SECRET` 现场随机生成**（`export AUTH_SECRET="$(openssl rand -hex 32)"`）——会话 Cookie 的 HMAC 密钥，CI 容器生命周期只有几分钟，**无需**做成 Secret；
+  3. **现场起一个 Radicale**（`docker run kozea/radicale` + 仓库自带 `radicale/config`，账号与集合按 `setup-calendar-vps.sh` 的同一套请求现场创建，因为 `radicale/users`、`radicale/collections` 都 gitignore）。命令已在本地用同一份脚本逐字验证（MKCOL→201 / PROPPATCH→207 / PROPFIND→成功）。
+     - ⚠ **不能图省事把 `radicale/` 目录换成 `/tmp` 挂载**：本机沙箱与部分环境不允许（实测 `mounts denied`），CI runner 上没问题但本地复刻要用 `$HOME` 下路径。
+     - 日历用例**不依赖「预置事件」**：`会议节点日程弹窗`、`时间线` 两条会先查 API 找目标数据，找不到就 `test.skip`（CI 的空日历下自然跳过），不是缺陷。
+- **`calendarAvailable(page)` 守卫**：需要真实日历服务的 6 条用例（月视图 / 加载态 / 周起始 / 日期格聚焦 / 节点弹窗 / 时间线）在登录后**真实探测** `/api/calendar` 是否 200；未配置（503）或连不上（502）就 `test.skip` —— 本地没起 Radicale、或 CI 的 Radicale 起失败时**不再假红**，同时 skips 会明确写出原因。
+- ⚠ **`deploy.yml`（生产冒烟）**：**只注入 `E2E_BASE_URL`，不注入 `TOTP_SECRET`**，故那里的 41 条站主用例仍是 skip。原因：生产凭证类用例会**真的改**线上数据（`PUT/DELETE /api/calendar/credentials`、`随机重置密码` 会登记同步队列 → VPS crontab 会把 Radicale 密码改掉 → **站主手机上的日历客户端会失联**）。生产冒烟的职责是「站点活着、资源与跳转正常」，站主流程由 CI（本地 server）与本地验收覆盖。
+- ⚠ **E2E 里勿写死本机绝对路径**：曾有 3 处 `/home/ysy/Projects/.../.next/standalone/data/caldav-reset.json`——本地能过，CI 上工作目录不同（`/home/runner/work/...`）会直接失败，只是当时这些用例被 `TOTP_SECRET` 跳过而没暴露。统一用 `STANDALONE_DATA_DIR = join(process.cwd(), ".next", "standalone", "data")`（`pnpm start` 以 standalone 为 cwd，故运行时 data/ 在该目录下）。
+- **纯文档改动**（`**/*.md`）被 `paths-ignore` 排除，不触发 ci/deploy——文档不改变镜像内容，没必要白等一次 15~30 分钟的部署。
 
 - **⚠ 同步工作流必须显式声明 `permissions: {contents: write, pull-requests: write}`**：仓库创建于 2023-02-02 之后，`GITHUB_TOKEN` 默认只读，`peter-evans/create-pull-request` 推分支/建 PR 会 403（`Resource not accessible by integration`），工作流每次运行必失败且不留任何痕迹（无分支、无 PR）。排查时看 Actions 日志最后一步是否报该错；若加了 permissions 仍失败，再检查仓库 Settings → Actions → General → Workflow permissions 是否被设为只读。
 - **⚠ 勿给 create-pull-request 配不存在的 label**：`labels` 输入若引用仓库中不存在的 label，`issues.addLabels` 会 404/422 使步骤失败（v6 无 catch 直接抛错）。仓库没建 `automation` label，故两个 sync 工作流都不用 `labels`；要打标签先手动建好 label。同步工作流统一用 `create-pull-request@v8`。

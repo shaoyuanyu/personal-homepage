@@ -3,6 +3,9 @@ name: Deploy
 on:
   push:
     branches: [main]
+    # 纯文档改动不触发部署（镜像内容不变，避免白等 15~30 分钟）
+    paths-ignore:
+      - "**/*.md"
   workflow_dispatch:
 
 env:
