@@ -1535,6 +1535,521 @@ test.describe("我的日历（主人专属）", () => {
     ).toBeVisible();
   });
 
+  test("会议节点日程弹窗：显示该届会议时间线，可跳转同届其它节点日程", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    // 找一对「同一届会议的节点日程」（时间线跳转需要成对数据），且该届**同时含
+    // 已过与尚未发生的节点**（线段深浅断言需要两类线段才能比对）：
+    // 取本月 1 日 ~ 之后 7 个月末（与页面下方列表同范围）
+    const now = new Date();
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const res = await page.request.get(
+      `/api/calendar?start=${fmt(new Date(now.getFullYear(), now.getMonth(), 1))}&end=${fmt(new Date(now.getFullYear(), now.getMonth() + 7, 0))}&v=e2e-timeline`,
+    );
+    const events = (
+      (await res.json()) as {
+        events?: Array<{
+          uid: string;
+          summary: string;
+          confTitle?: string;
+          startUtc?: number | null;
+          conference?: { abbr: string; year: number; nodes: { utc: number }[] };
+        }>;
+      }
+    ).events ?? [];
+    const target = events.find(
+      (ev) =>
+        ev.conference &&
+        ev.conference.nodes.length >= 2 &&
+        ev.conference.nodes.some((n) => n.utc <= now.getTime()) &&
+        ev.conference.nodes.some((n) => n.utc > now.getTime()) &&
+        events.some(
+          (other) =>
+            other.uid !== ev.uid &&
+            other.conference?.abbr === ev.conference!.abbr &&
+            other.conference.year === ev.conference!.year,
+        ),
+    );
+    test.skip(
+      !target,
+      "当前日历里没有「同一届会议有多条节点日程且跨已过/未发生」的数据",
+    );
+    // 各节点是否已过（用于线段深浅比对；与组件内 `utc <= now` 同一判据）
+    const nodeStates = target!.conference!.nodes.map((n) => n.utc <= now.getTime());
+    // 目标筛选已保证两类节点都存在，分界列必落在 (0, n) 开区间内
+    expect(nodeStates).toContain(true);
+    expect(nodeStates).toContain(false);
+
+    await gotoReady(page, "/calendar");
+
+    // 下方「本月及未来日程」的行是**跳转**语义（聚焦该日，不打开弹窗），
+    // 「当天日程」的行才是打开详情弹窗——故先跳转、再点当天那行
+    const confTitle = target!.confTitle ?? target!.summary;
+    await page
+      .locator("main button:not([data-slot])")
+      .filter({ hasText: confTitle })
+      .first()
+      .click();
+
+    const dayRow = page.locator(`main button[title^="${confTitle}"]`).first();
+    await dayRow.waitFor({ state: "visible" });
+    await dayRow.click();
+
+    const timeline = page.locator("[data-slot=appointment-timeline]");
+    await expect(timeline).toBeVisible();
+    await expect(timeline.getByText("会议时间线")).toBeVisible();
+    // 节点列数与会议数据一致（另有恰好一个「今天」列）；「当前节点」有且只有一个
+    await expect(timeline.locator("[data-slot=timeline-node]")).toHaveCount(
+      target!.conference!.nodes.length,
+    );
+    await expect(timeline.locator("[data-slot=timeline-today]")).toHaveCount(1);
+    await expect(timeline.locator("[aria-current=true]")).toHaveCount(1);
+
+    // **竖向**时间线：各行（节点行 + 「今天」行）左缘对齐、top 递增；
+    // 每个节点行都带悬浮详情（title）
+    const columns = await timeline.locator("li").evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          top: Math.round(r.top),
+          left: Math.round(r.left),
+          isToday: el.getAttribute("data-slot") === "timeline-today",
+          title:
+            el.getAttribute("data-slot") === "timeline-today"
+              ? "（今天列无需悬浮详情）"
+              : (el.querySelector("button, div")?.getAttribute("title") ?? ""),
+        };
+      }),
+    );
+    expect(new Set(columns.map((c) => c.left)).size).toBe(1);
+    expect(columns.every((c, i) => i === 0 || c.top > columns[i - 1].top)).toBe(true);
+    expect(columns.every((c) => c.title.length > 0)).toBe(true);
+    expect(columns.filter((c) => c.isToday)).toHaveLength(1);
+
+    // 回归：轴线深浅的判据是**「今天」标记的位置**——标记左侧一律浅、右侧一律深；
+    // 且轴线**不得被所在列的 `opacity` 淡化**（曾把「已发生」的淡化下在整列 `opacity-55` 上，
+    // 祖先 opacity 衰减了列内轴线半段，导致同一线段一半正常一半变淡）。故同时断三件事：
+    //   ① 今天列自身：左半段比右半段亮（深度翻转点就在标记处）；
+    //   ② 其它每个半段：在标记左侧的与「今天列左半段」同色、右侧的与「右半段」同色；
+    //   ③ 从半段到 `ol`（不含 `ol`）的祖先 opacity 乘积恒为 1（没有列级淡化）。
+    // ⚠ 不把弹窗自身的 opacity 计入——弹窗入场动画会让整棵树 opacity=0，那样断言会被空过；
+    //   也不要用 `Math.max` 统计③（反向验证时实测会漏过「个别列被淡化」）。
+    const toneAudit = await timeline.locator("ol").evaluate((ol) => {
+      /** 合成到白底后的亮度（0-255）：越大越浅 */
+      const lumOf = (css: string) => {
+        const c = document.createElement("canvas");
+        c.width = 1;
+        c.height = 1;
+        const ctx = c.getContext("2d")!;
+        ctx.fillStyle = "#ffffff"; // 哨兵：非法颜色不会改变 fillStyle
+        ctx.fillRect(0, 0, 1, 1);
+        ctx.fillStyle = css;
+        ctx.fillRect(0, 0, 1, 1);
+        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const ancestorOpacity = (el: Element) => {
+        let a = 1;
+        for (let p = el.parentElement; p && p !== ol; p = p.parentElement) {
+          a *= Number(getComputedStyle(p).opacity || 1);
+        }
+        return a;
+      };
+      const cols = Array.from(ol.children);
+      // 竖向：轴线列的直接子元素里，除圆（带 data-slot）以外的两个半段（上/下）。
+      // ⚠ 不能按宽度过滤：虚线半段是 `w-0 border-l`（宽度 0），横向版的 `h-px` 过滤法会漏掉它。
+      const halves = cols.map(
+        (col) =>
+          Array.from(col.querySelector("span[aria-hidden]")?.children ?? []).filter(
+            (s) => !s.hasAttribute("data-slot"),
+          ) as HTMLElement[],
+      );
+      const todayIdx = cols.findIndex(
+        (c) => c.getAttribute("data-slot") === "timeline-today",
+      );
+      const isDashed = (el: HTMLElement) =>
+        getComputedStyle(el).borderLeftStyle === "dashed";
+      const lumOfHalf = (el: HTMLElement) =>
+        lumOf(getComputedStyle(el).backgroundColor);
+      const problems: string[] = [];
+      let minAncestorOpacity = 1;
+      let lightMax = -1;
+      let darkMax = -1;
+      // ① 同一线段由相邻两列的半段拼成：必须「同为虚线」或「同为实线且亮度相同」
+      //    （曾因「整列 opacity 衰减轴线半段」出现一个线段两种颜色）
+      for (let i = 0; i < halves.length - 1; i++) {
+        const left = halves[i][1]; // 本行**下半段**
+        const right = halves[i + 1][0]; // 下一行**上半段**
+        if (!left || !right) continue;
+        if (isDashed(left) !== isDashed(right)) {
+          problems.push(`线段 ${i}-${i + 1}：虚/实线不一致`);
+        } else if (
+          !isDashed(left) &&
+          Math.abs(lumOfHalf(left) - lumOfHalf(right)) > 0.5
+        ) {
+          problems.push(`线段 ${i}-${i + 1}：实线亮度不一致`);
+        }
+      }
+      // ② 实线以「今天」标记为界：左侧浅、右侧深；③ 轴线不得被列级 opacity 淡化
+      halves.forEach(([left, right], i) => {
+        for (const [el, expectDark] of [
+          [left, i > todayIdx],
+          [right, i >= todayIdx],
+        ] as const) {
+          if (!el) continue;
+          minAncestorOpacity = Math.min(minAncestorOpacity, ancestorOpacity(el));
+          if (isDashed(el)) continue; // 虚线（同一天的两端）不参与深浅判定
+          const lum = lumOfHalf(el);
+          if (lum >= 254) continue; // 最外侧透明段（合成到白底后即白）
+          if (expectDark) darkMax = Math.max(darkMax, lum);
+          else lightMax = Math.max(lightMax, lum);
+        }
+      });
+      return {
+        problems,
+        // 任一侧没有实线段时不做深浅比较（理论上是空过，避免误红）
+        lightIsLighter:
+          lightMax < 0 || darkMax < 0 ? true : lightMax > darkMax,
+        minAncestorOpacity,
+        hasDashed: halves.some(
+          ([l, r]) => (l && isDashed(l)) || (r && isDashed(r)),
+        ),
+      };
+    });
+    expect(toneAudit.problems).toEqual([]);
+    expect(toneAudit.lightIsLighter).toBe(true);
+    expect(toneAudit.minAncestorOpacity).toBe(1);
+
+    // 同一天的节点之间（含「今天」与其同天的节点）线段用**虚线**表示「零时间间隔」
+    const localDayKey = (d: Date) =>
+      `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const dashesExpected = await timeline.locator("ol").evaluate(
+      (ol, arg: { nodeUtcs: number[]; todayKey: string }) => {
+        // ⚠ 辅助函数必须定义在 evaluate 内部（浏览器侧），不能引用测试作用域的闭包
+        const dayKey = (d: Date) =>
+          `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+        // 与组件同一规则：节点列按顺序对应 nodes，「今天」列即今天
+        const cols = Array.from(ol.children);
+        let nodeCursor = 0;
+        const days = cols.map((col) =>
+          col.getAttribute("data-slot") === "timeline-today"
+            ? arg.todayKey
+            : dayKey(new Date(arg.nodeUtcs[nodeCursor++] ?? 0)),
+        );
+        let expected = 0;
+        for (let i = 0; i < days.length - 1; i++) {
+          if (days[i] === days[i + 1]) expected++;
+        }
+        return expected;
+      },
+      {
+        nodeUtcs: target!.conference!.nodes.map((n) => n.utc),
+        todayKey: localDayKey(new Date()),
+      },
+    );
+    // 每个「同一天」的线段贡献两个虚线半段
+    const dashedHalfCount = await timeline
+      .locator("ol")
+      .evaluate(
+        (ol) =>
+          Array.from(ol.querySelectorAll("span[aria-hidden] > span")).filter(
+            (s) => getComputedStyle(s).borderLeftStyle === "dashed",
+          ).length,
+      );
+    expect(dashedHalfCount).toBe(dashesExpected * 2);
+    expect(toneAudit.hasDashed).toBe(dashesExpected > 0);
+
+    // 视觉语义（用户指定，**两条独立通道**）：
+    //   ① 光晕（圆外那圈更大更淡的圆环）= **正在查看的那一天**的全部节点（日粒度），
+    //      与时间无关；`aria-current` 仍只标记**精确命中**的那一个（a11y 的「当前项」唯一）；
+    //   ② 时间通道：今天之前淡化、今天日期加重（高亮）、今天之后正常。
+    // 两者可同时生效（看的这条在今天之前 = 有光晕 + 已淡化），故分开断言。
+    const daySeqOf = (utc: number) => {
+      const d = new Date(utc);
+      return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+    };
+    const todaySeq = daySeqOf(now.getTime());
+    const nodeDaySeq = target!.conference!.nodes.map((n) => daySeqOf(n.utc));
+    // ① 光晕只给**点开的那一个**节点（用户指定）——「我在看哪条」必须唯一；
+    //    同日多条节点日程（Poster / Encore）的区分靠**轮次名文字**，不靠光晕。
+    //    淡化则下在**圆**上。
+    const dots = await timeline
+      .locator("[data-slot=timeline-node]")
+      .evaluateAll((els) =>
+        els.map((el) => {
+          const dot = el.querySelector('[data-slot="timeline-node-dot"]');
+          return {
+            current: el.getAttribute("aria-current") === "true",
+            halo: dot ? getComputedStyle(dot).boxShadow !== "none" : false,
+            dimmed: dot ? Number(getComputedStyle(dot).opacity) < 1 : false,
+          };
+        }),
+      );
+    expect(dots.map((d) => d.halo)).toEqual(dots.map((d) => d.current));
+    expect(dots.filter((d) => d.halo)).toHaveLength(1);
+    expect(dots.filter((d) => d.current)).toHaveLength(1);
+    // ② 淡化 ⟺ 节点日期早于今天（含当前查看的那条，不享豁免）
+    expect(dots.map((d) => d.dimmed)).toEqual(
+      nodeDaySeq.map((s) => s < todaySeq),
+    );
+    // ③「今天」的节点日期加重（时间通道的高亮），与「打开哪条」无关；今天列不参与
+    await expect(
+      timeline.locator("[data-slot=timeline-node][data-highlighted=true]"),
+    ).toHaveCount(nodeDaySeq.filter((s) => s === todaySeq).length);
+    await expect(
+      timeline.locator("[data-slot=timeline-today][data-highlighted]"),
+    ).toHaveCount(0);
+    await expect(
+      timeline.locator("[data-slot=timeline-node][aria-current=true]"),
+    ).toHaveCount(1);
+    // 「今天」列：空心圆 + 轴线**上方**「今天在上、日期在下」（与事件列同一行流）
+    const todayColumn = timeline.locator("[data-slot=timeline-today]");
+    await expect(todayColumn.locator("[data-slot=timeline-today-dot]")).toHaveCount(1);
+    await expect(todayColumn.locator("[data-slot=timeline-today-date]")).toBeVisible();
+    await expect(
+      todayColumn.locator("[data-slot=timeline-today-label]").getByText("今天"),
+    ).toBeVisible();
+
+    // 时间线节点视觉（用户指定方案）：轴线上的**大圆**内嵌该节点类别的图标，
+    // 名称只在列宽放得下时显示（与组件内 `TIMELINE_LABEL_EXTRA_PX` 同一语义）。
+    // 四条不变式（与具体数据无关）：
+    // ① 每个节点都有「大圆 + 圆内图标」——图标永远在，不会「两样都空」；
+    // ② 列宽足够（≥ 100px）时必须显示名称——100px 覆盖中英最长的节点名
+    //    （`camera` 的 "Camera-ready"，中英两版都是这串英文，约 62px）；
+    // ③ 名称不得超出列宽、也不得被截断（放不下应当整条不渲染）；
+    // ④ 各列的名称槽 / 日期 / 圆必须同一水平线——名称不显示时槽位也要占位，
+    //    否则该列元素会整体上移、与相邻列错位。
+    const nodeAudit = await timeline
+      .locator("[data-slot=timeline-node]")
+      .evaluateAll((els) =>
+        els.map((el) => {
+          const dot = el.querySelector('[data-slot="timeline-node-dot"]');
+          const label = el.querySelector('[data-slot="timeline-node-label"]');
+          const top = (e: Element | null) =>
+            e ? Math.round(e.getBoundingClientRect().top) : null;
+          const left = (e: Element | null) =>
+            e ? Math.round(e.getBoundingClientRect().left) : null;
+          const h = (e: Element | null) =>
+            e ? Math.round(e.getBoundingClientRect().height) : null;
+          const colW = el.getBoundingClientRect().width;
+          return {
+            colW,
+            dotW: dot ? dot.getBoundingClientRect().width : 0,
+            dotHasIcon: dot
+              ? dot.querySelector('[data-slot="timeline-node-icon"]') !== null
+              : false,
+            hasLabel: label !== null,
+            labelOverflow: label
+              ? label.getBoundingClientRect().width - colW
+              : 0,
+            // 名称是单行 `truncate`：被截断体现在 scrollWidth 上
+            // （保留纵向判断：将来若名称改回多行，这条仍能抓到截断）
+            labelClipped: label
+              ? label.scrollHeight > label.clientHeight + 1 ||
+                label.scrollWidth > label.clientWidth + 1
+              : false,
+            rowH: h(el),
+            rowLeft: left(el),
+            rowTop: top(el),
+          };
+        }),
+      );
+    expect(nodeAudit.length).toBeGreaterThan(0);
+    // ① 大圆（≥ 20px，区分于旧的小圆点 10px）+ 圆内图标
+    expect(nodeAudit.every((b) => b.dotW >= 20 && b.dotHasIcon)).toBe(true);
+    // ② 列宽足够 → 必须显示名称
+    expect(nodeAudit.every((b) => b.colW < 100 || b.hasLabel)).toBe(true);
+    // ③ 名称不超出列宽、不被截断
+    expect(nodeAudit.every((b) => b.labelOverflow <= 0.5)).toBe(true);
+    expect(nodeAudit.every((b) => !b.labelClipped)).toBe(true);
+    // ④ 竖向布局的三条不变式：各行**左缘一致**、行高统一（`h-12`）、top 严格递增。
+    //    ⚠ 先确认真的取到了几何值——若选择器失效会全是 null，而 Set{null}.size 也是 1（假绿）
+    expect(nodeAudit.every((b) => b.rowLeft !== null && b.rowH !== null)).toBe(true);
+    expect(new Set(nodeAudit.map((b) => b.rowLeft)).size).toBe(1);
+    expect(new Set(nodeAudit.map((b) => b.rowH)).size).toBe(1);
+    expect(
+      nodeAudit.every((b, i) => i === 0 || b.rowTop! > nodeAudit[i - 1].rowTop!),
+    ).toBe(true);
+    // 今天行与事件行的圆：同尺寸、**同一竖轴**（圆串在一条线上）
+    const todayDotBox = (await todayColumn
+      .locator("[data-slot=timeline-today-dot]")
+      .boundingBox())!;
+    const firstDotBox = (await timeline
+      .locator("[data-slot=timeline-node-dot]")
+      .first()
+      .boundingBox())!;
+    expect(Math.abs(todayDotBox.width - firstDotBox.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(todayDotBox.x - firstDotBox.x)).toBeLessThanOrEqual(1);
+
+
+    // 竖向布局的几何回归：「今天」行的圆、名称、日期**在同一行**——
+    // 圆在该行**垂直居中**（上下留白相等 ≤1px），水平顺序 = 圆 → 名称 → 日期。
+    const todayGeometry = await todayColumn.evaluate((el) => {
+      const box = (sel: string) =>
+        el.querySelector(sel)!.getBoundingClientRect();
+      const row = el.querySelector("div")!.getBoundingClientRect();
+      const dot = box("[data-slot=timeline-today-dot]");
+      const date = box("[data-slot=timeline-today-date]");
+      const label = box("[data-slot=timeline-today-label]");
+      const vc = (r: DOMRect) => r.top + r.height / 2;
+      return {
+        dotVCentered: Math.abs(dot.top - row.top - (row.bottom - dot.bottom)) <= 1,
+        labelOnSameRow: Math.abs(vc(dot) - vc(label)) <= 1,
+        dateOnSameRow: Math.abs(vc(dot) - vc(date)) <= 1,
+        order: dot.right <= label.left + 1 && label.right <= date.left + 1,
+      };
+    });
+    expect(todayGeometry.dotVCentered).toBe(true);
+    expect(todayGeometry.labelOnSameRow).toBe(true);
+    expect(todayGeometry.dateOnSameRow).toBe(true);
+    expect(todayGeometry.order).toBe(true);
+
+    // 布局两档（响应式）：默认视口（≥1024）是**左右分栏**；缩到 <1024 应变成**上下堆叠**
+    // （时间线占满内容宽）。两档都得验证——只测一档会漏掉另一半逻辑。
+    const gridCols = () =>
+      timeline.locator("ol").evaluate((ol) => {
+        const grid = ol.closest("div.grid") as HTMLElement | null;
+        return grid
+          ? getComputedStyle(grid).gridTemplateColumns.split(" ").length
+          : -1;
+      });
+    expect(await gridCols()).toBe(2);
+    await page.setViewportSize({ width: 900, height: 800 });
+    await page.waitForTimeout(400);
+    expect(await gridCols()).toBe(1);
+    // 堆叠档下时间线仍完整可用：行数不变、各行左缘一致 + top 递增
+    const stacked = await timeline.locator("li").evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { top: Math.round(r.top), left: Math.round(r.left) };
+      }),
+    );
+    expect(stacked).toHaveLength(target!.conference!.nodes.length + 1);
+    expect(new Set(stacked.map((s) => s.left)).size).toBe(1);
+    expect(
+      stacked.every((s, i) => i === 0 || s.top > stacked[i - 1].top),
+    ).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.waitForTimeout(400);
+
+    // 点击另一个节点 → 弹窗原地切换到那条日程（标题里的节点词随之变化）
+    const title = page.locator("[data-slot=dialog-title]");
+    const before = await title.innerText();
+    await timeline.locator("li button").first().click();
+    await expect(title).not.toHaveText(before);
+  });
+
+  test("时间线：同一天有多个节点时，光晕只给点开的那一个、标题带轮次名加以区分", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    // 找一届「同一本地日有 ≥2 个节点」的会议（如 ADMA 2026 的 Poster / Encore 同在 9/12）
+    const now = new Date();
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate(),
+      ).padStart(2, "0")}`;
+    const res = await page.request.get(
+      `/api/calendar?start=${fmt(new Date(now.getFullYear(), now.getMonth(), 1))}&end=${fmt(new Date(now.getFullYear(), now.getMonth() + 7, 0))}&v=e2e-sameday`,
+    );
+    type Ev = {
+      uid: string;
+      summary: string;
+      confTitle?: string;
+      startUtc?: number | null;
+      conference?: {
+        abbr: string;
+        year: number;
+        nodes: { utc: number; comment?: string }[];
+      };
+    };
+    const events = ((await res.json()) as { events?: Ev[] }).events ?? [];
+    const dayKey = (utc: number) => {
+      const d = new Date(utc);
+      return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    };
+    const target = events.find((ev) => {
+      const days = (ev.conference?.nodes ?? []).map((n) => dayKey(n.utc));
+      return days.length >= 2 && new Set(days).size < days.length;
+    });
+    test.skip(!target, "当前日历里没有「同一天有两个及以上节点」的会议");
+    const days = target!.conference!.nodes.map((n) => dayKey(n.utc));
+    const dupDay = days.find((d, i) => days.indexOf(d) !== i)!;
+    const sameDayCount = days.filter((d) => d === dupDay).length;
+    expect(sameDayCount).toBeGreaterThan(1);
+
+    await gotoReady(page, "/calendar");
+    const confTitle = target!.confTitle ?? target!.summary;
+    // 与既有用例同一条路径：先点总览行跳转聚焦，再点当天行打开详情弹窗
+    await page
+      .locator("main button:not([data-slot])")
+      .filter({ hasText: confTitle })
+      .first()
+      .click();
+    const dayRow = page.locator(`main button[title^="${confTitle}"]`).first();
+    await dayRow.waitFor({ state: "visible" });
+    await dayRow.click();
+
+    const timeline = page.locator("[data-slot=appointment-timeline]");
+    await expect(timeline).toBeVisible();
+    // 光晕（`ring-3` 编译成 box-shadow）**只给点开的那一个**节点（用户指定）：
+    // 同一天就算有多个节点，指向也必须唯一；它们的区分靠**轮次名文字**。
+    const haloFlags = await timeline.locator("ol").evaluate((ol) =>
+      [...ol.querySelectorAll('[data-slot="timeline-node"]')].map(
+        (li) =>
+          getComputedStyle(
+            li.querySelector('[data-slot="timeline-node-dot"]')!,
+          ).boxShadow !== "none",
+      ),
+    );
+    expect(haloFlags.filter(Boolean)).toHaveLength(1);
+    expect(sameDayCount).toBeGreaterThan(1); // 这条用例的前提：当天确有多个节点
+
+    // 轮次名：节点备注（如 "Poster Paper" / "Encore Paper"）去掉尾部 "Paper" 后
+    // 进入弹窗标题，让同日同名的多条日程可区分（与组件内 `conferenceRoundLabel` 同规则）
+    const hit = target!.conference!.nodes.find(
+      (n) =>
+        target!.startUtc != null && Math.abs(target!.startUtc - n.utc) <= 60_000,
+    );
+    const raw = hit?.comment?.trim();
+    const round =
+      raw && raw.length <= 40 && !/[.:;,]/.test(raw)
+        ? raw.replace(/\s+Paper$/i, "")
+        : null;
+    expect(round, "用例依赖该节点带短轮次备注（如 Poster Paper）").toBeTruthy();
+    await expect(page.locator("[data-slot=dialog-title]")).toContainText(round!);
+
+    // 时间线节点名也用轮次短标签 → 同一天的多列名称**互不相同**（不再是两列都"全文"）
+    const dupDayNames = await timeline.locator("ol").evaluate((ol) => {
+      const byDate = new Map<string, (string | null)[]>();
+      for (const li of ol.querySelectorAll('[data-slot="timeline-node"]')) {
+        const date = li.querySelector("time")?.textContent ?? "";
+        const label =
+          li.querySelector('[data-slot="timeline-node-label"]')?.textContent ??
+          null;
+        byDate.set(date, [...(byDate.get(date) ?? []), label]);
+      }
+      return [...byDate.entries()]
+        .map(([date, labels]) => [date, labels.filter(Boolean)] as const)
+        .filter(([, labels]) => labels.length > 1);
+    });
+    expect(dupDayNames.length, "同一天应有 ≥2 列名称可见").toBeGreaterThan(0);
+    for (const [, names] of dupDayNames) {
+      expect(new Set(names).size).toBe(names.length);
+    }
+
+    // 竖向行宽充裕（宽屏分栏 297px）→ 显示**完整**轮次标签，而不是剥掉流程词的短标签
+    // （应为 `Main Track` 而不是 `Main`）；只有极窄视口才会降级到短标签。
+    const allNames = await timeline
+      .locator('[data-slot="timeline-node-label"]')
+      .allTextContents();
+    expect(allNames.length).toBeGreaterThan(0);
+    expect(allNames).toContain("Main Track");
+    expect(allNames).not.toContain("Main");
+  });
+
   test("游客调用凭证 API 返回 401", async ({ request }) => {
     const r = await request.get("/api/calendar/credentials");
     expect(r.status()).toBe(401);

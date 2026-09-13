@@ -49,51 +49,7 @@ import {
   type VenueJournal,
 } from "@/lib/data/venue";
 import type { DeadlineTimelineEntry, DeadlineYear } from "@/lib/data";
-
-/* ---------------- 时区工具（与 deadlines-list 同源，无依赖） ---------------- */
-
-/** "YYYY-MM-DD HH:mm:ss"（tz 墙钟）→ UTC 毫秒；tz 无效按 UTC 兜底 */
-function zonedToUtcMs(ts: string, tz: string): number {
-  const [d, time = "00:00:00"] = ts.split(" ");
-  const [Y, M, D] = d.split("-").map(Number);
-  const [h, mi, s] = time.split(":").map(Number);
-  const naive = Date.UTC(Y, M - 1, D, h, mi, s);
-  try {
-    const dtf = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      hour12: false,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-    const parts = dtf.formatToParts(new Date(naive));
-    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-    const wall = Date.UTC(
-      get("year"),
-      get("month") - 1,
-      get("day"),
-      get("hour") % 24,
-      get("minute"),
-      get("second"),
-    );
-    return naive - (wall - naive);
-  } catch {
-    return naive;
-  }
-}
-
-/** 浏览器本地时区偏移标注（如 UTC+8） */
-function localTzOffset(): string {
-  const offsetMin = -new Date().getTimezoneOffset();
-  const sign = offsetMin >= 0 ? "+" : "-";
-  const abs = Math.abs(offsetMin);
-  const h = Math.floor(abs / 60);
-  const m = abs % 60;
-  return `UTC${sign}${h}${m ? `:${String(m).padStart(2, "0")}` : ""}`;
-}
+import { localTzOffset, zonedToUtcMs } from "@/lib/utils/tz";
 
 /** 本地化日期时间格式器（模块级缓存） */
 const dateFmtCache = new Map<string, Intl.DateTimeFormat>();

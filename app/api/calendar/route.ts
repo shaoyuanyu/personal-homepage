@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { isOwner } from "@/lib/auth/owner";
 import { CALENDAR_CACHE_TTL_MS, calendarCache } from "@/lib/caldav/cache";
 import { CALDAV_COLLECTION_NAME, getCalDavConfig } from "@/lib/caldav/store";
+import { enrichAppointments } from "@/lib/data/conference";
 import { parseIcsText } from "@/lib/ical";
 
 /**
@@ -11,6 +12,9 @@ import { parseIcsText } from "@/lib/ical";
  * 通过 CalDAV REPORT（calendar-query + time-range）向 Radicale 查询指定时间范围的事件，
  * 解析 multistatus 响应中的 iCal 数据后返回。凭证优先使用网站内设置（data/caldav.json），
  * 未设置时回退环境变量（CALDAV_URL / CALDAV_USER / CALDAV_PASSWORD，compose 注入）。
+ *
+ * 返回前用 `enrichAppointments()` 给投稿节点事件补上「该届会议完整时间线」
+ * （见 lib/data/conference.ts）——弹窗靠它展示节点序列并跳转到同届其它节点日程。
  *
  * 简单内存缓存 30 秒（月视图翻页会重复请求同一范围）；缓存实现见 lib/caldav/cache.ts，
  * 写入/删除事件后由 invalidateCalendarCache() 失效。
@@ -128,7 +132,9 @@ export async function GET(req: Request) {
   }
 
   const xml = await res.text().catch(() => "");
-  const events = extractCalendarData(xml).flatMap((ics) => parseIcsText(ics));
+  const events = enrichAppointments(
+    extractCalendarData(xml).flatMap((ics) => parseIcsText(ics)),
+  );
 
   calendarCache.set(cacheKey, { expires: Date.now() + CALENDAR_CACHE_TTL_MS, events });
   return NextResponse.json({ events });
