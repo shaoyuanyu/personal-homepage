@@ -5,9 +5,11 @@
 #   2. 修正 ccfddl 自动数据中的错误/过期信息
 #
 # 合并规则（按缩写 a 匹配，大小写不敏感）：
-#   - 覆盖层条目的「缩写」与自动数据相同时 → 整体替换该会议（years 以覆盖层为准）
+#   - 覆盖层条目的「缩写」与自动数据相同时 → 按字段覆盖该会议
 #   - 覆盖层独有的缩写 → 新增会议
 #   - 未提供的可选字段（l/f/d）会沿用自动数据；新增会议则留空
+#   - **省略 years 时沿用自动数据的届别/时间线**（只想改名称等字段时不必复制
+#     timeline，避免随上游更新而过期）；显式提供 years 时才以覆盖层为准
 #
 # 字段说明：
 #   a  缩写（必填）
@@ -15,7 +17,7 @@
 #   l  CCF 等级：A / B / C（可选，非 CCF 会议省略）
 #   f  领域（CCF 官方中文名，可选，如：人工智能 / 数据库/数据挖掘/内容检索）
 #   d  DBLP 链接（可选）
-#   years:
+#   years:（可选，省略则沿用自动数据）
 #     y     年份（必填）
 #     link  会议官网（可选）
 #     tz    时区（可选，默认 UTC；支持 AoE / UTC±X / IANA 名，如 Asia/Shanghai）
@@ -25,4 +27,22 @@
 #       - t: 截止时间 "YYYY-MM-DD HH:mm:ss"（必填）
 #         c: 轮次备注（可选，如 "first round"）
 #         k: 类型（可选，"abstract" 表示摘要截止；缺省为全文截止）
-conferences: []
+conferences:
+  # ⚠ 以下 7 条只修正「会议全称」：上游 ccfddl 的 allconf.yml 里这些全称被截断
+  #   （以 and / of / 逗号结尾），会显示在会议卡片、详情弹窗，并作为
+  #   X-CONF-NAME 写入用户的日历事件。全称取自站内 CCF 目录（ccf-2026.json），
+  #   EACL 不在 CCF 目录故按通称补全。years 一律省略 → 沿用自动同步的时间线。
+  - a: ASAP
+    n: "IEEE International Conference on Application-Specific Systems, Architectures, and Processors"
+  - a: BlockSys
+    n: "International Conference on Blockchain, Artificial Intelligence, and Trustworthy Systems"
+  - a: EACL
+    n: "The Annual Conference of the European Chapter of the Association for Computational Linguistics"
+  - a: ICST
+    n: "IEEE International Conference on Software Testing, Verification and Validation"
+  - a: NOSSDAV
+    n: "International Workshop on Network and Operating System Support for Digital Audio and Video"
+  - a: SC
+    n: "International Conference for High Performance Computing, Networking, Storage, and Analysis"
+  - a: SIGCOMM
+    n: "ACM International Conference on Applications, Technologies, Architectures, and Protocols for Computer Communication"

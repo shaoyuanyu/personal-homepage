@@ -220,6 +220,9 @@ const rawDeadlines = deadlineData as {
  * 合并：覆盖层按缩写整体替换自动数据（大小写不敏感）。
  * 构建时合并一次得到静态 `deadlines`；手动同步 API 拉取最新数据后
  * 用同一函数重新合并，保证运行时数据与覆盖层规则一致。
+ *
+ * ⚠ `years` 省略时**保留自动数据的届别/时间线**（覆盖层只想修正名称等字段时
+ *   不必复制整份 timeline）；显式提供 `years` 时才以覆盖层为准。
  */
 export function mergeDeadlines(
   raw: DeadlineConf[],
@@ -234,6 +237,8 @@ export function mergeDeadlines(
       ...o,
       l: o.l ?? base?.l ?? "",
       f: o.f ?? base?.f ?? "",
+      // 省略 years（或给空数组）时保留自动数据的届别/时间线
+      years: o.years?.length ? o.years : (base?.years ?? []),
     });
   }
   return [...map.values()].sort((x, y) => x.a.localeCompare(y.a));

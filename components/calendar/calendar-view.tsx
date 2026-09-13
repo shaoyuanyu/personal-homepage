@@ -1314,8 +1314,9 @@ function UpcomingAppointmentsList({
     return (
       <section className="mt-10">
         {header}
-        <div className="flex h-24 items-center justify-center rounded-lg border bg-card">
-          <Spinner className="size-5 text-muted-foreground" />
+        <div className="flex h-24 items-center justify-center gap-2 rounded-lg border bg-card text-sm text-muted-foreground">
+          <Spinner className="size-5" label={t("loadingAppointments")} />
+          {t("loadingAppointments")}
         </div>
       </section>
     );

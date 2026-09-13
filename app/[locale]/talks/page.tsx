@@ -3,7 +3,7 @@ import { CalendarIcon, DownloadIcon, ExternalLinkIcon, MapPinIcon, PresentationI
 
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Empty } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { pageMetadata } from "@/lib/i18n/metadata";
 import { formatDate } from "@/lib/utils/format";
@@ -30,7 +30,16 @@ export default function TalksPage() {
         <p className="text-muted-foreground">{t("description")}</p>
       </div>
 
-      {sorted.length === 0 && <Empty title={t("empty")} />}
+{sorted.length === 0 && (
+              <Empty>
+                <EmptyMedia variant="icon">
+                  <PresentationIcon aria-hidden />
+                </EmptyMedia>
+                <EmptyHeader>
+                  <EmptyTitle>{t("empty")}</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            )}
 
       <div className="flex flex-col gap-6">
         {sorted.map((talk) => (

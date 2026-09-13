@@ -3,11 +3,12 @@
 import { useMemo, useState } from "react";
 import Fuse from "fuse.js";
 import { useLocale, useTranslations } from "next-intl";
+import { SearchIcon } from "lucide-react";
 
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Link } from "@/lib/i18n/navigation";
 import { formatDate } from "@/lib/utils/format";
@@ -76,7 +77,16 @@ export function BlogSearch({ posts }: { posts: PostMeta[] }) {
       </div>
 
       {/* 结果 */}
-      {results.length === 0 && <Empty title={t("noResults")} />}
+      {results.length === 0 && (
+        <Empty>
+          <EmptyMedia variant="icon">
+            <SearchIcon aria-hidden />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>{t("noResults")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
+      )}
       <div className="flex flex-col gap-3">
         {results.map((post) => (
           <Card key={post.slug}>

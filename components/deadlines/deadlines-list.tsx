@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   CalendarDaysIcon,
   CalendarPlusIcon,
+  ChevronDownIcon,
   ClockIcon,
   ExternalLinkIcon,
   Globe2Icon,
@@ -30,13 +31,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { SearchInput } from "@/components/ui/search-input";
+import { Spinner } from "@/components/ui/spinner";
 import { ccfBarClass, ccfChipClass } from "@/lib/design/grade";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/toast";
 import { useOwnerPreferences } from "@/lib/preferences/use-owner-preferences";
-import { buildIcsText, icsEventSummary, toIcsUtc } from "@/lib/ical";
+import { buildIcsText, deadlineEventUid, icsEventSummary, toIcsUtc } from "@/lib/ical";
 import type { DeadlineConf, DeadlineTimelineEntry, DeadlineYear } from "@/lib/data";
 import { localTzOffset, zonedToUtcMs } from "@/lib/utils/tz";
 
@@ -132,6 +134,134 @@ function StatCard({
   );
 }
 
+/** Google 日历「新建日程」链接（一次性快照；Google 无 X- 属性可承载会期，描述只留全称） */
+function googleCalendarUrl(
+  conf: DeadlineConf,
+  year: DeadlineYear,
+  main: MainDeadline,
+): string {
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    // 标题带节点词：外部客户端仅看标题，不写会被误读成会议举办时间
+    text: icsEventSummary(conf.a, year.y, main.labelKey, main.entry.c),
+    dates: `${toIcsUtc(main.utc)}/${toIcsUtc(main.utc + 3_600_000)}`,
+    details: conf.n,
+    location: year.place ?? "",
+    ctz: "UTC",
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
+}
+
+/** 单个节点的事件文本（游客下载 .ics 用；字段与 CalDAV 写入同源） */
+function nodeIcsText(
+  conf: DeadlineConf,
+  year: DeadlineYear,
+  main: MainDeadline,
+): string {
+  return buildIcsText({
+    // UID 与 CalDAV 写入同源（含截止日期）：同一节点重复导入不重复，
+    // 同届同类型的不同轮次也各自独立
+    uid: `${deadlineEventUid({
+      abbr: conf.a,
+      year: year.y,
+      labelKey: main.labelKey,
+      round: main.entry.c,
+      day: main.entry.t.slice(0, 10),
+      utc: main.utc,
+    })}@shaoyuanyu.cn`,
+    // 与 CalDAV 写入保持同一格式：标题带英文节点词 + 洁净标题另存
+    summary: icsEventSummary(conf.a, year.y, main.labelKey, main.entry.c),
+    confTitle: `${conf.a} ${year.y}`,
+    confName: conf.n,
+    // 一次性快照（不会回写本站）：保留全称在 DESCRIPTION 里，
+    // 导入的客户端才能在「备注/描述」框看到它
+    description: conf.n,
+    location: year.place,
+    confDates: year.date,
+    url: year.link,
+    categories: [main.labelKey],
+    start: main.utc,
+    end: main.utc + 3_600_000,
+  });
+}
+
+/** 触发浏览器下载（Blob → 临时 <a>） */
+function downloadIcs(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/calendar;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/**
+ * 游客的日历动作：**选项式下拉**（把日程带到站外）——「Google 日历」「下载 .ics」。
+ *
+ * ⚠ 站主侧不渲染它（用户指定）：站主已有本站日历（`/calendar` 能双向同步、能写备注），
+ *   站外导出对站主只是噪音；站主侧对应的是「添加到我的日历」+ 节点勾选。
+ * ⚠ 菜单项必须 `e.stopPropagation()`：菜单渲染在卡片组件树内，
+ *   React 合成事件会按组件树冒泡到卡片的 onClick（打开详情 Dialog）。
+ */
+function GuestCalendarMenu({
+  conf,
+  year,
+  main,
+  iconOnly = false,
+}: {
+  conf: DeadlineConf;
+  year: DeadlineYear;
+  main: MainDeadline;
+  /** true = 卡片上的纯图标触发器；false = 弹窗底部的带文字按钮 */
+  iconOnly?: boolean;
+}) {
+  const t = useTranslations("deadlines");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant={iconOnly ? "ghost" : "outline"}
+            size={iconOnly ? "icon-sm" : "sm"}
+            aria-label={t("addToCalendar")}
+            onClick={(e) => e.stopPropagation()}
+          />
+        }
+      >
+        <CalendarPlusIcon data-icon={iconOnly ? "default" : "inline-start"} />
+        {!iconOnly && (
+          <>
+            {t("addToCalendar")}
+            <ChevronDownIcon data-icon="inline-end" />
+          </>
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            window.open(googleCalendarUrl(conf, year, main), "_blank");
+          }}
+        >
+          {t("googleCalendar")}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            downloadIcs(
+              `${conf.a.toLowerCase()}-${year.y}.ics`,
+              nodeIcsText(conf, year, main),
+            );
+          }}
+        >
+          {t("icsDownload")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function DeadlinesList({
   deadlines,
 }: {
@@ -147,6 +277,16 @@ export function DeadlinesList({
   const [range, setRange] = useState<RangeFilter>("all");
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [openItem, setOpenItem] = useState<FlatItem | null>(null);
+  /**
+   * 详情 Dialog 是否处于「勾选节点」态（站主专属）。
+   * - 点**卡片** → false：普通详情（底部是「添加到我的日历」/ 游客的选项式下拉）
+   * - 点卡片右下角**日历图标** → true：直接进勾选态
+   * - 在普通详情里点「添加到我的日历」 → 切到 true
+   */
+  const [picking, setPicking] = useState(false);
+  /** 勾选要加入日历的节点（下标指 `timelineNodes`；默认全选） */
+  const [picked, setPicked] = useState<number[]>([]);
+  const [adding, setAdding] = useState(false);
 
   const toggleField = (f: string) => {
     setSelectedFields((prev) =>
@@ -154,12 +294,38 @@ export function DeadlinesList({
     );
   };
 
-  /** 添加会议事件到站主专属 CalDAV 日历（幂等：UID 稳定，重复添加覆盖） */
-  const handleAddToCaldav = async (
-    conf: DeadlineConf,
-    year: DeadlineYear,
-    main: MainDeadline,
-  ) => {
+  /** 当前打开会议的投稿节点（按时间升序；与 Dialog 里的列表同序） */
+  const timelineNodes = useMemo(() => {
+    if (!openItem) return [];
+    return openItem.year.timeline
+      .map((e) => ({ e, utc: zonedToUtcMs(e.t, openItem.year.tz) }))
+      .sort((x, y) => x.utc - y.utc);
+  }, [openItem]);
+
+  /**
+   * 弹窗是否处于「勾选节点」态（站主专属）：只有此时节点列表才出现复选框、
+   * 底部才出现「添加选中的 N 个」。点**卡片**进的是普通详情（用户指定）。
+   */
+  const pickingMode = isOwner && picking;
+  /** 游客在弹窗里导出用的那个节点（与卡片显示一致：未来最近，无则已过最近） */
+  const dialogMain = openItem?.best ?? openItem?.bestPast ?? null;
+
+  // 每次打开 Dialog 都重置为「全选」——**含已过节点**（用户指定：已过节点默认也勾上）。
+  // 只在切换会议时重置，故依赖 timelineNodes（它随 openItem 变化、开合期间稳定）。
+  useEffect(() => {
+    setPicked(timelineNodes.map((_, i) => i));
+  }, [timelineNodes]);
+
+  /**
+   * 把勾选的节点写入站主专属 CalDAV 日历（一次可写多个；UID 稳定，重复添加覆盖）。
+   * ⚠ 必须由用户勾选而不是「整届全塞」：一届会议常有多个赛道（ADMA 的
+   *   Main/Industry/Poster/Encore）或一年多个投稿窗口（ASPLOS/FAST/NSDI 的一年两轮），
+   *   用户通常只投其中一部分。
+   */
+  const handleAddPicked = async () => {
+    if (!openItem || picked.length === 0) return;
+    const { conf, year } = openItem;
+    setAdding(true);
     try {
       const r = await fetch("/api/deadlines/caldav", {
         method: "POST",
@@ -168,24 +334,47 @@ export function DeadlinesList({
           a: conf.a,
           n: conf.n,
           year: year.y,
-          labelKey: main.labelKey,
           date: year.date,
           place: year.place,
           link: year.link,
-          utc: main.utc,
-          // 轮次备注（如 "Poster Paper"）：服务端清洗后并入 UID，
-          // 让同一天同类型的多个节点各自成为独立日程
-          round: main.entry.c,
+          nodes: picked.flatMap((i) => {
+            const hit = timelineNodes[i];
+            if (!hit) return [];
+            return [
+              {
+                utc: hit.utc,
+                labelKey: hit.e.k ?? "paper",
+                // 轮次备注（如 "Poster Paper"）：服务端清洗后并入 UID 与标题
+                round: hit.e.c,
+                // 会议本地日期进 UID——ccfddl 的轮次备注常为空（NSDI/FAST 的一年两轮），
+                // 同届同类型只能靠日期区分，否则会互相覆盖
+                day: hit.e.t.slice(0, 10),
+              },
+            ];
+          }),
         }),
       });
       const data = (await r.json().catch(() => null)) as
-        | { error?: string }
+        | { added?: number; failed?: number; error?: string }
         | null;
       if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
+      const added = data?.added ?? picked.length;
+      const failed = data?.failed ?? 0;
       toast.add({
-        title: t("caldavAdded", { conf: `${conf.a} ${year.y}` }),
-        type: "success",
+        title:
+          failed > 0
+            ? t("caldavPartial", { added, failed })
+            : t("caldavAddedCount", { conf: `${conf.a} ${year.y}`, n: added }),
+        type: failed > 0 ? "error" : "success",
       });
+      // 全部成功后关掉弹窗：勾选窗口的职责已经完成，留着它只会挡住日历与结果提示。
+      // ⚠ 有失败时保持打开，便于用户重试。
+      // ⚠ 必须以受控方式关闭：程序把 `open` 置 false 不会触发 onOpenChange，
+      //   故 `picking` 要在这里一并复位（否则下次点卡片会直接进勾选态）。
+      if (failed === 0) {
+        setOpenItem(null);
+        setPicking(false);
+      }
     } catch (err) {
       console.error("[caldav] 添加失败", err);
       toast.add({
@@ -193,6 +382,8 @@ export function DeadlinesList({
         description: err instanceof Error ? err.message : String(err),
         type: "error",
       });
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -421,7 +612,13 @@ export function DeadlinesList({
 
       {/* 会议卡片网格（借鉴 ai-deadlines 布局：倒计时醒目 + 地点/会议时间直接展示） */}
       {filtered.length === 0 ? (
-        <Empty title={t("empty")}>
+        <Empty>
+          <EmptyMedia variant="icon">
+            <CalendarDaysIcon aria-hidden />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>{t("empty")}</EmptyTitle>
+          </EmptyHeader>
           <Button variant="outline" size="sm" onClick={resetFilters}>
             <RotateCcwIcon />
             {t("resetFilters")}
@@ -457,20 +654,39 @@ export function DeadlinesList({
             return (
               <Card
                 key={`${conf.a}-${year.y}`}
-                className={`group relative cursor-pointer py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                className={`group relative cursor-pointer py-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-ring/60 ${
                   isPast ? "opacity-70 hover:opacity-100" : ""
                 }`}
                 onClick={() => setOpenItem({ conf, year, best, bestPast })}
               >
+                {/*
+                 * 键盘可达性：整卡可点（鼠标走 Card 的 onClick），但卡片里已经嵌了
+                 * 「会议官网」链接与日历按钮，把 Card 本身做成 role="button" 会造成
+                 * 嵌套交互元素（AT 语义混乱）。这里铺一个真正的 <button> 覆盖整卡作为
+                 * 键盘入口，内容层（CardContent，z-10）在它之上，故鼠标点击仍命中内容
+                 * 并冒泡到 Card；键盘 Tab 到的就是这个按钮（名称 = 会议缩写 + 年份）。
+                 * ⚠ 焦点环画在 Card 的 focus-within 上：Card 自带 overflow-hidden，
+                 *   覆盖层上的外扩 ring 会被裁掉。
+                 */}
+                <button
+                  type="button"
+                  data-slot="deadline-card-open"
+                  aria-label={`${conf.a} ${year.y}`}
+                  onClick={() => setOpenItem({ conf, year, best, bestPast })}
+                  className="absolute inset-0 z-0 rounded-xl outline-none"
+                />
                 <span
                   aria-hidden
                   className={`absolute inset-y-0 left-0 w-[3px] rounded-r-full opacity-0 transition-opacity group-hover:opacity-100 ${ccfBarClass(levelKey)}`}
                 />
-                <CardContent className="flex h-full flex-col gap-2 p-3">
+                <CardContent className="relative z-10 flex h-full flex-col gap-2 p-3">
                   {/* 顶行：缩写 + 年份 + 等级 · 倒计时 */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate font-mono text-base font-bold tracking-tight">
+                      <span
+                        data-slot="deadline-card-title"
+                        className="truncate font-mono text-base font-bold tracking-tight"
+                      >
                         {conf.a} {year.y}
                       </span>
                       <LevelBadge level={levelKey} />
@@ -542,84 +758,33 @@ export function DeadlinesList({
                         <ExternalLinkIcon className="size-3" data-icon="inline-end" />
                       </a>
                     ) : null}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t("addToCalendar")}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        }
+                    {isOwner ? (
+                      /*
+                       * 站主：图标点击 → 打开详情 Dialog 并**直接进入勾选态**（不写数据、不弹菜单）。
+                       * ⚠ Google 日历 / 下载 .ics 只给游客（用户指定）：站主已有本站日历
+                       *   （`/calendar` 能双向同步、能写备注），站外导出对站主只是噪音。
+                       */
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t("addToCaldav")}
+                        onClick={(e) => {
+                          // 阻止冒泡：否则会再触发卡片的 onClick（进普通详情态）
+                          e.stopPropagation();
+                          setOpenItem({ conf, year, best, bestPast });
+                          setPicking(true);
+                        }}
                       >
                         <CalendarPlusIcon data-icon="default" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {isOwner && (
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              // 阻止冒泡：菜单项是卡片组件树子节点，React 合成事件会冒泡到卡片（触发详情 Dialog）
-                              e.stopPropagation();
-                              handleAddToCaldav(conf, year, main);
-                            }}
-                          >
-                            {t("addToCaldav")}
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const params = new URLSearchParams({
-                              action: "TEMPLATE",
-                              // 标题带节点词：外部客户端仅看标题，不写会被误读成会议举办时间
-                              text: icsEventSummary(conf.a, year.y, main.labelKey, main.entry.c),
-                              dates: `${toIcsUtc(main.utc)}/${toIcsUtc(main.utc + 3_600_000)}`,
-                              // Google 日历无 X- 属性可承载会期，描述只留会议全称
-                              details: conf.n,
-                              location: year.place ?? "",
-                              ctz: "UTC",
-                            });
-                            window.open(`https://calendar.google.com/calendar/render?${params}`, "_blank");
-                          }}
-                        >
-                          {t("googleCalendar")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const ics = buildIcsText({
-                              // 稳定 UID：同一会议同一节点重复下载导入不产生重复事件
-                              uid: `${conf.a}-${year.y}-${main.labelKey}@shaoyuanyu.cn`,
-                              // 与 CalDAV 写入保持同一格式：标题带英文节点词 + 洁净标题另存
-                              summary: icsEventSummary(conf.a, year.y, main.labelKey, main.entry.c),
-                              confTitle: `${conf.a} ${year.y}`,
-                              confName: conf.n,
-                              // 一次性快照（不会回写本站）：保留全称在 DESCRIPTION 里，
-                              // 导入的客户端才能在「备注/描述」框看到它
-                              description: conf.n,
-                              location: year.place,
-                              confDates: year.date,
-                              url: year.link,
-                              categories: [main.labelKey],
-                              start: main.utc,
-                              end: main.utc + 3_600_000,
-                            });
-                            const blob = new Blob([ics], {
-                              type: "text/calendar;charset=utf-8",
-                            });
-                            const a = document.createElement("a");
-                            a.href = URL.createObjectURL(blob);
-                            a.download = `${conf.a.toLowerCase()}-${year.y}.ics`;
-                            document.body.appendChild(a);
-                            a.click();
-                            a.remove();
-                          }}
-                        >
-                          {t("icsDownload")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      </Button>
+                    ) : (
+                      <GuestCalendarMenu
+                        conf={conf}
+                        year={year}
+                        main={main}
+                        iconOnly
+                      />
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -631,7 +796,13 @@ export function DeadlinesList({
       {/* 会议详情 Dialog（仅展示点击的会议年份） */}
       <Dialog
         open={openItem !== null}
-        onOpenChange={(open) => !open && setOpenItem(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setOpenItem(null);
+            // 下次重新打开从「普通详情」开始（勾选态只在点图标 / 点「添加到我的日历」后出现）
+            setPicking(false);
+          }
+        }}
       >
         <DialogContent className="sm:max-w-lg">
           {openItem && (
@@ -654,16 +825,49 @@ export function DeadlinesList({
                     <span className="text-xs font-normal text-muted-foreground">
                       {t("localTime", { tz: localTzOffset() })}
                     </span>
+                    {/* 站主 + 勾选态：节点可勾选（默认全选），只把要投的那些加入日历 */}
+                    {pickingMode && timelineNodes.length > 0 && (
+                      <span className="ml-auto flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => setPicked(timelineNodes.map((_, i) => i))}
+                        >
+                          {t("selectAll")}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => setPicked([])}
+                        >
+                          {t("selectNone")}
+                        </Button>
+                      </span>
+                    )}
                   </div>
                   <ul className="space-y-1.5">
-                    {openItem.year.timeline
-                      .map((e) => ({ e, utc: zonedToUtcMs(e.t, openItem.year.tz) }))
-                      .sort((x, y) => x.utc - y.utc)
-                      .map(({ e, utc }, i) => (
-                        <li
-                          key={`${e.t}-${i}`}
-                          className="flex flex-wrap items-baseline gap-x-2 text-sm"
-                        >
+                    {timelineNodes.map(({ e, utc }, i) => {
+                      const past = utc < Date.now();
+                      // py-0.5：行高从 20 → 24px，整行是 <label>（点击区域 = 整行宽），
+                      // 窄屏上更容易点中
+                      const rowClass =
+                        "flex flex-wrap items-center gap-x-2 gap-y-1 py-0.5 text-sm";
+                      const row = (
+                        <>
+                          {pickingMode && (
+                            <input
+                              type="checkbox"
+                              checked={picked.includes(i)}
+                              onChange={() =>
+                                setPicked((prev) =>
+                                  prev.includes(i)
+                                    ? prev.filter((x) => x !== i)
+                                    : [...prev, i],
+                                )
+                              }
+                              className="size-3.5 shrink-0 accent-primary"
+                            />
+                          )}
                           <Badge variant="outline" className="shrink-0 text-xs font-normal">
                             {t(e.k ?? "paper")}
                           </Badge>
@@ -673,8 +877,26 @@ export function DeadlinesList({
                           {e.c && (
                             <span className="text-xs text-muted-foreground">· {e.c}</span>
                           )}
+                          {pickingMode && past && (
+                            <span className="text-xs text-muted-foreground">
+                              {t("pastDue")}
+                            </span>
+                          )}
+                        </>
+                      );
+                      return (
+                        <li key={`${e.t}-${i}`}>
+                          {/* 整行可点：label 包裹后复选框的可访问名即整行文字 */}
+                          {pickingMode ? (
+                            <label className={`${rowClass} cursor-pointer select-none`}>
+                              {row}
+                            </label>
+                          ) : (
+                            <div className={rowClass}>{row}</div>
+                          )}
                         </li>
-                      ))}
+                      );
+                    })}
                   </ul>
                   {(openItem.year.date || openItem.year.place) && (
                     <p className="mt-2.5 text-xs text-muted-foreground">
@@ -708,6 +930,33 @@ export function DeadlinesList({
                     {t("website")}
                   </a>
                 )}
+                {pickingMode ? (
+                  <Button
+                    size="sm"
+                    disabled={adding || picked.length === 0}
+                    onClick={handleAddPicked}
+                  >
+                    {adding ? (
+                      <Spinner data-icon="inline-start" />
+                    ) : (
+                      <CalendarPlusIcon data-icon="inline-start" />
+                    )}
+                    {t("addSelected", { n: picked.length })}
+                  </Button>
+                ) : isOwner ? (
+                  /* 普通详情：先给「添加到我的日历」，点它才进勾选态（用户指定） */
+                  <Button size="sm" onClick={() => setPicking(true)}>
+                    <CalendarPlusIcon data-icon="inline-start" />
+                    {t("addToCaldav")}
+                  </Button>
+                ) : dialogMain ? (
+                  /* 游客：选项式下拉（Google 日历 / 下载 .ics） */
+                  <GuestCalendarMenu
+                    conf={openItem.conf}
+                    year={openItem.year}
+                    main={dialogMain}
+                  />
+                ) : null}
               </DialogFooter>
             </>
           )}

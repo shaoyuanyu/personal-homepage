@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { CopyIcon, KeyRoundIcon, ShuffleIcon, Trash2Icon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +68,8 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
   const [clearing, setClearing] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 待确认的破坏性操作（替换原生 window.confirm） */
+  const [confirmKind, setConfirmKind] = useState<"reset" | "clear" | null>(null);
 
   // 打开时拉取当前状态（含密码明文，仅站主可访问该接口），预填用户名
   useEffect(() => {
@@ -122,7 +125,7 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
   }
 
   async function handleReset() {
-    if (resetting || !window.confirm(t("settingsResetConfirm"))) return;
+    if (resetting) return;
     setResetting(true);
     setError(null);
     try {
@@ -155,7 +158,7 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
   }
 
   async function handleClear() {
-    if (clearing || !window.confirm(t("settingsClearConfirm"))) return;
+    if (clearing) return;
     setClearing(true);
     setError(null);
     try {
@@ -330,7 +333,7 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleClear}
+                onClick={() => setConfirmKind("clear")}
                 disabled={clearing}
               >
                 <Trash2Icon data-icon="default" />
@@ -343,7 +346,7 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleReset}
+                onClick={() => setConfirmKind("reset")}
                 disabled={resetting || !status?.configured}
               >
                 <ShuffleIcon data-icon="default" />
@@ -359,6 +362,27 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/*
+       * 破坏性操作确认（替换原生 window.confirm：原生弹窗不随明暗主题、样式与站内
+       * 脱节、移动端观感突兀，且阻塞主线程）。⚠ 渲染在设置弹窗之外，故数据到达前
+       * 设置弹窗关闭时会一并关掉确认弹窗。
+       */}
+      <ConfirmDialog
+        open={confirmKind !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmKind(null);
+        }}
+        title={confirmKind === "clear" ? t("settingsClearConfirm") : t("settingsResetConfirm")}
+        confirmLabel={confirmKind === "clear" ? t("settingsClear") : t("settingsReset")}
+        pending={confirmKind === "clear" ? clearing : resetting}
+        onConfirm={() => {
+          const kind = confirmKind;
+          setConfirmKind(null);
+          if (kind === "clear") void handleClear();
+          else if (kind === "reset") void handleReset();
+        }}
+      />
     </>
   );
 }

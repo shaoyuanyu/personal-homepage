@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { isOwner } from "@/lib/auth/owner";
 import { deadlinesOverrides, mergeDeadlines, type DeadlineConf } from "@/lib/data";
+import { globalValue } from "@/lib/utils/global-state";
 import { fetchDeadlines } from "@/scripts/fetch-deadlines.mjs";
 
 /**
@@ -12,14 +13,16 @@ import { fetchDeadlines } from "@/scripts/fetch-deadlines.mjs";
  * 拉取 ccfddl 最新数据 → 与覆盖层合并 → 写入运行时数据文件 data/deadlines.json。
  * /deadlines 页面为动态渲染，优先读取该文件，因此刷新页面即可看到新数据。
  *
- * 限流：单实例内存记录，60 秒内重复请求返回 429。
+ * 限流：60 秒内重复请求返回 429。⚠ 时间戳必须挂在 `globalThis` 上：
+ *   Next.js 逐请求重新求值模块，模块级 `let` 每次都是 0 → 限流恒不生效
+ *   （详见 `lib/utils/global-state.ts`）。
  */
 
 const DATA_DIR = process.env.DATA_DIR ?? join(process.cwd(), "data");
 const LIVE_FILE = join(DATA_DIR, "deadlines.json");
 
 const MIN_INTERVAL_MS = 60_000;
-let lastSyncAt = 0;
+const lastSyncAt = globalValue<number>("deadlines:last-sync-at", () => 0);
 
 export async function POST() {
   // API 守卫：游客一律 401（勿用 requireOwner——那是页面 redirect 语义）
@@ -28,7 +31,7 @@ export async function POST() {
   }
 
   const now = Date.now();
-  if (now - lastSyncAt < MIN_INTERVAL_MS) {
+  if (now - lastSyncAt.value < MIN_INTERVAL_MS) {
     return NextResponse.json(
       { error: "同步过于频繁，请稍后再试" },
       { status: 429 },
@@ -54,7 +57,7 @@ export async function POST() {
     writeFileSync(tmp, JSON.stringify(out));
     renameSync(tmp, LIVE_FILE);
 
-    lastSyncAt = Date.now();
+    lastSyncAt.value = Date.now();
     return NextResponse.json({
       ok: true,
       fetchedAt: out.fetchedAt,
