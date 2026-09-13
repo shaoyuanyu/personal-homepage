@@ -36,68 +36,9 @@ import { ccfBarClass, ccfChipClass } from "@/lib/design/grade";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/toast";
 import { useOwnerPreferences } from "@/lib/preferences/use-owner-preferences";
-import { buildIcsText, toIcsUtc } from "@/lib/ical";
+import { buildIcsText, icsEventSummary, toIcsUtc } from "@/lib/ical";
 import type { DeadlineConf, DeadlineTimelineEntry, DeadlineYear } from "@/lib/data";
-
-/* ---------------- 时区工具（无依赖） ---------------- */
-
-/**
- * 把 "YYYY-MM-DD HH:mm:ss"（tz 时区墙钟时间）转为 UTC 毫秒时间戳。
- * 方法：假想其为 UTC 取 naive 戳，再用 Intl 计算该时刻在 tz 的墙钟与
- * naive 之差得到偏移。tz 无效时按 UTC 兜底。
- */
-function zonedToUtcMs(ts: string, tz: string): number {
-  const [d, time = "00:00:00"] = ts.split(" ");
-  const [Y, M, D] = d.split("-").map(Number);
-  const [h, mi, s] = time.split(":").map(Number);
-  const naive = Date.UTC(Y, M - 1, D, h, mi, s);
-  try {
-    const dtf = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      hour12: false,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-    const parts = dtf.formatToParts(new Date(naive));
-    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-    const wall = Date.UTC(
-      get("year"),
-      get("month") - 1,
-      get("day"),
-      get("hour") % 24,
-      get("minute"),
-      get("second"),
-    );
-    return naive - (wall - naive);
-  } catch {
-    return naive;
-  }
-}
-
-/** 归一化 IANA 时区 → 人类可读展示（Etc/GMT+12 → "UTC-12"） */
-function displayTz(tz: string): string {
-  const m = tz.match(/^Etc\/GMT([+-])(\d{1,2})$/);
-  if (m) {
-    const off = Number(m[2]);
-    return `UTC${m[1] === "-" ? "+" : "-"}${off}`;
-  }
-  return tz;
-}
-
-/** 浏览器本地时区的 UTC 偏移标注（如 UTC+8 / UTC-4:30），适配夏令时当前偏移 */
-function localTzOffset(): string {
-  // getTimezoneOffset() = UTC - 本地（分钟），正号表示本地比 UTC 慢
-  const offsetMin = -new Date().getTimezoneOffset();
-  const sign = offsetMin >= 0 ? "+" : "-";
-  const abs = Math.abs(offsetMin);
-  const h = Math.floor(abs / 60);
-  const m = abs % 60;
-  return `UTC${sign}${h}${m ? `:${String(m).padStart(2, "0")}` : ""}`;
-}
+import { localTzOffset, zonedToUtcMs } from "@/lib/utils/tz";
 
 /* ---------------- 领域常量（与 ccf-directory 保持一致） ---------------- */
 
@@ -228,12 +169,13 @@ export function DeadlinesList({
           n: conf.n,
           year: year.y,
           labelKey: main.labelKey,
-          t: main.entry.t,
-          tz: year.tz,
           date: year.date,
           place: year.place,
           link: year.link,
           utc: main.utc,
+          // 轮次备注（如 "Poster Paper"）：服务端清洗后并入 UID，
+          // 让同一天同类型的多个节点各自成为独立日程
+          round: main.entry.c,
         }),
       });
       const data = (await r.json().catch(() => null)) as
@@ -630,9 +572,11 @@ export function DeadlinesList({
                             e.stopPropagation();
                             const params = new URLSearchParams({
                               action: "TEMPLATE",
-                              text: `${conf.a} ${year.y}`,
+                              // 标题带节点词：外部客户端仅看标题，不写会被误读成会议举办时间
+                              text: icsEventSummary(conf.a, year.y, main.labelKey, main.entry.c),
                               dates: `${toIcsUtc(main.utc)}/${toIcsUtc(main.utc + 3_600_000)}`,
-                              details: `${conf.n}\nDeadline: ${main.entry.t} (${displayTz(year.tz)})\nDates: ${year.date ?? ""}\nLocation: ${year.place ?? ""}`,
+                              // Google 日历无 X- 属性可承载会期，描述只留会议全称
+                              details: conf.n,
                               location: year.place ?? "",
                               ctz: "UTC",
                             });
@@ -647,8 +591,15 @@ export function DeadlinesList({
                             const ics = buildIcsText({
                               // 稳定 UID：同一会议同一节点重复下载导入不产生重复事件
                               uid: `${conf.a}-${year.y}-${main.labelKey}@shaoyuanyu.cn`,
-                              summary: `${conf.a} ${year.y}`,
-                              description: `${conf.n}\nDeadline: ${main.entry.t} (${displayTz(year.tz)})\nDates: ${year.date ?? ""}\nLocation: ${year.place ?? ""}`,
+                              // 与 CalDAV 写入保持同一格式：标题带英文节点词 + 洁净标题另存
+                              summary: icsEventSummary(conf.a, year.y, main.labelKey, main.entry.c),
+                              confTitle: `${conf.a} ${year.y}`,
+                              confName: conf.n,
+                              // 一次性快照（不会回写本站）：保留全称在 DESCRIPTION 里，
+                              // 导入的客户端才能在「备注/描述」框看到它
+                              description: conf.n,
+                              location: year.place,
+                              confDates: year.date,
                               url: year.link,
                               categories: [main.labelKey],
                               start: main.utc,

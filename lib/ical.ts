@@ -11,8 +11,37 @@ export function toIcsUtc(utcMs: number): string {
 export type IcsEvent = {
   /** 事件唯一标识（服务端写入用稳定值实现幂等覆盖） */
   uid: string;
+  /**
+   * 外部日历客户端直接看到的标题。投稿节点事件应带上节点词（如 "ADMA 2026 · Full Paper"），
+   * 否则外部客户端只看到会议名，会把这个「截止时刻」误读成「会议举办时间」。
+   */
   summary: string;
+  /**
+   * 本站日历 UI 展示用的语言中立标题（如 "ADMA 2026"，不含节点词）。
+   * SUMMARY 不得不带英文节点词（外部客户端无类别徽章），而本站 UI 用 CATEGORIES
+   * + 本地化标签自己合成标题（"ADMA 2026 · 全文"），故把洁净标题另存一份，避免靠字符串裁剪。
+   */
+  confTitle?: string;
+  /**
+   * 会议全称（如 "International Conference on Very Large Data Bases"）。
+   * ⚠ 为什么不用标准的 `DESCRIPTION`？因为**三大生态的「备注」框都绑定 DESCRIPTION**
+   * （Apple EventKit 只有 `notes`、鸿蒙 `calendarManager.Event` 只有 `description`），
+   * 而 DESCRIPTION 要留给用户自己的备注（双向可编辑）——否则用户一改备注就会把全称改坏。
+   * 故全称放 RFC 5545 §3.8.8.2 明确允许的 `x-prop`（未识别的扩展属性客户端必须忽略）。
+   */
+  confName?: string;
+  /**
+   * 用户备注（标准 `DESCRIPTION` 属性）。
+   * 客户端把 DESCRIPTION 当「备注/描述」框，所以用户可在 Apple/华为日历里直接看和改，双向同步。
+   */
   description?: string;
+  /** 地点（标准 LOCATION 属性，外部日历客户端可识别） */
+  location?: string;
+  /** 会期（如 "November 13 - 15, 2026"）。
+   * iCal 无标准会期字段，用 X- 扩展属性承载：外部客户端忽略，本站日历 UI 结构化取用
+   * （避免把会期埋在 DESCRIPTION 里靠文本解析）。
+   */
+  confDates?: string;
   url?: string;
   /** 类别（iCal CATEGORIES，语言中立的机器可读标签，如 ["abstract", "paper"]） */
   categories?: string[];
@@ -26,6 +55,38 @@ function esc(s: string): string {
   return s.replace(/[\\;,]/g, "\\$&").replace(/\n/g, "\\n");
 }
 
+/**
+ * 投稿节点 → 语言中立的英文词（写入 SUMMARY，供外部客户端识别事件性质）。
+ * 本站 UI **不**直接显示它：由 CATEGORIES + `calendar.cat*` 本地化标签合成中文标题。
+ */
+export const NODE_LABEL_EN: Record<string, string> = {
+  abstract: "Abstract",
+  paper: "Full Paper",
+  registration: "Registration",
+  camera: "Camera-ready",
+  notification: "Notification",
+};
+
+/**
+ * 投稿节点事件的 SUMMARY 写法（CalDAV 写入 / .ics 下载 / Google 日历链接三处共用）：
+ * `缩写 年份 · 英文节点词`，如 "ADMA 2026 · Full Paper"。
+ */
+export function icsEventSummary(
+  abbr: string,
+  year: number | string,
+  labelKey?: string,
+  /** 节点轮次备注原文（ccfddl 的 `c`，如 "Poster Paper"）：同一天同名事件靠它区分 */
+  round?: string,
+): string {
+  const base = `${abbr} ${year}`;
+  const node = NODE_LABEL_EN[labelKey ?? "paper"];
+  if (!node) return base;
+  // 轮次写在节点词**前**，与站内标题一致（「ADMA 2026 · Poster Full Paper」）；
+  // 外部客户端（Apple / 华为）只有标题可用，不带轮次时同一天的两条事件长得一模一样
+  const roundLabel = conferenceRoundLabel({ comment: round });
+  return roundLabel ? `${base} · ${roundLabel} ${node}` : `${base} · ${node}`;
+}
+
 /** 构造单事件 VCALENDAR 文本 */
 export function buildIcsText(e: IcsEvent): string {
   return [
@@ -37,6 +98,10 @@ export function buildIcsText(e: IcsEvent): string {
     `DTSTART:${toIcsUtc(e.start)}`,
     `DTEND:${toIcsUtc(e.end)}`,
     `SUMMARY:${esc(e.summary)}`,
+    ...(e.confTitle ? [`X-CONF-TITLE:${esc(e.confTitle)}`] : []),
+    ...(e.location ? [`LOCATION:${esc(e.location)}`] : []),
+    ...(e.confDates ? [`X-CONF-DATES:${esc(e.confDates)}`] : []),
+    ...(e.confName ? [`X-CONF-NAME:${esc(e.confName)}`] : []),
     ...(e.description ? [`DESCRIPTION:${esc(e.description)}`] : []),
     ...(e.url ? [`URL:${esc(e.url)}`] : []),
     ...(e.categories?.length
@@ -47,12 +112,95 @@ export function buildIcsText(e: IcsEvent): string {
   ].join("\r\n");
 }
 
+/* ---------------- iCal 属性级读写（无解析重建，保留未知属性） ---------------- */
+
+/** 展开 iCal 折行（RFC 5545 续行以单个空格/制表符开头） */
+function unfoldIcs(text: string): string {
+  return text
+    .replace(/\r\n[ \t]/g, "")
+    .replace(/\n[ \t]/g, "")
+    .replace(/\r[ \t]/g, "");
+}
+
+/**
+ * 读取 VCALENDAR 文本中的某个属性值（未转义文本；不存在返回 undefined）。
+ * 注：取第一个匹配（本站事件均只有一个 VEVENT）。
+ */
+export function getIcsProperty(icsText: string, name: string): string | undefined {
+  const m = new RegExp(`^${name}:(.*)$`, "m").exec(unfoldIcs(icsText));
+  return m ? unesc(m[1].trim()) : undefined;
+}
+
+/**
+ * 替换 / 插入 / 删除 VCALENDAR 文本中的某个属性，**其余属性原样保留**（含本站不认识的
+ * VALARM / ATTENDEE / 其它 X- 属性）——故不用「解析成对象再重建」（外部客户端写入的
+ * 属性会被静默丢掉）。value 为 null/空串时删除该属性。
+ */
+export function upsertIcsProperty(
+  icsText: string,
+  name: string,
+  value: string | null,
+): string {
+  const lines = unfoldIcs(icsText).split(/\r?\n/);
+  const propRe = new RegExp(`^${name}[;:]`);
+  const idx = lines.findIndex((line) => propRe.test(line));
+  const newLine = value ? `${name}:${esc(value)}` : null;
+
+  if (idx >= 0) {
+    if (newLine) lines[idx] = newLine;
+    else lines.splice(idx, 1);
+  } else if (newLine) {
+    const end = lines.findIndex((line) => line.trim().toUpperCase() === "END:VEVENT");
+    lines.splice(end >= 0 ? end : lines.length, 0, newLine);
+  }
+  return lines.join("\r\n");
+}
+
 /* ---------------- iCal 解析（CalDAV 读取方向） ---------------- */
+
+/** 会议届别的投稿节点（服务端按会议数据补齐，不来自 ICS 文件本身） */
+export type IcsConferenceNode = {
+  /** 截止时刻（UTC 毫秒，已按会议所在时区换算） */
+  utc: number;
+  /** 节点类型（与 CATEGORIES 同词表：abstract / paper / registration / …） */
+  kind: string;
+  /** 轮次备注原文（如 "Main Track" / "first round"，ccfddl 数据原文） */
+  comment?: string;
+};
+
+/**
+ * 事件所属会议届别的信息（`/api/calendar` 服务端按事件标题里的「缩写 + 年份」
+ * 从 deadlines 数据补齐）：详情弹窗用它展示这届会议**完整的时间线**，
+ * 并支持点击节点跳到同届其它节点的事件。个人日程 / 第三方事件没有此字段。
+ */
+export type IcsConferenceInfo = {
+  /** 缩写 */
+  abbr: string;
+  /** 届别年份 */
+  year: number;
+  /** 该届官网 */
+  link?: string;
+  /** 会期原文 */
+  date?: string;
+  /** 举办地 */
+  place?: string;
+  /** 该届全部投稿节点（按时间升序） */
+  nodes: IcsConferenceNode[];
+};
 
 export type ParsedIcsAppointment = {
   uid: string;
   summary: string;
+  /** 本站写入的洁净标题（X-CONF-TITLE，不含节点词）；第三方事件无此字段 */
+  confTitle?: string;
+  /** 会议全称（X-CONF-NAME 扩展属性，本站写入；第三方客户端不提供也不显示） */
+  confName?: string;
+  /** 用户备注（标准 DESCRIPTION；客户端「备注」框读写的就是它） */
   description?: string;
+  /** 地点（LOCATION 属性） */
+  location?: string;
+  /** 会议会期（X-CONF-DATES 扩展属性，本站写入；第三方客户端一般不提供） */
+  confDates?: string;
   url?: string;
   /** 类别（CATEGORIES 属性值，逗号分割去转义；缺失时为 undefined） */
   categories?: string[];
@@ -64,7 +212,115 @@ export type ParsedIcsAppointment = {
   /** 浮时时间 "YYYY-MM-DDTHH:mm"（无时区语义，按浏览器本地解释） */
   floatingStart?: string;
   floatingEnd?: string;
+  /** 会议届别信息（仅 `/api/calendar` 服务端补齐；个人日程 / 第三方事件为 undefined） */
+  conference?: IcsConferenceInfo;
 };
+
+/**
+ * 节点与事件的时刻容差（毫秒）。写入时段的 DTSTART 与节点时刻用**同一个**
+ * `zonedToUtcMs(t, tz)` 换算（服务端 `lib/data/conference.ts` 与卡片写入端共用），
+ * 故实为精确相等；容 1 分钟只为防浮点/秒级误差。
+ */
+export const NODE_TIME_TOLERANCE_MS = 60_000;
+
+/**
+ * 事件命中的**那个**投稿节点（同届里时刻吻合的第一个；无 conference / 时刻对不上时 null）。
+ * ⚠ 只取一个：同届同一天可能有多个节点共用同一截止时刻（如 ADMA 2026 的
+ *   「Poster Paper / Encore Paper」），逐个判定会让「当前项」变成多个。
+ */
+export function matchedConferenceNode(
+  ev: ParsedIcsAppointment,
+): IcsConferenceNode | null {
+  const nodes = ev.conference?.nodes;
+  if (!nodes || nodes.length === 0) return null;
+
+  // ① 先按 `SUMMARY` 里的「轮次 节点词」**精确定位**（本站写入的事件都带这个后缀）。
+  //    ⚠ 必须优先于时刻匹配：同一届同一天可能有多个节点**共用同一截止时刻**
+  //    （ADMA 2026 的 Poster / Encore），此时时刻匹配只能命中第一个，
+  //    两条日程会显示成同一个节点（标题/徐章都变成 "Poster"）。
+  const catKey = (ev.categories ?? [])
+    .map((c) => c.trim().toLowerCase())
+    .find((c) => c in NODE_LABEL_EN);
+  const nodeWord = NODE_LABEL_EN[catKey ?? "paper"];
+  const tail = ev.summary
+    .split("·")
+    .slice(1)
+    .map((part) => part.trim())
+    .join(" · ");
+  if (tail && nodeWord) {
+    const hit = nodes.find((n) => {
+      const round = conferenceRoundLabel(n);
+      return round !== null && tail === `${round} ${nodeWord}`;
+    });
+    if (hit) return hit;
+  }
+
+  // ② 回退：按时刻容差（旧格式事件、以及外部客户端写入的无轮次事件）
+  if (ev.startUtc === null) return null;
+  const startUtc = ev.startUtc;
+  return (
+    nodes.find((n) => Math.abs(startUtc - n.utc) <= NODE_TIME_TOLERANCE_MS) ?? null
+  );
+}
+
+/**
+ * 节点的**轮次短标签**（如 "Poster" / "Main Track"）：让同一天、同类型的多条节点日程
+ * （ccfddl 里的 Poster / Encore 等轮次）在标题与徽章里有可区分的名字。
+ *
+ * ⚠ 数据源的 `c` 字段既可能是干净的轮次名，也可能是整句说明
+ *   （如 "Supplementary material due Sep 2, 2026. All deadlines are 11:00 am"）
+ *   → 只接受**短且无句读**的：长度 ≤ 40 且不含 `.:;,`（`/` 允许，如 "2026/1"）。
+ * ⚠ 尾部的 " Paper" 去掉（类别名已由徽章/标题表达）："Poster Paper" +「全文」→ "Poster 全文"。
+ */
+function roundBaseLabel(comment?: string): string | null {
+  const raw = comment?.trim();
+  if (!raw || raw.length > 40 || /[.:;,]/.test(raw)) return null;
+  return raw.replace(/\s+Papers?$/i, "").trim() || null;
+}
+
+/**
+ * 轮次的**完整标签**（去尾 `" Paper"`，**不做**尾部剥离）：如 `Spring Submission Deadline`。
+ * ⚠ 时间线**优先显示它**——竖向布局的行宽与节点数无关（宽屏分栏 297px、窄屏 396px），
+ *   最长的备注（37 字符 ≈ 220px）也放得下；只有当行宽不够时才降级到 `conferenceRoundLabel`。
+ */
+export function conferenceRoundFullLabel(
+  node?: { comment?: string } | null,
+): string | null {
+  return roundBaseLabel(node?.comment);
+}
+
+/**
+ * 轮次的**短标签**（在完整标签上再剥掉尾部流程词）：`Spring Submission Deadline` → `Spring`。
+ * 用于 **UID slug / SUMMARY / 列表徽章**（这些位置的宽度受限），以及**时间线**在窄行宽下的降级。
+ */
+export function conferenceRoundLabel(
+  node?: { comment?: string } | null,
+): string | null {
+  const base = roundBaseLabel(node?.comment);
+  return base ? shortenRoundLabel(base) || base : null;
+}
+
+/**
+ * 轮次标签里**只表流程、不表区分**的尾部词：反复剥掉它们，只留核心词——
+ * `Spring Submission Deadline` → `Spring`、`September Cycle Submission Deadline` → `September`、
+ * `Main Track` → `Main`、`Industry Track` → `Industry`。
+ *
+ * ⚠ 为什么仍需要它：**UID slug / SUMMARY / 列表徽章**这些位置宽度受限（外部客户端的
+ *   标题也要短）；时间线本身**优先显示完整标签**（`conferenceRoundFullLabel`），
+ *   只在行宽极窄时降级到短标签。
+ * ⚠ 只剥**尾部**且必须剥完仍非空（`Submission Deadline` → `Submission`，避免剥成空串）。
+ *   实测 313 个会议：205 个可清洗标签中 136 个被缩短，**同一届内零冲突**（核心词仍能区分）。
+ */
+function shortenRoundLabel(label: string): string {
+  const TAIL =
+    /\s+(Tracks?|Sessions?|Papers?|Deadlines?|Cycles?|Submissions?|Rounds?|Phases?|Schedules?)$/i;
+  let out = label;
+  for (;;) {
+    const next = out.replace(TAIL, "").trim();
+    if (!next || next === out) return out;
+    out = next;
+  }
+}
 
 /** 解析 iCal 中的日期时间值 → UTC 毫秒（仅支持 Z 结尾的 UTC 形式） */
 function parseIcsUtc(v: string): number | null {
@@ -125,7 +381,11 @@ function parseVevent(block: string): ParsedIcsAppointment | null {
   const ev: ParsedIcsAppointment = {
     uid,
     summary: unesc(summary),
+    confTitle: props.get("X-CONF-TITLE") ? unesc(props.get("X-CONF-TITLE")!.value) : undefined,
     description: props.get("DESCRIPTION") ? unesc(props.get("DESCRIPTION")!.value) : undefined,
+    location: props.get("LOCATION") ? unesc(props.get("LOCATION")!.value) : undefined,
+    confName: props.get("X-CONF-NAME") ? unesc(props.get("X-CONF-NAME")!.value) : undefined,
+    confDates: props.get("X-CONF-DATES") ? unesc(props.get("X-CONF-DATES")!.value) : undefined,
     url: props.get("URL")?.value || undefined,
     categories,
     startUtc: null,
@@ -171,10 +431,7 @@ function parseVevent(block: string): ParsedIcsAppointment | null {
  */
 export function parseIcsText(text: string): ParsedIcsAppointment[] {
   // 行折叠：RFC 5545 中续行以单个空格/制表符开头
-  const unfolded = text
-    .replace(/\r\n[ \t]/g, "")
-    .replace(/\n[ \t]/g, "")
-    .replace(/\r[ \t]/g, "");
+  const unfolded = unfoldIcs(text);
 
   const events: ParsedIcsAppointment[] = [];
   const veventRe = /BEGIN:VEVENT[\s\S]*?END:VEVENT/g;
