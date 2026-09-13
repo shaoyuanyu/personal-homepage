@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Idea, IdeaStatus } from "@/lib/ideas/store";
@@ -41,6 +42,9 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /** 待确认删除的条目（非 null 时显示确认弹窗） */
+  const [pendingDelete, setPendingDelete] = useState<Idea | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // 数据新鲜度：useState 只在挂载时取一次 initialIdeas，而客户端导航返回时
@@ -163,16 +167,28 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
   }
 
   async function handleDelete(idea: Idea) {
-    if (!window.confirm(t("deleteConfirm"))) return;
+    // ⚠ 勿改回 `window.confirm`：原生弹窗不随主题、样式与站内脱节，且阻塞主线程。
+    //   与站内其它破坏性操作统一走自绘的 ConfirmDialog（见组件底部渲染）。
+    setPendingDelete(idea);
+  }
+
+  /** 确认删除（ConfirmDialog 的 onConfirm） */
+  async function performDelete() {
+    const idea = pendingDelete;
+    if (!idea) return;
     const prev = ideas;
+    setDeleting(true);
     setIdeas((list) => list.filter((i) => i.id !== idea.id));
     setError(null);
     try {
       const res = await fetch(`/api/ideas/${idea.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("delete failed");
+      setPendingDelete(null);
     } catch {
       setIdeas(prev);
       setError(t("error.delete"));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -406,6 +422,25 @@ export function IdeasManager({ initialIdeas }: { initialIdeas: Idea[] }) {
           ))}
         </ul>
       )}
+
+      {/* 删除确认（替换原生 window.confirm：与站内其它破坏性操作一致） */}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+        title={t("deleteConfirm")}
+        description={
+          pendingDelete
+            ? pendingDelete.content.length > 80
+              ? `${pendingDelete.content.slice(0, 80)}…`
+              : pendingDelete.content
+            : undefined
+        }
+        confirmLabel={t("delete")}
+        pending={deleting}
+        onConfirm={() => void performDelete()}
+      />
     </div>
   );
 }

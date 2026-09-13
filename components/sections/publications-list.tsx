@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
+import { BookOpenIcon } from "lucide-react";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Empty } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { PublicationCard } from "@/components/sections/publication-card";
 import type { Publication } from "@/lib/data";
@@ -89,7 +90,17 @@ export function PublicationsList({
       </div>
 
       {/* 列表：按年份倒序 */}
-      {groups.length === 0 && <Empty title={t("empty")} />}
+      {/* ⚠ 空态文案必须写成 EmptyTitle 子元素；写成 <Empty title="…"> 只会落成 DOM 的 title 属性（悬浮提示），用户在页面上看不到任何文字 */}
+      {groups.length === 0 && (
+        <Empty>
+          <EmptyMedia variant="icon">
+            <BookOpenIcon aria-hidden />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>{t("empty")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
+      )}
       {groups.map(([year, pubs]) => (
         <div key={year} className="flex flex-col gap-3">
           <div className="flex items-center gap-3">

@@ -87,6 +87,69 @@ export function icsEventSummary(
   return roundLabel ? `${base} · ${roundLabel} ${node}` : `${base} · ${node}`;
 }
 
+/** 节点类型 + 轮次备注 → UID 的中间段（轮次清洗成 slug，空轮次为空串） */
+function roundUidSegment(round?: string): string {
+  return (
+    conferenceRoundLabel({ comment: round })
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") ?? ""
+  );
+}
+
+/**
+ * 投稿节点日程的稳定 UID（CalDAV 写入与 .ics 下载共用）：
+ * `缩写-年份-节点类型[-轮次短标签]-截止日期`，如 `adma-2026-paper-poster-20260911`。
+ *
+ * ⚠ **必须带截止日期**：ccfddl 的轮次备注 `c` 有大量缺口——230 个多节点届次里
+ *   140 个（61%）的 `c` 完全为空，而这正是「一年多轮」那类会议
+ *   （如 NSDI 2027 的四月/九月两轮，`c` 全空）。只按「缩写-年份-类型-轮次」定 UID 时
+ *   同届同类型会撞成同一个键**互相覆盖**：实测 43 组节点命中（本地日历里
+ *   NSDI 2027 的 4 条只剩了九月那 2 条、EDBT 2027 的 3 条只剩 1 条）。
+ *   这 43 组里**没有任何一组是同一天**，故日期后缀足以保证唯一。
+ * ⚠ `day` 用**会议所在时区**的日期（数据里 `entry.t` 的日期部分），与卡片显示的
+ *   截止日期同源、可读；缺省时才退回 utc 的 UTC 日期。
+ */
+export function deadlineEventUid(opts: {
+  abbr: string;
+  year: number | string;
+  labelKey?: string;
+  round?: string;
+  /** 截止日期（会议本地 "YYYY-MM-DD"） */
+  day?: string;
+  /** 兜底：没有 day 时用它的 UTC 日期 */
+  utc: number;
+}): string {
+  const day = (opts.day ?? new Date(opts.utc).toISOString().slice(0, 10)).replace(
+    /-/g,
+    "",
+  );
+  return [
+    opts.abbr.toLowerCase(),
+    opts.year,
+    opts.labelKey ?? "paper",
+    roundUidSegment(opts.round),
+    day,
+  ]
+    .filter(Boolean)
+    .join("-");
+}
+
+/**
+ * 历史 UID 格式（迁移用：写入成功后删掉它们，避免同一条日程留下两份）：
+ * `缩写-年份-类型`（最初格式）与 `缩写-年份-类型-轮次`（上一版格式）。
+ */
+export function legacyEventUids(opts: {
+  abbr: string;
+  year: number | string;
+  labelKey?: string;
+  round?: string;
+}): string[] {
+  const base = `${opts.abbr.toLowerCase()}-${opts.year}-${opts.labelKey ?? "paper"}`;
+  const round = roundUidSegment(opts.round);
+  return round ? [base, `${base}-${round}`] : [base];
+}
+
 /** 构造单事件 VCALENDAR 文本 */
 export function buildIcsText(e: IcsEvent): string {
   return [

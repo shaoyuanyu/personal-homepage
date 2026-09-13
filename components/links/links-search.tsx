@@ -6,7 +6,7 @@ import { GlobeIcon, CompassIcon } from "lucide-react";
 
 import { SearchInput } from "@/components/ui/search-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Link } from "@/lib/i18n/navigation";
 import type { NavLinkGroup } from "@/lib/data";
 
@@ -97,43 +97,64 @@ export function LinksSearch({ groups }: { groups: NavLinkGroup[] }) {
         aria-label={t("searchPlaceholder")}
       />
 
-      {filtered.length === 0 && <Empty title={t("noResults")} />}
+{filtered.length === 0 && (
+              <Empty>
+                <EmptyMedia variant="icon">
+                  <CompassIcon aria-hidden />
+                </EmptyMedia>
+                <EmptyHeader>
+                  <EmptyTitle>{t("noResults")}</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            )}
 
       {filtered.map((group) => (
         <section key={group.group[lang]} className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold tracking-tight">{group.group[lang]}</h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {group.links.map((link) => (
-              <Card key={link.url} className="group transition-colors hover:border-primary/40">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <LinkIcon link={link} />
-                    {isInternal(link.url) ? (
-                      <Link
-                        href={link.url}
-                        className="truncate underline-offset-4 group-hover:underline"
-                      >
+            {group.links.map((link) => {
+              /*
+               * 整卡即链接（用户预期）：卡片有 hover:border-primary/40 的悬停反馈，
+               * 若只有标题文字可点，用户悬停后点卡片空白处会「没反应」。
+               * 站点内外链分别用 <a> / i18n <Link> 包裹整卡；卡内不含其它交互元素，
+               * 故不会出现嵌套链接/按钮。整卡可点同时带来「右键新标签打开」与更大的
+               * 触摸目标。
+               */
+              const card = (
+                <Card className="h-full transition-colors group-hover:border-primary/40 group-hover:shadow-sm">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                      <LinkIcon link={link} />
+                      <span className="truncate underline-offset-4 group-hover:underline">
                         {link.name[lang]}
-                      </Link>
-                    ) : (
-                      <a
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="truncate group-hover:underline"
-                      >
-                        {link.name[lang]}
-                      </a>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                {link.desc && (
-                  <CardContent>
-                    <p className="line-clamp-2 text-xs text-muted-foreground">{link.desc[lang]}</p>
-                  </CardContent>
-                )}
-              </Card>
-            ))}
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  {link.desc && (
+                    <CardContent>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {link.desc[lang]}
+                      </p>
+                    </CardContent>
+                  )}
+                </Card>
+              );
+              return isInternal(link.url) ? (
+                <Link key={link.url} href={link.url} className="group block">
+                  {card}
+                </Link>
+              ) : (
+                <a
+                  key={link.url}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group block"
+                >
+                  {card}
+                </a>
+              );
+            })}
           </div>
         </section>
       ))}

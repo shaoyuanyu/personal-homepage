@@ -751,6 +751,102 @@ test.describe("排版与可访问性规格", () => {
   });
 });
 
+test.describe("空态与可点区域（防「看不见的文案」「点不动的卡片」）", () => {
+  /**
+   * ⚠ 系统性缺陷回归：`<Empty title={t("…")} />` 里的文案会落成 DOM 的 `title`
+   *   属性（只有鼠标悬浮提示），**页面上一个字都不显示** —— 用户搜不到结果时
+   *   只看见一个空的虚线框。当时 8 处（publications / talks / projects / blog /
+   *   nav / ccf / cas / deadlines）全部如此，而既有用例只断言 h1，谁也发现不了。
+   *   这里统一断言「空态容器里必须有可见文字」。
+   */
+  test("空态容器内必须有可见文案（多个页面）", async ({ page }) => {
+    const cases: { path: string; search?: string }[] = [
+      { path: "/publications" },
+      { path: "/talks" },
+      { path: "/projects" },
+      { path: "/blog", search: "zzzz-not-exist" },
+      { path: "/nav", search: "zzzz-not-exist" },
+      { path: "/ccf", search: "zzzz-not-exist" },
+      { path: "/cas", search: "zzzz-not-exist" },
+      { path: "/deadlines", search: "zzzz-not-exist" },
+      { path: "/venues", search: "zzzz-not-exist" },
+    ];
+    for (const c of cases) {
+      await gotoReady(page, c.path);
+      if (c.search) {
+        await page.locator("main input").first().fill(c.search);
+        await page.waitForTimeout(400);
+      }
+      const empty = page.locator('[data-slot="empty"]').first();
+      await expect(empty, `${c.path} 应出现空态`).toBeVisible();
+      const visible = (await empty.innerText()).replace(/\s+/g, "");
+      expect(visible.length, `${c.path} 的空态文案必须可见（不能只放在 title 属性里）`).toBeGreaterThan(0);
+      // 空态文字不应只存在于 title 属性
+      expect(
+        await empty.locator('[data-slot="empty-title"], [data-slot="empty-description"]').count(),
+        `${c.path} 空态应使用 EmptyTitle / EmptyDescription 渲染文字`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  test("/deadlines 会议卡片可键盘打开（整卡可点）", async ({ page }) => {
+    await gotoReady(page, "/deadlines");
+    const card = page.locator(".grid.grid-cols-1 [data-slot=card]").first();
+    // 卡片铺有一个覆盖整卡的按钮，供键盘到达（鼠标点击走 Card 的 onClick）
+    const opener = card.locator("[data-slot=deadline-card-open]");
+    await expect(opener).toHaveCount(1);
+
+    // 聚焦后卡片必须有可见的焦点指示（环画在 Card 的 focus-within 上：
+    // Card 自带 overflow-hidden，覆盖层上的外扩 ring 会被裁掉）
+    const ring = () => card.evaluate((el) => getComputedStyle(el).boxShadow);
+    const before = await ring();
+    await opener.focus();
+    expect(await ring(), "卡片获得焦点后应有可见的焦点环").not.toBe(before);
+
+    await page.keyboard.press("Enter");
+    const dialog = page.locator("[data-slot=dialog-content]");
+    await expect(dialog.locator("[data-slot=dialog-title]")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test("/nav 链接卡整卡可点（悬停反馈与真实可点区域一致）", async ({ page }) => {
+    await gotoReady(page, "/nav");
+    // 每张链接卡都被 <a>/<Link> 包裹，且卡内不再有嵌套链接
+    const wrappers = page.locator("main a.group.block");
+    expect(await wrappers.count()).toBeGreaterThan(10);
+    expect(await page.locator("main a.group.block a[href]").count()).toBe(0);
+
+    // 采样卡片的四边与中心：每一点都应命中该卡片的 <a> 内部
+    // （此前只有标题文字可点，卡片的 hover:border 反馈是「空头支票」）
+    const misses = await page.evaluate(() => {
+      const anchors = [...document.querySelectorAll<HTMLAnchorElement>("main a.group.block")];
+      const bad: string[] = [];
+      for (const a of anchors.slice(0, 12)) {
+        const r = a.getBoundingClientRect();
+        if (r.width === 0) continue;
+        const pts: [number, number][] = [
+          [r.left + r.width / 2, r.top + 6],
+          [r.left + r.width / 2, r.top + r.height / 2],
+          [r.left + r.width / 2, r.bottom - 6],
+          [r.left + 6, r.top + r.height / 2],
+          [r.right - 6, r.top + r.height / 2],
+        ];
+        for (const [x, y] of pts) {
+          if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) continue;
+          const hit = document.elementFromPoint(x, y);
+          if (!hit || !a.contains(hit)) {
+            bad.push(`${a.textContent?.trim().slice(0, 12)} @${Math.round(x)},${Math.round(y)}`);
+            break;
+          }
+        }
+      }
+      return bad;
+    });
+    expect(misses, "这些卡片的可点区域没有覆盖整卡").toEqual([]);
+  });
+});
+
 test.describe("主题切换（顶部栏）", () => {
   /**
    * 触发按钮显示的是「**所选设置**」（浅色/深色/跟随系统），与下拉菜单选项一一
@@ -1054,6 +1150,50 @@ test.describe("主人登录（TOTP）", () => {
     expect(cookies.some((c) => c.name === "owner_session")).toBe(false);
   });
 
+  /**
+   * ⚠ 登录限流（此前完全没有用例，且实际是坏的）：
+   *   限流计数器曾是模块级 `new Map`，而 **Next.js 会逐请求重新求值模块**，
+   *   于是每个请求都拿到空表 —— 实测连试 12 次都不锁（CLAUDE.md 却写着
+   *   「每 IP 5 次失败锁 15 分钟」）。修法：状态挂 `globalThis`
+   *   （见 `lib/utils/global-state.ts`），并修正 IP 取值（原先取
+   *   `x-forwarded-for` 首段，而 nginx 用 `$proxy_add_x_forwarded_for` 是**追加**，
+   *   首段是客户端可伪造值 → 攻击者换个假头就绕过限流）。
+   *
+   * 用例用一个**独立的伪造 IP** 分桶，避免把跑测试的机器自己的 IP 锁 15 分钟
+   * （那会让同一轮里其它登录用例全部收到 429）。
+   */
+  test("登录限流：同一 IP 连续 5 次失败后锁定（429 + 限流文案）", async ({ request }) => {
+    // ⚠ 对生产跑冒烟时跳过：生产经 nginx，`x-real-ip` 会被**覆盖**成 runner 的真实
+    //   IP（无法伪造分桶），锁定后同一轮里后续所有登录用例都会收到 429。
+    //   本地跑（无 nginx）时该头原样传入，可安全分桶。
+    test.skip(!!process.env.E2E_BASE_URL, "远端冒烟跳过：限流按真实 IP 分桶，会锁住 runner");
+    const ip = "203.0.113.7"; // TEST-NET-3，仅用于分桶
+    const post = (code: string) =>
+      request.post("/api/auth/totp", {
+        data: { code },
+        headers: { "x-real-ip": ip },
+      });
+
+    // 前 5 次：都是「验证码无效」
+    for (let i = 0; i < 5; i += 1) {
+      const r = await post(String(100000 + i));
+      expect(r.status(), `第 ${i + 1} 次失败应为 401`).toBe(401);
+      expect((await r.json()).error).toBe("invalid_code");
+    }
+    // 第 6 次：锁定（修 bug 前这里是 401 —— 限流静默失效）
+    const locked = await post("999999");
+    expect(locked.status(), "第 6 次应返回 429（此前是静默失效的 401）").toBe(429);
+    expect((await locked.json()).error).toBe("rate_limited");
+
+    // 换一个分桶：不受影响，仍然可以正常登录（限流不误伤其它 IP）
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    const ok = await request.post("/api/auth/totp", {
+      data: { code },
+      headers: { "x-real-ip": "203.0.113.99" },
+    });
+    expect(ok.status(), "限流不应误伤其它 IP").toBe(200);
+  });
+
   test("正确 TOTP 码登录成功并设置会话", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
@@ -1215,10 +1355,24 @@ test.describe("Idea 速记（主人专属）", () => {
     await page.locator("li").getByRole("button", { name: "保存" }).click();
     await expect(page.getByText(edited)).toBeVisible();
 
-    // 删除（确认弹窗 → 接受）→ 条目消失
-    page.once("dialog", (d) => void d.accept());
+    // 删除：站内自绘确认弹窗（**不再用原生 window.confirm**——原生弹窗不随主题、
+    // 样式与站内脱节、移动端观感突兀且阻塞主线程）→ 确认后条目消失
+    const nativeDialogs: string[] = [];
+    page.on("dialog", (d) => void nativeDialogs.push(d.type()));
     await page.getByRole("button", { name: "删除" }).first().click();
+    const confirm = page.locator('[data-slot="confirm-dialog"]');
+    await expect(confirm).toBeVisible();
+    await expect(confirm.locator("[data-slot=dialog-title]")).toBeVisible();
+    // 取消不删除
+    await confirm.getByRole("button", { name: "取消" }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(page.getByText(edited)).toBeVisible();
+    // 再次打开并确认删除
+    await page.getByRole("button", { name: "删除" }).first().click();
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole("button", { name: "删除" }).click();
     await expect(page.getByText(edited)).toHaveCount(0);
+    expect(nativeDialogs, "不应弹出原生 confirm").toEqual([]);
   });
 });
 
@@ -1334,31 +1488,159 @@ test.describe("Deadline 手动同步（主人专属）", () => {
     expect(r.status()).toBe(401);
   });
 
-  test("卡片日历菜单：游客无 CalDAV 项，登录后可见", async ({ page }) => {
-    const openMenu = async () => {
-      await page
-        .locator(".grid.grid-cols-1 [data-slot=card]")
-        .first()
-        .getByRole("button", { name: "加入日历" })
-        .click();
-    };
-
+  test("游客：日历动作只有 Google 日历 / 下载 .ics（卡片菜单 + 弹窗下拉）", async ({
+    page,
+  }) => {
+    const card = page.locator(".grid.grid-cols-1 [data-slot=card]").first();
     await gotoReady(page, "/deadlines");
-    await openMenu();
+
+    // 卡片右下角：选项式下拉
+    await card.getByRole("button", { name: "加入日历" }).click();
     await expect(
       page.getByRole("menuitem", { name: "添加到我的日历" }),
     ).toHaveCount(0);
+    await expect(
+      page.getByRole("menuitem", { name: "Google 日历" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "下载 .ics" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
 
+    // 点卡片 → 普通详情（无勾选、无「添加选中的 N 个」），右下角同样是选项式下拉
+    await card.locator("[data-slot=deadline-card-title]").click();
+    const dialog = page.locator("[data-slot=dialog-content]");
+    await expect(dialog.locator("[data-slot=dialog-title]")).toBeVisible();
+    await expect(dialog.locator("input[type=checkbox]")).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: /添加选中的/ }),
+    ).toHaveCount(0);
+    await dialog.getByRole("button", { name: "加入日历" }).click();
+    await expect(
+      page.getByRole("menuitem", { name: "下载 .ics" }),
+    ).toBeVisible();
+  });
+
+  test("站主：图标进勾选态；点卡片进普通详情（再点「添加到我的日历」才勾选）", async ({
+    page,
+  }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);
     await gotoReady(page, "/deadlines");
-    await openMenu();
-    await expect(
-      page.getByRole("menuitem", { name: "添加到我的日历" }),
-    ).toBeVisible();
-    // 点击菜单项不应打开会议详情 Dialog（React 合成事件按组件树冒泡，需 stopPropagation）
-    await page.getByRole("menuitem", { name: "添加到我的日历" }).click();
-    await expect(page.locator("[data-slot=dialog-title]")).toHaveCount(0);
+
+    const card = page.locator(".grid.grid-cols-1 [data-slot=card]").first();
+    const dialog = page.locator("[data-slot=dialog-content]");
+    const boxes = dialog.locator("input[type=checkbox]");
+    const submit = dialog.getByRole("button", { name: /添加选中的/ });
+
+    // ① 点卡片右下角日历图标 → 直接进勾选态（默认全选、含已过节点）
+    const icon = card.getByRole("button", { name: "添加到我的日历" });
+    await expect(icon).not.toHaveAttribute("aria-haspopup", "menu");
+    await icon.click();
+    await expect(dialog.locator("[data-slot=dialog-title]")).toBeVisible();
+    expect(await boxes.count()).toBeGreaterThan(0);
+    for (const box of await boxes.all()) {
+      await expect(box).toBeChecked();
+    }
+    await expect(submit).toBeEnabled();
+    await boxes.first().uncheck();
+    await expect(submit).toContainText(String((await boxes.count()) - 1));
+    await dialog.getByRole("button", { name: "清空" }).click();
+    await expect(submit).toBeDisabled();
+    await page.keyboard.press("Escape");
+
+    // ② 点卡片 → 普通详情：没有复选框，右下角是「添加到我的日历」
+    await card.locator("[data-slot=deadline-card-title]").click();
+    await expect(dialog.locator("[data-slot=dialog-title]")).toBeVisible();
+    await expect(boxes).toHaveCount(0);
+    await expect(submit).toHaveCount(0);
+    await dialog.getByRole("button", { name: "添加到我的日历" }).click();
+    await expect(boxes.first()).toBeChecked();
+  });
+
+  test("提交勾选：成功后关闭弹窗，且 toast 图层在弹窗之上", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    // ⚠ 打桩写入 API：本用例只验证交互与图层，不碰真实日历
+    await page.route("**/api/deadlines/caldav", (route) =>
+      route.fulfill({ json: { ok: true, added: 2, failed: 0 } }),
+    );
+    await loginWithCode(page, code);
+    await gotoReady(page, "/deadlines");
+
+    const card = page.locator(".grid.grid-cols-1 [data-slot=card]").first();
+    await card.getByRole("button", { name: "添加到我的日历" }).click();
+    const dialog = page.locator("[data-slot=dialog-content]");
+    const submit = dialog.getByRole("button", { name: /添加选中的/ });
+    await expect(submit).toBeEnabled();
+
+    // 弹窗打开时断言图层：toast 视口必须高于弹窗。
+    // ⚠ 曾两者同为 z-50，而弹窗门户在 DOM 中排在 toast 门户之后 → 成功提示被
+    //   弹窗遮罩整个盖住（toast 项自身的 z-1000 只在视口层叠上下文内有效）。
+    const z = await page.evaluate(() => ({
+      toast: getComputedStyle(
+        document.querySelector("[data-slot=toast-viewport]")!,
+      ).zIndex,
+      dialog: getComputedStyle(
+        document.querySelector("[data-slot=dialog-content]")!,
+      ).zIndex,
+    }));
+    expect(Number(z.toast)).toBeGreaterThan(Number(z.dialog));
+
+    await submit.click();
+    // 成功后弹窗关闭（用户指定：勾选窗口职责已完成，不该继续挡着）
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator("[data-slot=toast-title]")).toContainText(
+      "已添加 2 个日程",
+    );
+    // toast 未被遮挡：其中心点命中的元素仍属于 toast 自身
+    const coveredBy = await page.evaluate(() => {
+      const t = document.querySelector("[data-slot=toast-title]")!;
+      const r = t.getBoundingClientRect();
+      const el = document.elementFromPoint(
+        r.left + r.width / 2,
+        r.top + r.height / 2,
+      );
+      if (el?.closest("[data-slot=toast]")) return null;
+      return el?.getAttribute("data-slot") ?? el?.tagName ?? null;
+    });
+    expect(coveredBy).toBeNull();
+  });
+
+  test("批量写入会议节点：同届同类型不同日期各自独立（UID 消歧）", async ({
+    page,
+  }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+
+    // 用虚构会议（API 不校验是否在会议数据里）验证两件事：
+    // ① 一次请求写入多个节点；② 同届同类型但日期不同的节点 UID 不冲突——
+    //    旧 UID 方案（缩写-年份-类型[-轮次]）下两条会撞成同一个键、只剩一条
+    //    （ccfddl 的轮次备注 61% 为空，NSDI/FAST 的一年两轮正是这种情况）。
+    const nodes = [
+      { utc: Date.UTC(2099, 0, 5, 15, 59, 59), labelKey: "paper", day: "2099-01-05" },
+      { utc: Date.UTC(2099, 5, 5, 15, 59, 59), labelKey: "paper", day: "2099-06-05" },
+    ];
+    const r = await page.request.post("/api/deadlines/caldav", {
+      data: { a: "ZZTEST", n: "E2E Test Conference", year: 2099, nodes },
+    });
+    test.skip(r.status() === 503, "未配置 CalDAV 凭证");
+    expect(r.status()).toBe(200);
+    expect(((await r.json()) as { added: number }).added).toBe(2);
+
+    const list = await page.request.get(
+      "/api/calendar?start=2099-01-01&end=2099-07-01",
+    );
+    const uids: string[] = (
+      ((await list.json()) as { events?: { uid: string }[] }).events ?? []
+    )
+      .map((e) => e.uid)
+      .filter((u) => u.startsWith("zztest"));
+    expect(uids).toHaveLength(2);
+
+    // 用例自清理（失败残留时：删 <uid>.ics，或在日历页手动删除）
+    for (const uid of uids) {
+      await page.request.delete(`/api/calendar/events/${encodeURIComponent(uid)}`);
+    }
   });
 });
 
@@ -1424,6 +1706,32 @@ test.describe("我的日历（主人专属）", () => {
         .locator("[data-slot=event-calendar-month-header]")
         .getByText("周日", { exact: true }),
     ).toBeVisible();
+  });
+
+  test("加载态：数据到达前给出可见提示（网格降透明度 + 「正在读取日程…」）", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    // 人为延迟日历接口，观察中间态
+    await page.route("**/api/calendar?*", async (route) => {
+      await new Promise((r) => setTimeout(r, 2500));
+      await route.continue();
+    });
+    await page.goto("/calendar", { waitUntil: "domcontentloaded" });
+    await waitForHydration(page);
+
+    // ① 月视图网格：REUI 用 data-loading + 降透明度表示加载中
+    const grid = page.locator("[data-slot=event-calendar-content]");
+    await expect(grid).toHaveAttribute("data-loading", "true");
+    const dimmed = await grid.evaluate((el) => Number(getComputedStyle(el).opacity));
+    expect(dimmed, "加载中网格应被压暗（避免看起来像「本月没有日程」）").toBeLessThan(1);
+    // ② 列表区：spinner + 本地化文案（曾硬编码英文 aria-label="Loading"）
+    await expect(page.getByText("正在读取日程…").first()).toBeVisible();
+    const spinner = page.locator('[data-slot="spinner"][role="status"]').first();
+    await expect(spinner).toHaveAttribute("aria-label", "正在读取日程…");
+
+    // ③ 加载完成后提示消失，且不残留 data-loading
+    await expect(page.getByText("正在读取日程…")).toHaveCount(0, { timeout: 10_000 });
+    await expect(grid).not.toHaveAttribute("data-loading", "true");
   });
 
   test("周起始日设置：默认周日，可切换为周一并实时生效", async ({ page }) => {
@@ -2057,6 +2365,54 @@ test.describe("我的日历（主人专属）", () => {
       data: { user: "hacker", password: "x" },
     });
     expect(r2.status()).toBe(401);
+  });
+
+  test("日历设置：破坏性操作走站内自绘确认弹窗（不再用原生 confirm）", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    // 先确保有「网站内保存的凭证」，否则「清除凭证」按钮不出现
+    await page.request.put("/api/calendar/credentials", {
+      data: { user: "caladmin", password: "confirm-probe" },
+    });
+    const nativeDialogs: string[] = [];
+    page.on("dialog", (d) => void nativeDialogs.push(d.type()));
+
+    await gotoReady(page, "/calendar");
+    await page.getByRole("button", { name: "设置" }).click();
+    const settings = page.locator("[data-slot=dialog-content]").first();
+    await expect(settings.getByRole("heading", { name: "日历设置" })).toBeVisible();
+
+    const clear = settings.getByRole("button", { name: "清除凭证" });
+    await expect(clear).toBeVisible();
+    await clear.click();
+
+    // 确认弹窗叠加在设置弹窗之上，且**确实可交互**（两层模态的图层/焦点不能被遮挡）
+    const confirm = page.locator('[data-slot="confirm-dialog"]');
+    await expect(confirm).toBeVisible();
+    await expect(confirm.locator("[data-slot=dialog-title]")).toContainText("清除");
+    const hitInside = await confirm.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 8);
+      return !!hit && el.contains(hit);
+    });
+    expect(hitInside, "确认弹窗应位于最上层且未被设置弹窗遮挡").toBe(true);
+
+    // 取消：弹窗关闭、设置弹窗仍在、凭证未被清除
+    await confirm.getByRole("button", { name: "取消" }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(settings.getByRole("heading", { name: "日历设置" })).toBeVisible();
+    const stillThere = await page.request.get("/api/calendar/credentials");
+    expect((await stillThere.json()).configured).toBe(true);
+    expect(nativeDialogs, "不应弹出原生 confirm").toEqual([]);
+
+    // 清理：删除网站内凭证，回退环境变量（与「设置凭证」用例一致的自清理约定）
+    await page.request.delete("/api/calendar/credentials");
+    // 同时清掉本次 PUT 登记的同步队列文件，避免残留影响后续用例
+    const fs = await import("node:fs");
+    fs.rmSync(
+      "/home/ysy/Projects/ysy-personal-homepage/.next/standalone/data/caldav-reset.json",
+      { force: true },
+    );
   });
 
   test("登录后可在日历页设置 CalDAV 凭证", async ({ page }) => {

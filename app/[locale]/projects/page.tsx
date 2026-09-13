@@ -3,7 +3,7 @@ import { ExternalLinkIcon, FolderGit2Icon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { pageMetadata } from "@/lib/i18n/metadata";
 import { projects } from "@/lib/data";
 
@@ -27,7 +27,16 @@ export default function ProjectsPage() {
         <p className="text-muted-foreground">{t("description")}</p>
       </div>
 
-      {projects.length === 0 && <Empty title={t("empty")} />}
+{projects.length === 0 && (
+              <Empty>
+                <EmptyMedia variant="icon">
+                  <FolderGit2Icon aria-hidden />
+                </EmptyMedia>
+                <EmptyHeader>
+                  <EmptyTitle>{t("empty")}</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {projects.map((project) => (

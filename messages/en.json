@@ -184,7 +184,11 @@
     "website": "Conference website",
     "addToCalendar": "Add to calendar",
     "addToCaldav": "Add to my calendar",
-    "caldavAdded": "{conf} added to my calendar",
+    "selectAll": "Select all",
+    "selectNone": "Clear",
+    "addSelected": "Add {n} selected",
+    "caldavAddedCount": "{conf}: {n} event(s) added to my calendar",
+    "caldavPartial": "Added {added}, {failed} failed",
     "caldavFailed": "Add failed",
     "googleCalendar": "Google Calendar",
     "icsDownload": "Download .ics",
@@ -215,6 +219,7 @@
     "emptyHint": "Click \"Add to my calendar\" on a deadline card to view it in a CalDAV-enabled calendar client",
     "upcoming": "Appointments this month & beyond",
     "upcomingEmpty": "No appointments this month & beyond",
+    "loadingAppointments": "Loading appointments…",
     "showAll": "Show all",
     "dayEmpty": "No appointments on this day",
     "items": "{n} appointments",
@@ -399,6 +404,8 @@
   },
   "misc": {
     "soon": "Coming Soon",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "cancel": "Cancel",
+    "confirm": "Confirm"
   }
 }

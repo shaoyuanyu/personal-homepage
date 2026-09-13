@@ -186,7 +186,11 @@
     "website": "会议官网",
     "addToCalendar": "加入日历",
     "addToCaldav": "添加到我的日历",
-    "caldavAdded": "{conf} 已添加到我的日历",
+    "selectAll": "全选",
+    "selectNone": "清空",
+    "addSelected": "添加选中的 {n} 个",
+    "caldavAddedCount": "{conf} 已添加 {n} 个日程到我的日历",
+    "caldavPartial": "已添加 {added} 个，{failed} 个失败",
     "caldavFailed": "添加失败",
     "googleCalendar": "Google 日历",
     "icsDownload": "下载 .ics",
@@ -217,6 +221,7 @@
     "emptyHint": "在会议 Deadline 卡片点击「添加到我的日历」，即可在配置了 CalDAV 的日历客户端查看",
     "upcoming": "本月及未来日程",
     "upcomingEmpty": "本月及未来暂无日程",
+    "loadingAppointments": "正在读取日程…",
     "showAll": "显示全部",
     "dayEmpty": "当天暂无日程",
     "items": "{n} 个日程",
@@ -401,6 +406,8 @@
   },
   "misc": {
     "soon": "即将上线",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "cancel": "取消",
+    "confirm": "确定"
   }
 }

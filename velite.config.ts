@@ -209,6 +209,11 @@ const deadlinesOverrides = defineCollection({
           l: s.enum(["A", "B", "C"]).optional(),
           f: s.string().optional(),
           d: s.string().optional(),
+          /**
+           * ⚠ `years` 是**可选**的：省略时沿用自动同步数据里的届别/时间线，
+           * 于是可以只修正名称等字段（如上游把会议全称截断）而不必把整份
+           * timeline 复制进覆盖层再随上游一起过期。合并逻辑见 `mergeDeadlines()`。
+           */
           years: s
             .array(
               s.object({
@@ -228,7 +233,8 @@ const deadlinesOverrides = defineCollection({
                   .min(1),
               }),
             )
-            .min(1),
+            .min(1)
+            .optional(),
         }),
       )
       .default([]),

@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/search-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Empty } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import {
   Tooltip,
   TooltipContent,
@@ -414,7 +414,13 @@ export function CasDirectory() {
       </p>
 
       {shown === 0 ? (
-        <Empty title={t("empty")}>
+        <Empty>
+          <EmptyMedia variant="icon">
+            <BookMarkedIcon aria-hidden />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>{t("empty")}</EmptyTitle>
+          </EmptyHeader>
           <Button variant="outline" size="sm" onClick={resetFilters}>
             <RotateCcwIcon />
             {t("resetFilters")}

@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/search-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Empty } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useOwnerPreferences } from "@/lib/preferences/use-owner-preferences";
 import { ccfBarClass, ccfChipClass } from "@/lib/design/grade";
@@ -466,7 +466,13 @@ export function CcfDirectory() {
       </p>
 
       {groups.length === 0 ? (
-        <Empty title={t("empty")}>
+        <Empty>
+          <EmptyMedia variant="icon">
+            <BookOpenIcon aria-hidden />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>{t("empty")}</EmptyTitle>
+          </EmptyHeader>
           <Button variant="outline" size="sm" onClick={resetFilters}>
             <RotateCcwIcon />
             {t("resetFilters")}

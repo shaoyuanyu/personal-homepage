@@ -33,7 +33,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
 
 - **协议**：TOTP（RFC 6238，SHA1/6 位/30 秒），`otpauth` 库；恢复码 5 个一次性 16 位。
 - **会话**：自研 HMAC-SHA256 签名无状态 Cookie（`owner_session`，30 天，HttpOnly + SameSite=Lax，生产自动 Secure）。
-- **限流**：内存 Map，每 IP 5 次失败锁 15 分钟（单实例够用）。
+- **限流**：内存 Map，每 IP 5 次失败锁 15 分钟（单实例够用）。⚠ **状态必须挂 `globalThis`（`globalMap`），且 `isRateLimited` 只能在锁**过期**时清记录**——两处都错过一次，结果限流静默失效（详见「静默失效陷阱」）；E2E 已锁定该行为。⚠ **取 IP 勿用 `x-forwarded-for` 首段**：仓库 README/setup 脚本里的 nginx 配置是 `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`（**追加**），客户端自带的假头会落在首段 → 取首段等于把限流开关交给攻击者；`X-Real-IP $remote_addr` 是**覆盖**故可信，优先取它，退化取 XFF 的**最后一段**。
 - **密钥**：`.env`（gitignored）：`TOTP_SECRET`、`AUTH_SECRET`、`RECOVERY_CODES`。重新生成：`pnpm totp:setup [--force]`（**--force 使手机端验证器绑定失效，需重新扫码**）。
 - **代码分层**：`lib/auth/`（totp / session / owner / rate-limit / recovery）。
   - 页面守卫：`requireOwner()`（未登录 redirect /login）；API 守卫：`isOwner()` 返回 401（**API 勿用 requireOwner，会得到 redirect 语义**）。
@@ -69,7 +69,7 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
 - **路由**：`/deadlines`（公开页面，`force-dynamic` 动态渲染）；入口：学术导航页「会议 Deadline 日历」链接（未加入顶部导航）。
 - **数据流**：`scripts/fetch-deadlines.mjs`（零依赖行级 YAML 解析）每 12 小时从 ccfddl/ccf-deadlines 的 `allconf.yml` 拉取 → 归一化时区 → 只保留当年+次年 → 写入 `lib/data/deadlines.json`（提交入库）。同步命令：`pnpm fetch:deadlines`；工作流 `sync-deadlines.yml`（每 12 小时，有变化提交 PR）。
 - **手动立即同步（主人专属）**：`/deadlines` 页面登录后显示「立即同步」按钮 → `POST /api/deadlines/sync`（`isOwner` 守卫，60 秒限流）拉取最新数据并合并覆盖层 → 原子写入运行时文件 `data/deadlines.json`（`DATA_DIR` 或 cwd/data，VPS 上即 compose 挂载的 `./data`，持久化）。页面动态渲染优先读该文件（缺失/损坏回退构建时数据），刷新即生效，无需等待部署。**按钮位置（勿改回）**：独立客户端组件 `components/deadlines/deadlines-sync-button.tsx`（`useOwnerPreferences().isOwner` 控制，游客返回 `null` 不占位），由**服务端**页面 `app/[locale]/deadlines/page.tsx` 渲染在页面头部右列——header 为 `flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between`（左列 = 标题/徽章/描述/来源，右列 = 按钮，宽屏与标题顶部对齐，`sm` 以下堆叠到描述下方左对齐）。**勿把按钮放回 `deadlines-list.tsx`**：该组件位于 header 之后（`gap-8`），按钮只能在那儿独占一行；页面头部是服务端组件，故按钮须独立成客户端组件才能排进右列。
-- **覆盖层**：`content/deadlines-overrides.yaml`（velite 校验）按缩写整体替换/新增会议（非 CCF 会议、修正错误数据用；字段 l/f/d 缺省时沿用自动数据）。合并逻辑 `mergeDeadlines()` 在 `lib/data/index.ts`，构建时与手动同步共用（保证规则一致）。
+- **覆盖层**：`content/deadlines-overrides.yaml`（velite 校验）按缩写整体替换/新增会议（非 CCF 会议、修正错误数据用；字段 l/f/d 缺省时沿用自动数据）。合并逻辑 `mergeDeadlines()` 在 `lib/data/index.ts`，构建时与手动同步共用（保证规则一致）。⚠ **`years` 是可选字段**：省略时沿用自动数据的届别/时间线（只想改名字时不必把整份 timeline 复制进来再随上游过期）；初始化时 schema 曾强制 `years`，导致「只想改一个会议全称」也得冻结住整个时间线。已用该机制修正 7 个被上游截断的会议全称（ASAP / BlockSys / EACL / ICST / NOSSDAV / SC / SIGCOMM——allconf.yml 里以 and/of/逗号结尾，会显示在卡片、详情与日历事件的 `X-CONF-NAME` 里；全称取自站内 CCF 目录）。
 - **时区约定**：fetch 时归一化为 IANA 名（AoE→`Etc/GMT+12`、PT/PST→`America/Los_Angeles`、UTC±X→`Etc/GMT∓X` 注意符号反转）；UI 用 `Intl.DateTimeFormat(timeZone)` 转访客本地时间，零依赖。
 - **UI**：`components/deadlines/deadlines-list.tsx`——等级 A/B/C/未收录 + 时间范围（30/90 天）+ 领域多选筛选、倒计时、详情 Dialog、Google 日历 / .ics 导出。领域词表与 CCF 目录一致（官方中文名，短键取 `/` 前段）。⚠ **领域筛选 chip 必须 `max-w-full` + 内层 `<span className="truncate">`**（`/ccf` 与 `/deadlines` 同一份写法）：英文字段名（如 "Software Engineering, System Software & …"）可长过 360px 视口，单个 `shrink-0` 的 chip 会把窄屏撑出横向溢出（`/en/ccf` 曾溢出 64px）。**卡片内只有两层字阶（勿加层）**：16px 缩写（`font-mono font-bold`）+ 12px 其余（会议全称 `line-clamp-2`、领域徽章、倒计时、deadline/地点/会期、底部链接）。⚠ 会议全称曾用 14px，在 3 列窄卡（317px）里 2 行显得过大过重、且与卡片其余 12px 元数据割裂，已降为 `text-xs`——**勿升回 14px**（`/venues` 的 L2 全称是 14px，但那是宽行单行截断，与卡片场景不同）。⚠ 倒计时含中文（还剩/天/明天截止），用 `tabular-nums` 而非 `font-mono`（避免拉取 cjk 字体分片）。
 - **注意**：allconf.yml 缩进风格不统一（数组项可与父键同级），解析器按内容模式驱动而非绝对缩进；若解析结果为空会直接报错退出（防提交空数据）。数据源（ccfddl.com）偶发连接超时，脚本内置 3 次重试；可用 `DEADLINES_URL` 环境变量覆盖源地址（CLI 另支持 `--url`）。
@@ -134,10 +134,27 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
   - 本地测试认证流程：`openssl passwd -5` 生成 htpasswd，curl 验证 401/201/403。
   - Radicale 3.4+ 存储结构带 `collection-root` 前缀（`collections/collection-root/<user>/<collection>/`）。
 
-### 会议卡片 → 站主 CalDAV（一键添加）
+### 会议卡片 → 站主 CalDAV（图标进勾选态 · 卡片进普通详情）
 
-- **入口**：卡片右下角日历菜单，登录后多出「添加到我的 CalDAV 日历」（`useOwnerPreferences().isOwner` 控制）。
-- **API**：`POST /api/deadlines/caldav`（`isOwner` 守卫）→ 用运行时凭证（`getCalDavConfig()`：网站内设置的文件凭证优先，环境变量回退，见下方「CalDAV 凭证设置」）向 Radicale `MKCOL`（标准 XML）+ `PUT` 事件（稳定 UID `会议-年份-类型`，**幂等覆盖**不产生重复事件）。**防抖按 UID**（同一事件 5 秒内限一次，防连点；不同会议之间不限流——全局限流会误伤正常批量添加）。
+- **入口（2026-09 定版，勿改回）**：卡片右下角日历图标的点击行为**按登录态分叉**——
+  - **站主**：图标 = **打开会议详情 Dialog 并直接进入「勾选节点」态**（`aria-label` = 「添加到我的日历」，无菜单），勾选后点底部「添加选中的 N 个」批量写入本站 CalDAV 日历。
+  - **游客**：图标 = **选项式下拉**（`aria-label` = 「加入日历」，`aria-haspopup=menu`），菜单里**只有**「Google 日历」「下载 .ics」——**没有** CalDAV 项（`isOwner` 守卫，路由层另有一道 `isOwner`）。
+- ⚠ **点卡片 ≠ 点图标（勿把勾选态放到卡片入口）**：点**卡片**进的是**普通详情**——节点列表**没有复选框**、底部**没有**「添加选中的 N 个」；底部右下角是：
+  - 站主：`Button`「添加到我的日历」（`onClick = setPicking(true)`，**点它才切到勾选态**）；
+  - 游客：同一个 `GuestCalendarMenu`（`iconOnly={false}` → `outline` + 文字「加入日历」+ `ChevronDownIcon`）。
+  - ⚠ **关闭弹窗必须 `setPicking(false)`**（`onOpenChange` 里与 `setOpenItem(null)` 一起），否则下次点卡片会直接进勾选态。
+  - ⚠ **提交成功后自动关掉弹窗**（有失败则保持打开便于重试）——勾选窗口的职责已完成，留着它只会挡着日历与结果提示。⚠ 程序化关闭（把受控 `open` 置 false）**不会触发** Base UI 的 `onOpenChange`，故 `picking` 必须在提交处一并复位。
+- ⚠ **为什么站主不给 Google 日历 / 下载 .ics**（用户指定）：那两个动作的用途是「把日程带到站外客户端」，站主已有本站日历（且 `/calendar` 能双向同步、能写备注），站外导出对站主只是噪音。**不要**因为「一致性」把它们加回站主侧。
+- ⚠ **E2E 靠 `aria-label` 分角色断言**；图标在 owner/guest 两种形态下都是 `size="icon-sm"` 的 ghost 按钮，视觉与占位完全相同（`useOwnerPreferences()` 的 `isOwner` 首帧为 false，挂载后才切换，无需担心布局跳动）。卡片标题带 `data-slot="deadline-card-title"` 作为「点卡片进普通详情」的 E2E 钩子。
+- **⚠ 两处共用同一套下拉与导出逻辑**：`GuestCalendarMenu`（组件）+ `googleCalendarUrl()` / `nodeIcsText()` / `downloadIcs()`（模块级纯函数）——卡片图标与弹窗底部都渲染它，`iconOnly` 只切换「纯图标 / 带文字 + chevron」。**勿再复制一份内联菜单**（曾重复过 60 行）。
+- **勾选态（站主专属）**：节点列表每行一个复选框（整行是 `<label>`，点击区域 = 整行；行高 24px），**默认全选含已过节点**（用户指定，行尾用 `pastDue`「已截止」标注便于取消），顶部「全选 / 清空」，全不选时底部「添加选中的 N 个」按钮禁用。判据是 `const pickingMode = isOwner && picking`（**不是** `isOwner`）——普通详情态对所有角色都不渲染勾选。
+  - **为什么必须让用户选**：① 一届会议常有**多个赛道**（ADMA 2026 的 Main/Industry/Special/Short/Poster/Encore），用户通常只投其中一部分；② 有的会议**一年多个投稿窗口**（ASPLOS 的 April/September Cycle、FAST 的 Spring/Fall、NSDI 的一年两轮），用户只需要其中一个时段。把整届节点全塞进日历不合适。
+  - ⚠ **为什么不做「按赛道/轮次分组选择」的 UI**：赛道与轮次在数据里**是同一个字段**（ccfddl 的 `c`），而 **230 个多节点届次里有 140 个（61%）的 `c` 完全为空**——「一年两轮」那类恰好大面积落在这里（NSDI 2027 的 4 个节点、IUI 2027 的 2 个节点 `c` 全空，数据只给了 4/2 个时刻，没说哪两个一轮）。按 `c` 分组对六成届次无从下手；**按节点勾选不依赖 `c` 是否存在，100% 可用**（赛道的分组只是便利，不是必需）。
+  - ⚠ **不要用原生 `<input type=checkbox>` 之外的方案**（当时点了名：`components/ui/` 下**没有** checkbox 封装）。用原生复选框 + `accent-primary` 是有意选择：语义/键盘/无障碍名（`<label>` 包裹 → 整行文字即可访问名）与 E2E 的 `getByRole("checkbox")` 都最稳。也**不要**为它引入 shadcn 的 checkbox（多一个上游产物，收益为零）。
+- **API**：`POST /api/deadlines/caldav`（`isOwner` 守卫）→ 用运行时凭证（`getCalDavConfig()`：网站内设置的文件凭证优先，环境变量回退，见下方「CalDAV 凭证设置」）向 Radicale `MKCOL`（标准 XML，一次）+ 逐节点 `PUT`（**一次请求可写多个节点**，body `nodes: [{utc, labelKey, round, day}]`；旧的单节点 `{utc, labelKey, round}` 格式兼容保留）。返回 `{ok, added, failed, errors}`，部分失败按 200 返回（客户端 toast 报「已添加 N 个，M 个失败」），全失败才 502。**防抖按 UID**（同一事件 5 秒内限一次，防连点；命中去重时按成功计——几秒前刚 PUT 过；不同会议之间不限流——全局限流会误伤批量添加）。**写入后 `invalidateCalendarCache()`**（否则日历页 30 秒缓存导致「加完回日历看不到」）。toast 两档：「{会议} 已添加 N 个日程」（`caldavAddedCount`）/ 部分失败（`caldavPartial`）。
+- **⚠ UID 必须带截止日期（`缩写-年份-类型[-轮次短标签]-YYYYMMDD`，`lib/ical.ts` 的 `deadlineEventUid`）**：旧方案（不含日期）在 `c` 为空时同届同类型会撞成同一个键**互相覆盖**——实测 **43 组节点命中**，本地日历里 NSDI 2027 的 4 条只剩了九月那 2 条、EDBT 2027 的 3 条只剩 1 条。这 43 组里**没有任何一组是同一天**，故日期后缀足以保证唯一。`day` 用**会议所在时区**的日期（数据里 `entry.t` 的日期部分）。.ics 下载走同一函数，保证导入不重复。
+- **⚠ 迁移：写入成功后删掉历史 UID（`legacyEventUids` = `缩写-年份-类型` 与 `缩写-年份-类型-轮次`）**，否则同一条日程留下两份；删除放在 PUT **之后**（写失败时旧的还在）。**备注继承必须一并读历史 UID**——UID 换过，只读新 UID 会让用户写过的 `DESCRIPTION` 随迁移一起消失（先试新 UID，再依次试历史 UID，取第一个带 `X-CONF-NAME` 的事件的 `DESCRIPTION`）。
+- ⚠ **已知限制**：`c` 为空的多轮次会议，两条日程的 `SUMMARY` 相同（都是「NSDI 2027 · Abstract」），只有日期不同——不要把日期拼进 `SUMMARY` 来区分，`matchedConferenceNode()` 靠「轮次 节点词」精确匹配 `SUMMARY` 尾部，改格式会让日历时间线的「当前节点」定位失效。
 - **iCal 构造**：`lib/ical.ts`（`buildIcsText`/`toIcsUtc`）客户端 .ics 下载与 CalDAV API 共用。
 - **⚠ 事件身份 = 「某会议某投稿节点的截止提醒」，不是会议本体（勿改回）**：这是语义地基，所有字段都按此归位——`DTSTART` 是**节点截止时刻**、`SUMMARY` 是「会议 + 年份 + 节点词」、`LOCATION` 是**会议举办地**、`X-CONF-DATES` 是**会期**。曾因标题只写会议名（`ADMA 2026`）而时间/地点按会议本体摆放，日历读起来变成「ADMA 2026 于 9 月 12 日在香港举办」——语义割裂（用户反馈）。
 - **⚠ 事件字段归位（勿把信息全塞进 DESCRIPTION）**：CalDAV 写入 / .ics 下载 / Google 日历链接三处同源，格式统一为——
@@ -148,7 +165,8 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
   - ⚠ **会议全称为何不放标准的 `DESCRIPTION`**：三大生态把 DESCRIPTION 当成用户的「备注/描述」框（Apple EventKit 的自由文本框只有 `notes`、鸿蒙 `calendarManager.Event` 只有 `description`，两家的模型里**都没有 comment**）——若把会议全称写进 DESCRIPTION，用户在手机日历里一改备注就把全称改坏了（用户明确提出的风险）。而 `X-` 属性是 RFC 5545 §3.8.8.2 明确允许的扩展位，且规定客户端必须忽略未识别的扩展属性 → 全称放这里既安全、又随事件同步（不显示但不会丢）。曾试过 `COMMENT` 存备注（RFC 5545 §3.8.1.4 语义上确实匹配「给日历用户的说明」），但 Apple/华为都不展示它 → 改成 DESCRIPTION（客户端里就能看/改备注，双向同步）。
   - ⚠ **未采纳的备选：不存字段、按缩写反查数据源**——缩写会冲突（不同会议同缩写），反查错就会显示成**另一个会议的全会称**（错名比无名更糟），且事件不再自包含。
   - ⚠ **勿再写 `Deadline: … / Dates: … / Location: …` 这类硬编码英文标签行**：截止时刻就是 `DTSTART`、会期就是 `X-CONF-DATES`，写进去只是重复（曾先在描述里带标签、后又把会期同时写进描述与 X- 字段，均被用户指出）。
-  - **旧格式事件需在会议卡片日历菜单重新点一次「添加到我的 CalDAV 日历」**（UID 稳定、幂等覆盖）才会变成新格式；未重加前本站 UI 自动降级（副标题回退描述首行、备注视为空，且首次写备注时服务端自愈：把旧描述首行落到 `X-CONF-NAME`）。
+  - **旧格式事件需重新添加一次**（点卡片右下角日历图标 → 勾选节点 → 添加，即可；UID 稳定、幂等覆盖）才会变成新格式；未重加前本站 UI 自动降级（副标题回退描述首行、备注视为空，且首次写备注时服务端自愈：把旧描述首行落到 `X-CONF-NAME`）。
+- **E2E**（`e2e/smoke.spec.ts` 的「Deadline 手动同步」describe，4 条）：① **游客**：卡片图标 → 菜单里**只有**「Google 日历」「下载 .ics」（无 CalDAV 项）；点卡片 → 普通详情（**无**复选框、**无**「添加选中的 N 个」），底部下拉同样只有那两项。② **站主**：点图标 → **直接进勾选态**（`aria-haspopup` 不是 menu；复选默认全选、取消一个后按钮文案随之变化、清空后禁用）→ `Escape` 关掉 → 点卡片标题（`data-slot="deadline-card-title"`）→ **普通详情**（无复选框）→ 底部「添加到我的日历」→ 点它才出现复选框。③ **提交交互 + 图层（API 打桩，不碰真实日历）**：`page.route` 里 fulfill `{ok,added:2,failed:0}` → 断言弹窗打开时 `toast-viewport` 的 z **大于** dialog 的 z、点提交后弹窗**卸载**、toast 文案出现且其中心点 `elementFromPoint` 命中仍属于 toast。⚠ 前两条都**不点提交按钮**（点了会真写日历数据，改由临时用例/人工验证）。④ **批量写入 + UID 消歧**：用虚构会议（`ZZTEST`，API 不校验是否在数据里）一次写两个「同届同类型但日期不同」的节点 → 断言 `added === 2` 且 `/api/calendar` 返回 **2 条**（旧的 UID 方案下会撞键只剩 1 条），用例末尾自清理（`DELETE` + 未配置凭证时自动 skip）。
 - **日历列表第二行 / 详情弹窗（勿改回整段描述）**：`calendar-view.tsx` 的 `appointmentSecondaryLine()` 取「地点 · 会期」（结构化字段），无结构化字段时回退**描述首行**——**列表第二行必须是单行**（`truncate` 下多行描述会被 `nowrap` 压成一长条再截断，曾致「描述被挤成一行」）。
   - **弹窗标签随事件类型切换**（`isDeadlineNode()` = `CATEGORIES` 命中节点词）：投稿节点事件 = 标题「缩写 年份 · 本地化节点名」+ **副标题 = 「会议全称 + 届别年份」且本身即该届官网超链接**（`AppointmentSubtitle` / `appointmentConfName()`：名称取 `X-CONF-NAME`（旧事件回退描述首行），年份取 `X-CONF-TITLE` 尾部四位，缺时回退事件年份；名称已带年份则不重复拼接）+ 行 **截止时间（节点名）/ 会议会期 / 会议地点**（标签写作「截止时间（摘要）」这类形式标明节点；曾先试过在标签前放类别徽章，视觉上太重已弃用）；个人日程 = **时间 / 地点 / 链接**（不出现「会议会期」这种怪行）。行 `时间/地点` 与 `截止时间/会议会期/会议地点` 是两套语义，勿合并成一套。
   - ⚠ **官网链接上提到副标题里（用户指定，勿改回单列一行）**：会议每届一个域名（如 adma2026.github.io），故全称必须带届别年份才能表意清晰；链接行只在**无会议全称**时（如个人日程）才单独出现。链接末尾带 `ExternalLinkIcon`（提示整段文字可点）。
@@ -205,10 +223,11 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
     - **轮次短标签（让同一天、同类型的多条日程可区分）**：ccfddl 的节点备注 `c`（如 "Poster Paper" / "Encore Paper"）经 `lib/ical.ts` 的 `conferenceRoundLabel()` 清洗后用在**四处**：
       - 清洗三步：① trim 后 **≤ 40 字符且不含 `.:;,`** 才采纳（`c` 也可能是整句说明，如 "Supplementary material due Sep 2, 2026. …" → 不采纳、回退类别名）；② 去掉尾部 `" Paper"`（类别名已表达）；③ **反复剥掉尾部流程词**（`Track|Session|Paper|Deadline|Cycle|Submission|Round|Phase|Schedule`，剥完为空则停）：`Spring Submission Deadline` → `Spring`、`September Cycle Submission Deadline` → `September`、`Main Track` → `Main`、`Special Session` → `Special`、`Cycle 1 Submission deadline` → `Cycle 1`。实测 313 个会议：**205 个可清洗标签中 136 个被缩短，同一届内零冲突**（核心词仍能区分）。
       - ⚠ 第 ③ 步是必需的：标签会**直接显示在时间线节点名里**（列宽仅 45~70px），原样长度只会折成两行、断词尴尬 —— 实测 ADMA 2026 的 6 列出现「1 行/2 行参差」（用户反馈「观感很差」），剥成短标签后才整齐。
-      1. **UID**（`app/api/deadlines/caldav`）：`缩写-年份-类型[-轮次slug]`（slug = 短标签小写、非字母数字转 `-`，如 `adma-2026-paper-poster` / `asplos-2027-paper-september`）——同日同类型的多个节点因此各自成为**独立日程**（否则互相覆盖，日历里只留得下一条）；写入**成功后**顺带 DELETE 旧的「不含轮次」UID（幂等迁移；放 PUT 之后，写失败时旧的还在）。⚠ 清洗规则改动会改变 slug → 已写入的这类事件需**重新添加一次**，且旧 UID 要手动删除（写入端只自动清理"不含轮次"那一种旧格式）。
+      1. **UID**（`lib/ical.ts` 的 `deadlineEventUid`，CalDAV 写入与 .ics 下载共用）：`缩写-年份-类型[-轮次slug]-截止日期`（slug = 短标签小写、非字母数字转 `-`，如 `adma-2026-paper-poster-20260911` / `nsdi-2027-abstract-20260910`）——同届同类型的不同轮次因此各自成为**独立日程**（否则互相覆盖，日历里只留得下一条）。**日期后缀是必需的**：`c` 为空时「缩写-年份-类型-轮次」会撞键（详见上面「UID 必须带截止日期」）。写入**成功后**顺带 DELETE 历史格式的 UID（`缩写-年份-类型` 与 `缩写-年份-类型-轮次`，`legacyEventUids`；幂等迁移；放 PUT 之后，写失败时旧的还在）。⚠ 清洗规则改动会改变 slug → 已写入的事件需**重新添加一次**（写入端会自动清理上述两种历史格式）。
       2. **SUMMARY / .ics 下载 / Google 链接**（`icsEventSummary(abbr, year, labelKey, round)`）：`ADMA 2026 · Poster Full Paper`——外部客户端（Apple / 华为）只有标题可用，不带轮次时同一天的两条事件长得一模一样。
       3. **弹窗标题 / 月视图 tooltip**（`appointmentDisplayTitle`）：`ADMA 2026 · Poster 全文`。
       4. **列表徽章**（`CategoryBadge` 的 `round` prop）= `Poster 全文`，**时间线节点名**（`nodeLabel`）= `Poster`（无轮次时回退类别名）。
+      5. **/deadlines 详情 Dialog 的节点勾选**（`deadlines-list.tsx`）：勾选框 + 「全选/清空」+ 底部「添加选中的 N 个」（owner 专属；游客仍是纯列表）。
       - ⚠ **事件 ↔ 节点的定位必须优先按 `SUMMARY` 里的「轮次 节点词」精确匹配**（`matchedConferenceNode`），**不能只用时刻**：同一天多个节点可能**共用同一截止时刻**（Poster / Encore），时刻匹配只能命中第一个——实测修前两条日程都显示成 "Poster 全文"、打开 Encore 时亮的是 Poster 那列。时刻容差匹配保留为回退（旧格式事件 / 第三方写入的无轮次事件）。时间线的「当前节点」（光晕 + `aria-current`）也用同一个函数定位。
       - 时间线节点名用**短标签**（`nodeLabel = conferenceRoundLabel(node) ?? 类别名`），名称槽固定**单行** `h-4`。
       - ⚠ 月视图 chip 文字与列表行标题仍用 `appointmentBaseTitle`（洁净标题，不含节点词）——**不要**给它们再加轮次（会与徽章重复）。
@@ -383,10 +402,14 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
   - `Badge` 基础圆角 = `rounded-full`（胶囊）；需要「方块编码」样式（如 CCF 等级 `w-7 justify-center`）时显式覆写 `rounded-md`。⚠ 此前基础值是 `rounded-4xl`（26px），在 20px 高的徽章上被浏览器裁到 10px、与 `rounded-full` 视觉相同，属**假第三种形状**。
   - 按钮 `size="sm"` 字号 = `text-sm`（14px）。⚠ 上游默认是 `text-[0.8rem]`（**12.8px**，非整数、非体系值）；顶部栏另有 `globals.css` 覆盖为 14px。
   - 图标栅格（有意保留的 4 档）：**12px** = 徽章内联（`badge.tsx` 的 `[&>svg]:size-3!`）、**14px** = 小控件/内联、**16px** = 默认控件、**20px** = 特征图标（统计卡、悬浮导航）。
+  - ⚠ **toast 视口必须是全场最高图层（`toast.tsx` 的 `z-[100]`，勿改回 `z-50`）**：dialog / sheet / popover / dropdown-menu / tooltip 全都是 `z-50`，而 toast 门户（`components/providers.tsx` 的 `ToastViewport`）在 `document.body` 里排在这些弹窗门户**之前**——**同 z 值时后渲染的弹窗胜出**，于是「操作成功」提示被弹窗遮罩**整个盖住**（用户报「提示被图层覆盖」；实测 `elementFromPoint` 在 toast 中心命中的是 `DIV[dialog-overlay]`，两者 computed z 均为 `50`）。⚠ 改 toast **项**自身的 `z-[calc(1000-var(--toast-index))]` 没用——它只是视口层叠上下文**内部**的排序，对外层竞争无影响。已做反向验证：改回 `z-50` 时 E2E「提交勾选」立刻红（`Expected: > 50, Received: 50`）。
   - ⚠ **`Card` + `CardContent` 的上下内边距会叠加（易踩）**：`ui/card.tsx` 的 `Card` 自带 `py-(--card-spacing)`（默认 `py-4` = 16px），而 `CardContent` 基础类只有 `px-(--card-spacing)`（与 shadcn 上游一致，垂直由 Card 提供）。故调用方若写 `<CardContent className="p-3">`，**只会覆盖水平方向**，垂直变成 `16 + 12 = 28px` 而水平仍 12px —— 卡片上下明显发空、与左右不对称（`/deadlines` 会议卡曾是 28:12，统计卡是 32:16 正好 2 倍）。**凡在 `CardContent`/`CardHeader` 上用 `p-*`/`py-*`/`pt-*`/`pb-*` 控制内边距时，必须同时给 `Card` 加 `py-0`**，让内层独自掌控；若本就只想要默认的 16px，**直接删掉那些多余的类**（`Card` 已给）。
   - 两轮清理覆盖：`/deadlines` 会议卡（`p-3` → 12px 均齐）、`StatCard`（`deadlines`/`ccf`/`cas` 三处 `p-3.5 sm:p-4` → 14/16px 均齐）；以及**冗余类删除**——`/` 与 `/blog` 的 `CardHeader className="py-4"`、`/publications` 的 `CardContent … py-4`（两者都在把 16 变成 32）、`/nav` 的 `CardHeader pb-2` + `CardContent pb-3`（本意是收紧间距，实际是加大：`8+16=24`）、`/projects` 的 `pb-2`+`pt-2`、`/talks` 的 `py-5`。E2E 有「卡片内边距四边对称」回归（8 条路由）。
   - 纯 `CardContent` + 交由其控制的全出血卡片（如 `calendar-view.tsx`）用的是 `Card className="py-0"` + `CardContent className="p-0"`，同一约定。
   - ⚠ 审查时注意排除**被 grid 拉伸到等高**的卡片（如 `/nav` 的链接卡）：内容顶对齐导致的底部留白属布局，不是内边距问题——E2E 断言已内置该排除。
+  - ⚠ **破坏性操作一律用站内自绘的 `ConfirmDialog`（`components/ui/confirm-dialog.tsx`），勿用 `window.confirm`**：原生弹窗不随明暗主题、样式与站内完全脱节、移动端观感突兀，且**阻塞主线程**。原「删除速记」「重置/清除 CalDAV 凭证」共 3 处已统一替换（E2E 断言「不应弹出原生 confirm」）。用法是**受控**的：把「点击 → 弹窗 → 确认」拆成两段（点击只 `setPendingX(...)`，确认后才真正执行）。⚠ 确认弹窗带 `data-slot="confirm-dialog"`（覆盖 DialogContent 默认的 `dialog-content`），故与页面主弹窗**叠加**时仍可区分——已实测两层模态下确认弹窗在最上层且 `elementFromPoint` 命中其内部（不会出现「被设置弹窗遮挡、点不动」）。
+  - ⚠ **`Spinner` 的 `label` 省略 = 纯装饰（`aria-hidden`）**：旁边已有文字时（按钮上的「保存中…」、列表的「正在读取日程…」）不必再报一遍；**单独出现时必须传当前语言的 `label`**（曾硬编码英文 `aria-label="Loading"`，中文站上读屏会念英文）。
+  - **加载态要「可见 + 无形中误导」**：`/calendar` 的月视图网格由 REUI 用 `data-loading` + `opacity 0.6` 压暗，下方两个列表各自渲染「spinner + 正在读取日程…」的虚线框；**加载中不得渲染空态**（否则用户会以为「本月没有日程」）。E2E 有「加载态」用例（延迟接口后断言网格 `data-loading`、压暗、文案与本地化 `aria-label`，加载完再断言提示消失）。
 - **取证方法（可复用，含一个必须避开的坑）**：本项目**没有**视觉回归基线，故 UI 改动靠「程序化取证」验证——用 Playwright 逐页 `getComputedStyle` 抓 `fontFamily / fontSize / fontWeight / lineHeight / letterSpacing / color / padding / borderRadius` + `getBoundingClientRect` 几何，聚合成直方图对比，并自算 WCAG 对比度。多宽度（360~1920）× 中英文 × 明暗，均应无横向溢出。已有三条断言固化在 E2E（对比度 / 卡片内边距 / 字阶）。
   - ⚠ **颜色换算必须交给浏览器，绝不能手写**：Tailwind v4 下 `getComputedStyle` 返回的是 **`lab(...)`（`oklch()` 的序列化形式）和 `oklab(...)`，不是 `rgb()`**。任何只会 `match(/^rgba?\(/)` 的解析器都会返回 null，进而回退成「前景=背景=白」→ 算出对比度 1:1 或干脆全部跳过，**给出假的「全部通过」**（本项目据此误判过一次，真实情况是浅色徽章 4.35:1 未达 AA）。正确做法：`canvas.fillStyle` 依次赋「非法哨兵 → 目标颜色」，再 `fillRect` + `getImageData`，即可得到浏览器自己的**非预乘 sRGB（含 alpha）**；`lab(50 40 30)` → `187,88,70` 与手工值一致，可作正确性自检。
   - ⚠ **暗色主题必须真测**：暗色徽章大量使用 `bg-*-500/15` 这类**半透明底**，只有把祖先背景链逐层合成后才是实际背景色；只看元素自身 `backgroundColor` 必然算错。查询背景时要沿祖先向上找**第一个 alpha ≥ 0.99** 的层。
@@ -394,6 +417,28 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
 - **客户端组件**（`"use client"`）放 `components/`；服务端页面守卫在 page.tsx 中。
 - **SSG**：`cookies()` 使页面动态渲染（如 /login、/ideas），属预期；其余页面保持静态。
 - **Lint**：`eslint-plugin-react-hooks` 缺失为既有 warning（非阻塞），勿改 package.json；保持 0 error。
+
+## ⚠ 静默失效陷阱（2026-09 实测，两个都骗过了全部既有测试）
+
+### 1. Next.js 会逐请求重新求值模块 → 模块级内存状态全部作废
+
+- **现象**：`lib/auth/rate-limit.ts` 的 `const attempts = new Map()` 明明按 IP 累加失败次数，实际**连试 12 次都不锁**；CLAUDE.md 却写着「每 IP 5 次失败锁 15 分钟」。同类失效的还有：恢复码「一次性」（`lib/auth/recovery.ts` 的 `usedCodes` 用后不失效 → 同一码可反复登录）、日历 30 秒读缓存（永不命中）、CalDAV 写入 5 秒防抖（连点会重复写）、deadline 手动同步 60 秒限流。
+- **根因**：生产构建下 route handler 及其依赖模块**每个请求都会被重新求值**。程序化取证（连续 6 次打同一 API，把计数写进响应头）：`globalThis` 上的计数器 **1→2→3→4→5→6**（正常累加），而模块级 `let v = new Map` 里的计数 **恒为 1**（每次都是崭新的空表）。→ 模块级变量在本项目里**不具备跨请求记忆**。
+- **修法**：跨请求状态一律经 `lib/utils/global-state.ts` 的 `globalMap()` / `globalSet()` / `globalValue()` 挂到 `globalThis`（键带统一前缀 `__ysy_homepage__:`，避免与 Prisma 单例等撞名）。**新增任何「限流 / 防抖 / 去重 / 缓存 / 一次性」功能时必须用它**，勿写 `const m = new Map()`。
+- **排查手法（可复用）**：把候选值写进响应头或 `globalThis.__dbg`，连打 6 次对比「globalThis 计数」与「模块级计数」——两者不同即命中本陷阱。
+- ⚠ **同一个 bug 有两处**：限流失效不全是模块状态造成的——`isRateLimited()` 原本在「未锁定」时也 `attempts.delete(key)`，而它每次请求开头都会被调用，于是 `recordFailure()` 刚记下的次数立刻被抹掉（**即使状态共享正确也永远锁不上**）。改为**只清「已过期的锁」**（`lockedUntil > 0` 才 delete）。修任一处都测不出来，必须两处一起修 → 故新增了限流 E2E 用例。
+
+### 2. `<Empty title={…} />` 的文案不会显示（全站 8 处）
+
+- **现象**：搜索/筛选无结果时，用户只看到一个**空的虚线框**，一个字都没有。`publications` / `talks` / `projects`（这三页当前本就无数据 → **每次访问都是空白框**）/ `blog` / `nav` / `ccf` / `cas` / `deadlines` 共 8 处。
+- **根因**：`components/ui/empty.tsx` 的 `Empty` 只是个 `<div>`（无 `title` prop），`title={t("empty")}` 落成了 DOM 的 `title` **属性** = 只有鼠标悬浮才出现的提示。正确写法是子元素：`<Empty><EmptyMedia variant="icon"><XIcon aria-hidden /></EmptyMedia><EmptyHeader><EmptyTitle>{t("empty")}</EmptyTitle></EmptyHeader></Empty>`（`/venues`、`/ideas`、`/calendar` 原本就是对的，可直接照抄）。
+- **为什么没被测出来**：既有 `expectPageOk` 只断言 HTTP 200 + `h1`，空态文案不在任何断言里。
+- **回归**：`e2e/smoke.spec.ts` 的「空态与可点区域」describe 断言「`[data-slot=empty]` 内必须有可见文字，且必须由 `EmptyTitle`/`EmptyDescription` 渲染」（9 条路由）。
+
+### 3. 同步暴露的两处「操作逻辑」缺陷（同 describe 覆盖）
+
+- **`/deadlines` 会议卡片只能鼠标点**：卡片是 `<Card onClick>`（div），没有 `role`/`tabIndex` → 键盘完全到不了（实测 287 个元素）。但卡片里已嵌「会议官网」链接与日历按钮，把 Card 做成 `role="button"` 会造成嵌套交互元素（AT 语义混乱）。**修法**：卡内铺一个 `<button data-slot="deadline-card-open" aria-label="{缩写} {年份}">`（`absolute inset-0 z-0`）作为键盘入口，`CardContent` 提到 `relative z-10`（鼠标仍命中内容并冒泡到 Card 的 `onClick`）。⚠ **焦点环画在 Card 的 `focus-within` 上**——`Card` 自带 `overflow-hidden`，覆盖层上的外扩 `ring` 会被裁掉。
+- **`/nav` 链接卡的悬停反馈是「空头支票」**：卡片有 `hover:border-primary/40`，但只有标题文字可点 → 用户悬停后点卡片空白处毫无反应（实测 21 张卡采样点全部不在链接内）。**修法**：整卡用 `<Link>`/`<a className="group block">` 包裹，卡内标题改为 `<span>`（避免嵌套链接）。整卡可点顺带获得右键新标签打开与更大的触摸目标。
 
 ## 常见问题
 
@@ -403,7 +448,11 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
 - VS Code 集成浏览器对部分元素点击会因稳定性检查超时（如 DropdownMenu trigger）：用 Playwright `evaluate(el => el.click())` 或直接跑 E2E 验证，勿误判为代码问题。
 - standalone 构建会把 `.env` 复制到 `.next/standalone/.env` 并被 server.js 加载（本地 standalone 读取密钥的原因）；VPS 密钥来自 compose 的 environment 注入。
 - 登录/登出 E2E 会真实写入会话与 Idea 数据，用例内自清理；跑完可检查 `data/ideas.json` 应为 `[]`。
-- **E2E 勿开 fullyParallel**：所有用例共享同一 standalone 服务器的 `preferences.json`/`ideas.json`，多 worker 并行写会互相覆盖导致随机失败（曾致偏好恢复用例间歇红）。playwright.config.ts 保持默认单文件串行（66 用例约 1.4 分钟）。
+- **E2E 勿开 fullyParallel**：所有用例共享同一 standalone 服务器的 `preferences.json`/`ideas.json`，多 worker 并行写会互相覆盖导致随机失败（曾致偏好恢复用例间歇红）。playwright.config.ts 保持默认单文件串行（78 用例约 1.7 分钟）。
+
+### 关于「本地开 standalone 而非 dev server」
+
+巡测/验证一律用 `pnpm build` + `pnpm start`（standalone，与 Docker 部署完全同构），**不用 `pnpm dev`**：turbopack dev 与生产构建的模块求值/打包行为不同（本文档里的「模块级状态作废」这条就是**只在生产构建下才复现**的——dev 下模块热缓存着，限流反而像是好的），只有 standalone 才能反映线上真实行为。
 
 ## 排版与可访问性规格的 E2E 回归（`e2e/smoke.spec.ts` 的「排版与可访问性规格」describe，4 个用例）
 
@@ -415,6 +464,12 @@ pnpm test:e2e:local  # 构建 → 启动 standalone → 全量 Playwright（66 �
 4. **窄屏（360px）无横向溢出**——8 条路由 × 中英双语。顶部栏另有一条自己的溢出断言；这条防的是**内容区**：英文字段名比中文长得多，单个 `shrink-0` 的筛选 chip 就能宽过 360px 视口（`/en/ccf` 曾溢出 64px，已用 chip `max-w-full` + 内层 `<span className="truncate">` 修好）。⚠ 同样遵守「先中文再 `/en`」的 cookie 顺序。
 - **顶部栏跳转横向抖动**：三个叠加根因——(1) `OwnerNavItem` 曾每次路由变化先 `setOwner(null)` 回退占位态（3×36px≈116px）再异步查询恢复（游客仅「登录」≈46px），nav 居中布局下所有链接左右横移；修复为**保留上次登录态、后台静默刷新**（登录/登出由 `owner-auth-changed` 事件驱动，此时宽度变化属合理反馈）。(2) **刷新页面时的占位跳变**：组件重挂载后 `owner=null` 渲染 4 个 `size-9` 占位方块，真实按钮要等 `/api/auth/me` 网络往返（dev 数百 ms），刷新必现「入口消失→出现」的抽搐。**最终方案（双布局 + 内联 script，登录/游客均零跳变且不破坏 SSG）**：`OwnerNavItem` 将游客布局与登录布局**在 SSR 都渲染**（结构固定 → 无 hydration mismatch），可见性由 CSS 类控制（`.guest-only`/`.owner-only`，`display:none` 不占宽，首帧宽度即最终宽度）；`app/layout.tsx` 的**内联 script 在首帧 paint 前**同步读 localStorage（键 `owner:auth`）设置 `<html>.owner-logged-in`，故登录用户刷新时首帧即登录布局。组件只负责挂载后同步 html class 与缓存（读缓存、`/api/auth/me` 校验、事件驱动），会话过期/跨设备以服务器为准（此时会修正布局一次，属预期）。⚠ 内联 script 键名必须与组件 `OWNER_CACHE_KEY` 一致；游客时隐藏布局的按钮仍在 DOM（`display:none`），E2E 用 `getByRole` 按可访问性断言不受影响（勿改用 `getByText`/`locator` 数 DOM 存在性）。(3) 长/短页面切换时滚动条消失/出现使视口宽度变化，居中内容偏移约 7.5px；已用 `html { scrollbar-gutter: stable }` 恒定预留滚动条空间。验证方法：Playwright 2ms 高频采样 nav 宽度 + console 错误监听（hydration mismatch）。
 - **本地 E2E 日历用例需要 Radicale 容器在跑**：`.env` 已含 `CALDAV_*`（指向 `http://127.0.0.1:5232`、用户名 caladmin），容器 `ysy-personal-homepage-radicale-1` 停止时——「删除日程返回 503」变 502（连接失败）、「/calendar 月视图/日期格聚焦」失败（页面显示「日历服务未配置」不渲染网格）。跑日历用例前 `docker start ysy-personal-homepage-radicale-1`；若仅跑非日历用例可临时注释 `.env` 的 `CALDAV_*`。
+
+## 「空态与可点区域」与「登录限流」的 E2E 回归（2026-09）
+
+- **「空态与可点区域」describe（3 用例）**：① 9 条路由的空态必须有可见文字且由 `EmptyTitle`/`EmptyDescription` 渲染；② `/deadlines` 会议卡片可键盘打开（`[data-slot=deadline-card-open]` 聚焦 → 卡片出现焦点环 → Enter 开弹窗）；③ `/nav` 链接卡整卡可点（每张卡片的四边+中心采样点都必须命中卡片的 `<a>`，且卡内无嵌套链接）。**三条都做过反向验证**（改回错误写法 → 确认变红）。
+- **登录限流用例**（「主人登录（TOTP）」describe）：用**独立的伪造 `x-real-ip`**（TEST-NET-3）分桶，连续 5 次失败后断言第 6 次 429 + `rate_limited`，并断言换一个分桶仍可正常登录（不误伤其它 IP）。⚠ **该用例在 `E2E_BASE_URL` 存在时自动 skip**：生产经 nginx，`x-real-ip` 会被**覆盖**成 runner 的真实 IP（无法伪造分桶），锁定后同一轮里后续所有登录用例都会收到 429。
+- **另外两条（本轮新增）**：④ Idea 速记的删除用例改为断言「确认弹窗出现 → 取消不删 → 确认才删 → 全程无原生 dialog」；⑤ 日历设置里「清除凭证」的确认弹窗——断言弹窗叠加在设置弹窗之上仍可交互（`elementFromPoint` 命中其内部）、取消后凭证仍在、无原生 dialog。**两条同样做过反向验证**（改回 `window.confirm` / 去掉加载提示 → 均变红）。
 
 ## E2E 与 hydration 时序（CD Smoke Test 稳定性，2026-09）
 
