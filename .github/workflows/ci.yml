@@ -6,10 +6,13 @@ on:
     # 纯文档改动不跑流水线（不涉及代码路径），也避免无谓地占 CI 时长
     paths-ignore:
       - "**/*.md"
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - "**/*.md"
+  # ⚠ 刻意**不**配 pull_request（2026-09 实测后移除）：
+  #   本仓库的 PR 全部由 create-pull-request 用 GITHUB_TOKEN 创建（作者 github-actions[bot]），
+  #   这类 PR 触发的运行会被 GitHub 挂起等人工审批，而 sync 工作流里的 auto-merge
+  #   数秒后就把 PR 合了 → 待审批请求随之过期，运行被记为 failure（注解：
+  #   "required approval but was not approved before it expired"，0 个 job、5 秒结束）。
+  #   历史上 24/26 次 PR 运行都是这种假红。真正把关的是合并进 main 后的 push 运行。
+  #   若将来出现「人工 PR」，再按需恢复该触发，并把 create-pull-request 换成 PAT。
 
 jobs:
   lint-and-build:
@@ -17,18 +20,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # 需要完整历史：scripts/e2e-select.mjs 用 base..HEAD 判断本次改动以挑选
           # E2E 子集（浅克隆拿不到 base）
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         # pnpm 版本由 package.json 的 packageManager 字段决定（pnpm@10.33.0）
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -114,4 +117,18 @@ jobs:
             BASE=HEAD~1
           fi
           GREP="$(node scripts/e2e-select.mjs --base "$BASE" || true)"
-          pnpm exec playwright test --grep "$GREP"
+          # --reporter=list,html：失败时留下可下载的 HTML 报告（含 trace），
+          # 否则「哪条用例挂了」只能人工登录 Actions 页面翻日志。
+          pnpm exec playwright test --grep "$GREP" --reporter=list,html
+
+      - name: Upload Playwright report (on failure)
+        # test-results/ 含 trace.zip（playwright.config.ts 已配 retain-on-failure）
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-ci
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14

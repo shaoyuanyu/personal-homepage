@@ -20,20 +20,20 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -74,13 +74,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -93,6 +93,20 @@ jobs:
 
       - name: Smoke test production
         # 对线上站点跑同一套冒烟用例（页面 200 / 301 跳转 / OG 图 / 资源）
+        # ⚠ --retries=1：跨海链路（runner 在海外、站点在国内 VPS）偶发超时，
+        #   1 次重试滤掉瞬时时序抖动；确定性缺陷重试后仍会失败，不会掩盖真问题。
+        # --reporter=list,html：配合下面的工件上传，失败时可直接下载报告与 trace。
         env:
           E2E_BASE_URL: https://shaoyuanyu.cn
-        run: pnpm exec playwright test
+        run: pnpm exec playwright test --retries=1 --reporter=list,html
+
+      - name: Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-production
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
