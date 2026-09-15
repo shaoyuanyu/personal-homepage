@@ -50,9 +50,9 @@
       "interpretability": "Analyzing attention patterns and internal representations to make LLMs interpretable.",
       "continual-learning": "Exploring mitigation of catastrophic forgetting for life-long learning."
     },
-    "publications": "Latest Publications",
-    "noPublications": "No publications yet — still learning",
-    "viewAll": "View All",
+    "latestPublications": "Latest Publications",
+    "featuredPublications": "Featured Publications",
+    "viewAllPublications": "View All",
     "blog": "Latest Posts",
     "viewAllBlog": "All Posts",
     "contact": "Contact",
@@ -66,9 +66,7 @@
     "ccfEntry": "CCF Recommended List",
     "filter": {
       "all": "All",
-      "conference": "Conference",
-      "journal": "Journal",
-      "preprint": "Preprint",
+      "aria": "Filter by type",
       "year": "Year"
     },
     "types": {
@@ -79,7 +77,12 @@
     },
     "copyBibtex": "Copy BibTeX",
     "copied": "Copied to clipboard",
-    "empty": "No publications yet"
+    "pin": "Pin to homepage",
+    "unpin": "Unpin",
+    "pinned": "Pinned",
+    "pinLimit": "You can pin at most {n} papers",
+    "empty": "No publications yet",
+    "emptyHint": "Publications are being organized."
   },
   "talks": {
     "title": "Talks",

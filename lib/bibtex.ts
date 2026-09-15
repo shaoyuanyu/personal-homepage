@@ -1,4 +1,5 @@
 import type { Publication } from "@/lib/data";
+import { stripMeMarker } from "@/lib/publications/authors";
 
 /** 转义 BibTeX 特殊字符 */
 function escapeTex(value: string): string {
@@ -9,13 +10,23 @@ function escapeTex(value: string): string {
     .replace(/_/g, "\\_");
 }
 
-/** 根据论文数据生成 BibTeX 条目 */
+/**
+ * 生成 BibTeX 条目。
+ *
+ * * 若数据里给了 `bibtex` 字段（出版社/BibTeX 服务给出的规范版本），**原样使用** ——
+ *   手工维护时经常希望与官方版本逐字一致，自动生成反而会走样。
+ * * ⚠ 自动生成时作者串必须经 `stripMeMarker()` 剥掉「本人」标记，
+ *   否则会把 `author = {YU Shaoyuan*}` 写进用户的参考文献库。
+ */
 export function generateBibtex(pub: Publication): string {
+  const manual = pub.bibtex?.trim();
+  if (manual) return manual;
+
   const fields: string[] = [];
   const add = (key: string, value: string) => fields.push(`  ${key} = {${escapeTex(value)}}`);
 
   add("title", pub.title);
-  add("author", pub.authors.join(" and "));
+  add("author", pub.authors.map(stripMeMarker).join(" and "));
   add("year", String(pub.year));
 
   if (pub.venue) {

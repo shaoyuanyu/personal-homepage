@@ -8,6 +8,7 @@
  * 新增偏好功能时：在此注册 key 并提供 sanitize 函数（只做结构校验，
  * 不含业务语义；非法返回 null）。
  */
+import { PINNED_LIMIT } from "@/lib/publications/constants";
 
 /** 全部已知偏好 key（值语义见各 sanitize 函数注释） */
 export const PREFERENCE_KEYS = {
@@ -17,6 +18,8 @@ export const PREFERENCE_KEYS = {
   CALENDAR_WEEK_START: "calendar:weekStart",
   /** CAS 分区表页筛选（分区/仅 Top/搜索词） */
   CAS_FILTERS: "cas:filters",
+  /** 首页论文区块的置顶（pin）列表：论文 key 数组，顺序即首页展示顺序 */
+  PUBLICATIONS_PINNED: "publications:pinned",
 } as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -80,7 +83,21 @@ const VALIDATORS: Record<string, (v: unknown) => unknown | null> = {
   [PREFERENCE_KEYS.CCF_FILTERS]: sanitizeCcfFilters,
   [PREFERENCE_KEYS.CALENDAR_WEEK_START]: sanitizeCalendarWeekStart,
   [PREFERENCE_KEYS.CAS_FILTERS]: sanitizeCasFilters,
+  [PREFERENCE_KEYS.PUBLICATIONS_PINNED]: sanitizePublicationsPinned,
 };
+
+/**
+ * publications:pinned → string[]（论文 key）
+ * 清洗：丢掉非字符串/空串/超长项，去重（保序），截断到置顶上限 `PINNED_LIMIT`。
+ * ⚠ 上限以「首页展示篇数」为准 —— 置顶超过 n 篇没有意义（首页只显示 n 篇）。
+ */
+function sanitizePublicationsPinned(v: unknown): unknown | null {
+  if (!Array.isArray(v)) return null;
+  const keys = v.filter(
+    (k): k is string => typeof k === "string" && k.length > 0 && k.length <= 100,
+  );
+  return [...new Set(keys)].slice(0, PINNED_LIMIT);
+}
 
 /** calendar:weekStart → "sunday" | "monday"（其他值非法） */
 function sanitizeCalendarWeekStart(v: unknown): unknown | null {

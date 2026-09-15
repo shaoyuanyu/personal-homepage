@@ -52,9 +52,9 @@
       "interpretability": "研究注意力模式与内部表征，让大模型的决策过程可解释。",
       "continual-learning": "探索缓解灾难性遗忘的方法，使模型可持续学习新知识。"
     },
-    "publications": "最新论文",
-    "noPublications": "暂无论文，正在学习中…",
-    "viewAll": "查看全部",
+    "latestPublications": "最新论文",
+    "featuredPublications": "精选论文",
+    "viewAllPublications": "查看全部",
     "blog": "最新博客",
     "viewAllBlog": "全部文章",
     "contact": "联系方式",
@@ -68,9 +68,7 @@
     "ccfEntry": "CCF 推荐目录",
     "filter": {
       "all": "全部",
-      "conference": "会议",
-      "journal": "期刊",
-      "preprint": "预印本",
+      "aria": "按类型筛选",
       "year": "年份"
     },
     "types": {
@@ -81,7 +79,12 @@
     },
     "copyBibtex": "复制 BibTeX",
     "copied": "已复制到剪贴板",
-    "empty": "暂无论文"
+    "pin": "置顶到首页",
+    "unpin": "取消置顶",
+    "pinned": "已置顶",
+    "pinLimit": "最多置顶 {n} 篇论文",
+    "empty": "暂无论文",
+    "emptyHint": "论文整理中，敬请期待。"
   },
   "talks": {
     "title": "学术报告",

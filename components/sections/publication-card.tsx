@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { BookOpenIcon, CopyIcon, ExternalLinkIcon, FileCode2Icon, FolderGit2Icon, ScrollTextIcon } from "lucide-react";
+import { BookOpenIcon, CopyIcon, ExternalLinkIcon, FileCode2Icon, FolderGit2Icon, PinIcon, PinOffIcon, ScrollTextIcon } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,22 +11,34 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/toast";
 import { generateBibtex } from "@/lib/bibtex";
+import { createAuthorMatcher, stripMeMarker } from "@/lib/publications/authors";
 import { cn } from "@/lib/utils";
 import type { Publication } from "@/lib/data";
 
 export function PublicationCard({
   pub,
-  isMe,
+  myNames,
+  pinned = false,
+  onTogglePin,
   defaultOpen,
 }: {
   pub: Publication;
-  isMe: (author: string) => boolean;
+  /** 我自己的姓名写法（可多个别名）—— 必须是可序列化值，卡片自行构造匹配器 */
+  myNames: readonly string[];
+  /** 是否已置顶（置顶标记对所有人可见；开关只给站主） */
+  pinned?: boolean;
+  /** 传入则渲染置顶开关（仅站主登录态传入） */
+  onTogglePin?: () => void;
   defaultOpen?: boolean;
 }) {
   const t = useTranslations("publications");
   const [open, setOpen] = useState(defaultOpen ?? false);
+  const isMe = useMemo(() => createAuthorMatcher(myNames), [myNames]);
 
   const bibtex = generateBibtex(pub);
+
+  // 无 url / doi 时不要把标题渲染成「没有 href 的 <a>」：不可聚焦、语义也不对
+  const titleHref = pub.url ?? (pub.doi ? `https://doi.org/${pub.doi}` : undefined);
 
   async function copyBibtex() {
     // 优先使用 Clipboard API，失败时回退到 execCommand
@@ -56,13 +68,20 @@ export function PublicationCard({
       <CardContent className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="min-w-0 flex-1 text-base font-medium leading-snug">
-            <a
-              href={pub.url ?? (pub.doi ? `https://doi.org/${pub.doi}` : undefined)}
-              className="hover:underline"
-            >
-              {pub.title}
-            </a>
+            {titleHref ? (
+              <a href={titleHref} className="hover:underline">
+                {pub.title}
+              </a>
+            ) : (
+              pub.title
+            )}
           </h3>
+          {pinned && (
+            <Badge variant="secondary" data-slot="publication-pinned">
+              <PinIcon data-icon="default" />
+              {t("pinned")}
+            </Badge>
+          )}
           <Badge variant={pub.type === "preprint" ? "secondary" : "outline"}>
             {t(`types.${pub.type}`)}
           </Badge>
@@ -72,7 +91,10 @@ export function PublicationCard({
           {pub.authors.map((author, i) => (
             <span key={i}>
               {i > 0 && ", "}
-              <span className={isMe(author) ? "font-medium text-foreground" : undefined}>{author}</span>
+              {/* ⚠ 显示时必须剥掉「本人」标记，否则页面上会出现 `YU Shaoyuan*` */}
+              <span className={isMe(author) ? "font-medium text-foreground" : undefined}>
+                {stripMeMarker(author)}
+              </span>
             </span>
           ))}
         </p>
@@ -118,6 +140,23 @@ export function PublicationCard({
               </div>
             </DialogContent>
           </Dialog>
+          {/* 置顶开关：仅站主登录态（游客传 undefined，不渲染也不占位） */}
+          {onTogglePin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onTogglePin}
+              aria-pressed={pinned}
+              data-slot="publication-pin-toggle"
+            >
+              {pinned ? (
+                <PinOffIcon data-icon="inline-start" />
+              ) : (
+                <PinIcon data-icon="inline-start" />
+              )}
+              {t(pinned ? "unpin" : "pin")}
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

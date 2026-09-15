@@ -1193,6 +1193,49 @@ test.describe("Venue Explorer（期刊会议速查）", () => {
   });
 });
 
+/**
+ * 论文（手工维护）
+ *
+ * 数据源是 `content/publications.yaml`（纯手工维护，无任何自动同步 —— arXiv /
+ * Semantic Scholar 的脚本与工作流已于 2026-09 全部移除）。当前数据为空，故这里
+ * 锁住的是**工具栏契约**，它曾被踩中过：schema 允许 `thesis`，而筛选档位只有
+ * 「会议/期刊/预印本」三档 → 数据合法却筛不出来（静默漂移）。
+ *
+ * 档位现由 `lib/publications/constants.ts` 的 `PUBLICATION_TYPES` 单一来源生成，
+ * 本用例即该来源的回归：**schema 有几个类型，页面就必须有几个档位**。
+ */
+test.describe("论文（手工维护）", () => {
+  test("类型筛选档位与 PUBLICATION_TYPES 一致，且空态有可见文案", async ({ page }) => {
+    await expectPageOk(page, "/publications", "论文");
+
+    // 「全部」+ 四种类型（conference / journal / preprint / thesis）
+    const chips = page.locator('[data-slot="toggle-group-item"]');
+    await expect(chips).toHaveCount(5);
+    for (const label of ["全部", "会议", "期刊", "预印本", "学位论文"]) {
+      await expect(
+        chips.filter({ hasText: new RegExp(`^${label}$`) }),
+        `筛选档位缺「${label}」`,
+      ).toHaveCount(1);
+    }
+
+    // 切到「学位论文」档不应报错，空态文案仍可见（数据为空属预期）
+    await chips.filter({ hasText: /^学位论文$/ }).click();
+    const empty = page.locator('[data-slot="empty"]');
+    await expect(empty).toContainText("暂无论文");
+    await expect(empty).toContainText("论文整理中");
+  });
+
+  /**
+   * 首页论文区块是**动态**的：置顶优先，无置顶则最新 N 篇，**完全没有论文时整块不渲染**
+   * （不显示空状态）。提交版本的论文数据为空列表，故这里锁住的就是「不渲染」这条
+   * 分支 —— 有数据的分支（置顶/最新 N 篇）需临时塞样例验证，见 CLAUDE.md。
+   */
+  test("首页：没有论文时不渲染论文区块", async ({ page }) => {
+    await gotoReady(page, "/");
+    await expect(page.locator('[data-slot="home-publications"]')).toHaveCount(0);
+  });
+});
+
 test.describe("主人登录（TOTP）", () => {
   test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
 

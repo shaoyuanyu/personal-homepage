@@ -1,6 +1,10 @@
 import { relative } from "node:path";
 import { defineCollection, defineConfig, s } from "velite";
 
+// 论文类型单一来源（相对路径导入：velite 配置文件由 esbuild 单独打包，
+// 不走 @/ 别名，故此处不能用 "@/lib/..."）
+import { PUBLICATION_TYPES } from "./lib/publications/constants";
+
 /**
  * 给 h1-h4 标题注入 id = 标题原文（与 s.toc() 生成的锚点 URL 一致，
  * 例如 `## 欢迎` → `id="欢迎"` / `#欢迎`）。纯文本递归拼接，无额外依赖。
@@ -115,21 +119,29 @@ const profile = defineCollection({
   }),
 });
 
-// ---------- Publications (论文) ----------
+// ---------- Publications (论文，纯手工维护 —— 见 content/publications.yaml) ----------
 const publicationSchema = s.object({
-  key: s.string(),
-  title: s.string(),
-  authors: s.array(s.string()),
-  venue: s.string(),
+  // BibTeX 引用 key，同时用作列表的 React key；BibTeX key 不允许空格/逗号/花括号
+  key: s
+    .string()
+    .min(1)
+    .regex(/^[^\s,{}]+$/, "BibTeX key 不能包含空格、逗号或花括号"),
+  title: s.string().min(1),
+  // 作者数组（按论文上的顺序）。自己那一项可加 `*` 后缀，见 lib/publications/authors.ts
+  authors: s.array(s.string().min(1)).min(1),
+  venue: s.string().min(1),
   year: s.number().int().min(1990).max(2100),
-  type: s.enum(["conference", "journal", "preprint", "thesis"]).default("conference"),
+  type: s.enum(PUBLICATION_TYPES).default("conference"),
+  // 可选链接字段：留空则不渲染对应按钮
   url: s.string().optional(),
-  pdf: s.string().optional(),
-  doi: s.string().optional(),
-  arxiv: s.string().optional(),
+  pdf: s.string().optional(), // 允许站内相对路径（如 /papers/xxx.pdf），故不校验为绝对 URL
+  doi: s.string().optional(), // 裸 DOI（如 10.1145/xxxx），UI 自动拼 https://doi.org/
+  arxiv: s.string().optional(), // 裸 arXiv id（如 2501.01234）
   code: s.string().optional(),
+  // 直接粘贴出版社给的 BibTeX：填了就原样展示/复制，不再自动生成（见 lib/bibtex.ts）
   bibtex: s.string().optional(),
 });
+
 
 const publications = defineCollection({
   name: "Publication",

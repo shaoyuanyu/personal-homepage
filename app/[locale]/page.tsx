@@ -11,13 +11,20 @@ import {
 } from "lucide-react";
 
 import { Hero } from "@/components/sections/hero";
+import { PublicationCard } from "@/components/sections/publication-card";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "@/lib/i18n/navigation";
 import { formatDate } from "@/lib/utils/format";
-import { listPosts, profile } from "@/lib/data";
+import { listPosts, profile, publications } from "@/lib/data";
+import { isPinnedSelection, selectFeatured } from "@/lib/publications/featured";
+import { getPinnedKeys } from "@/lib/publications/pinned";
+
+// 本页读运行时置顶列表（data/preferences.json），不可预渲染
+// （若被预渲染，置顶会冻结在构建时刻）。与 /deadlines 同一处理。
+export const dynamic = "force-dynamic";
 
 const interestIcons = {
   "ai-safety": ShieldCheckIcon,
@@ -37,6 +44,11 @@ export default function HomePage() {
 
   // 全部文章（缺当前语言版本时回退原文），按日期倒序取前 3 篇
   const latestPosts = listPosts(locale).slice(0, 3);
+
+  // 首页论文区块：置顶优先，无置顶则最新 N 篇；完全没有论文时不渲染（见下方 JSX）
+  const pinnedKeys = getPinnedKeys();
+  const featuredPublications = selectFeatured(publications, pinnedKeys);
+  const usingPinned = isPinnedSelection(featuredPublications, pinnedKeys);
 
   // Person 结构化数据：帮助搜索引擎（Google 学术等）正确索引个人主页
   const siteUrl = process.env.SITE_URL ?? "https://shaoyuanyu.cn";
@@ -93,6 +105,39 @@ export default function HomePage() {
                 </Card>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* 论文：置顶优先，无置顶则最新 N 篇（N = PINNED_LIMIT）；
+          **完全没有论文时不渲染该区块**（无空状态） */}
+      {featuredPublications.length > 0 && (
+        <section className="py-8" data-slot="home-publications">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-semibold tracking-tight">
+                {t(usingPinned ? "featuredPublications" : "latestPublications")}
+              </h2>
+              <Separator className="hidden flex-1 sm:block" />
+            </div>
+            <Link
+              href="/publications"
+              data-slot="button"
+              className={buttonVariants({ variant: "ghost", size: "sm" })}
+            >
+              {t("viewAllPublications")}
+              <ArrowRightIcon data-icon="inline-end" />
+            </Link>
+          </div>
+          <div className="flex flex-col gap-3">
+            {featuredPublications.map((pub) => (
+              <PublicationCard
+                key={pub.key}
+                pub={pub}
+                myNames={[profile.name]}
+                pinned={pinnedKeys.includes(pub.key)}
+              />
+            ))}
           </div>
         </section>
       )}
