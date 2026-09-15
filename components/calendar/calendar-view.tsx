@@ -429,8 +429,6 @@ export function CalendarView() {
   const { prefs } = useOwnerPreferences();
   const weekStartsOn =
     prefs[PREFERENCE_KEYS.CALENDAR_WEEK_START] === "monday" ? 1 : 0;
-  // 网格容器引用：列表点击跳转后瞬时定位到网格顶部
-  const gridRef = useRef<HTMLDivElement>(null);
   // REUI EventCalendar 命令式 API（goTo 跳月等）
   const apiRef = useRef<EventCalendarApi<AppointmentData> | null>(null);
 
@@ -544,10 +542,10 @@ export function CalendarView() {
     },
     [loadRangeAppointments],
   );
-  // 网格月份变化（‹ › 翻月 / 标题日期选择器 / 今日 / 本月 / 点击非当月格 / 列表跳转）→
+  // 网格月份变化（‹ › 翻月 / 标题日期选择器 / 今日 / 本月 / 点击非当月格）→
   // 联动列表：翻月时取消聚焦，下方列表回到「本月及未来日程」总览并跟随新 viewDate。
   // 注：REUI 的 goTo/prev/next 同步触发 onDateChange；jumpToToday、JumpDatePicker、
-  // 列表 onJump、非当月格聚焦等路径在 goTo 之后仍会同步 setSelectedDate(目标日期)，
+  // 非当月格聚焦等路径在 goTo 之后仍会同步 setSelectedDate(目标日期)，
   // React 批处理下最后一次调用生效，聚焦不会被这里误清。
   const handleDateChange = useCallback((d: Date) => {
     setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
@@ -761,7 +759,7 @@ export function CalendarView() {
           </Button>
         </div>
       ) : (
-        <div ref={gridRef} className="scroll-mt-16">
+        <div>
           {/* 卡片式月视图：REUI EventCalendar（custom event chips 示例布局） */}
           <Card className="w-full py-0">
             <CardContent className="p-0">
@@ -860,13 +858,7 @@ export function CalendarView() {
           loading={upcomingAppointmentsLoading}
           locale={locale}
           viewDate={viewDate}
-          onJump={(ev) => {
-            const d = appointmentStartDate(ev);
-            apiRef.current?.goTo(new Date(d.getFullYear(), d.getMonth(), 1));
-            setSelectedDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
-            // 瞬时定位到网格顶部（scroll-mt 避开 sticky header），避免平滑滚动动画的抽动感
-            gridRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
-          }}
+          onSelect={setSelected}
         />
       )}
 
@@ -941,7 +933,11 @@ export function CalendarView() {
               </div>
             </div>
           )}
-          <DialogFooter className="sm:justify-between">
+          {/* 底部**不放**「关闭」按钮：右上角 X（`DialogContent` 默认渲染的
+              `[data-slot=dialog-close]`）已是全站统一的关闭入口，再放一个只是重复的
+              可聚焦元素（用户指定）。`sm:justify-start` 让唯一的（破坏性）删除按钮
+              留在左侧，避开「主操作位」以防误点。 */}
+          <DialogFooter className="sm:justify-start">
             <Button
               variant={confirmingDelete ? "destructive" : "outline"}
               onClick={handleDelete}
@@ -957,9 +953,6 @@ export function CalendarView() {
                 : confirmingDelete
                   ? t("deleteConfirm")
                   : t("deleteAppointment")}
-            </Button>
-            <Button variant="outline" onClick={() => setSelected(null)}>
-              {t("close")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1241,19 +1234,19 @@ function DayAppointmentsList({
   );
 }
 
-/** 当前查看月份及之后的日程详细列表：按月份分组、按时间排序，点击跳转到对应月份 */
+/** 当前查看月份及之后的日程详细列表：按月份分组、按时间排序，点击打开日程详情弹窗 */
 function UpcomingAppointmentsList({
   events,
   loading,
   locale,
   viewDate,
-  onJump,
+  onSelect,
 }: {
   events: ParsedIcsAppointment[];
   loading: boolean;
   locale: string;
   viewDate: Date;
-  onJump: (ev: ParsedIcsAppointment) => void;
+  onSelect: (ev: ParsedIcsAppointment) => void;
 }) {
   const t = useTranslations("calendar");
   const now = useMemo(() => new Date(), []);
@@ -1366,8 +1359,8 @@ function UpcomingAppointmentsList({
                   return (
                     <button
                       key={ev.uid}
-                      onClick={() => onJump(ev)}
-                      title={`${t("jumpTo")}: ${g.label}`}
+                      onClick={() => onSelect(ev)}
+                      title={ev.summary}
                       className={`flex items-center gap-2.5 rounded-lg border bg-card p-2.5 text-left transition-colors hover:bg-muted/50 sm:gap-3 sm:p-3 ${
                         past ? "opacity-55" : ""
                       }`}

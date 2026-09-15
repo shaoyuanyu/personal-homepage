@@ -1864,9 +1864,13 @@ test.describe("我的日历（主人专属）", () => {
 
     // 设置中切换为周一 → 表头实时更新（偏好广播，无需刷新）。
     // 周起始控件是 shadcn Tabs（Base UI），触发项可访问性 role 为 tab
+    // ⚠ 关闭入口只有弹窗右上角的 X（`[data-slot=dialog-close]`）——底部那个与 X
+    // 重复的「关闭」按钮已删除（用户指定），勿改回 `getByRole("button", { name: "关闭" })`
+    const closeDialog = page.locator("[data-slot=dialog-close]");
     await page.getByRole("button", { name: "设置" }).click();
+    await expect(page.getByRole("button", { name: "关闭" })).toHaveCount(0);
     await page.getByRole("tab", { name: "周一" }).click();
-    await page.getByRole("button", { name: "关闭" }).click();
+    await closeDialog.click();
     await expect(
       header.getByText("周一", { exact: true }).first(),
     ).toBeVisible();
@@ -1876,7 +1880,7 @@ test.describe("我的日历（主人专属）", () => {
     // 显式 API 写入确保服务器数据干净
     await page.getByRole("button", { name: "设置" }).click();
     await page.getByRole("tab", { name: "周日" }).click();
-    await page.getByRole("button", { name: "关闭" }).click();
+    await closeDialog.click();
     await expect(firstHeader).toBeVisible();
     const reset = await page.request.patch("/api/preferences", {
       data: { "calendar:weekStart": "sunday" },
@@ -2006,8 +2010,8 @@ test.describe("我的日历（主人专属）", () => {
 
     await gotoReady(page, "/calendar");
 
-    // 下方「本月及未来日程」的行是**跳转**语义（聚焦该日，不打开弹窗），
-    // 「当天日程」的行才是打开详情弹窗——故先跳转、再点当天那行
+    // 下方「本月及未来日程」的行与「当天日程」一致：点击直接打开详情弹窗
+    // （曾为跳转语义：聚焦该日、再点当天那行）
     const confTitle = target!.confTitle ?? target!.summary;
     await page
       .locator("main button:not([data-slot])")
@@ -2015,12 +2019,10 @@ test.describe("我的日历（主人专属）", () => {
       .first()
       .click();
 
-    const dayRow = page.locator(`main button[title^="${confTitle}"]`).first();
-    await dayRow.waitFor({ state: "visible" });
-    await dayRow.click();
-
     const timeline = page.locator("[data-slot=appointment-timeline]");
     await expect(timeline).toBeVisible();
+    // 关闭入口只有一个（右上角 X）：底部那个与 X 重复的「关闭」按钮已删除（用户指定）
+    await expect(page.getByRole("button", { name: "关闭" })).toHaveCount(0);
     await expect(timeline.getByText("会议时间线")).toBeVisible();
     // 节点列数与会议数据一致（另有恰好一个「今天」列）；「当前节点」有且只有一个
     await expect(timeline.locator("[data-slot=timeline-node]")).toHaveCount(
@@ -2405,15 +2407,12 @@ test.describe("我的日历（主人专属）", () => {
 
     await gotoReady(page, "/calendar");
     const confTitle = target!.confTitle ?? target!.summary;
-    // 与既有用例同一条路径：先点总览行跳转聚焦，再点当天行打开详情弹窗
+    // 与既有用例同一条路径：点总览行即直接打开详情弹窗
     await page
       .locator("main button:not([data-slot])")
       .filter({ hasText: confTitle })
       .first()
       .click();
-    const dayRow = page.locator(`main button[title^="${confTitle}"]`).first();
-    await dayRow.waitFor({ state: "visible" });
-    await dayRow.click();
 
     const timeline = page.locator("[data-slot=appointment-timeline]");
     await expect(timeline).toBeVisible();

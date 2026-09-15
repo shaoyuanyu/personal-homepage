@@ -352,9 +352,7 @@ export function CalendarSettings({ onSaved }: { onSaved?: () => void }) {
                 <ShuffleIcon data-icon="default" />
                 {t("settingsReset")}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-                {t("close")}
-              </Button>
+              {/* 不设底部「关闭」——右上角 X 是全站统一的关闭入口（用户指定） */}
               <Button size="sm" onClick={handleSave} disabled={saving}>
                 {t("settingsSave")}
               </Button>
