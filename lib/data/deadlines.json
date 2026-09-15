@@ -4882,6 +4882,49 @@
       ]
     },
     {
+      "a": "IEEE CoG",
+      "n": "IEEE Conference on Games",
+      "l": "",
+      "f": "计算机图形学与多媒体",
+      "d": "https://dblp.org/db/conf/cig/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "https://cog2026.org/",
+          "tz": "Etc/GMT+12",
+          "date": "September 1-4, 2026",
+          "place": "Madrid, Spain",
+          "timeline": [
+            {
+              "t": "2026-03-17 23:59:59",
+              "c": "Regular Paper"
+            },
+            {
+              "t": "2026-05-14 23:59:59",
+              "c": "Auxiliary Paper"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://cog2027.u-aizu.ac.jp/",
+          "tz": "Etc/GMT+12",
+          "date": "August 2-5, 2027",
+          "place": "Aizuwakamatsu, Japan",
+          "timeline": [
+            {
+              "t": "2027-03-01 23:59:59",
+              "c": "Full Technical Paper"
+            },
+            {
+              "t": "2027-05-15 23:59:59",
+              "c": "Auxiliary Paper"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "a": "IEEE VIS",
       "n": "IEEE Visualization Conference",
       "l": "A",
