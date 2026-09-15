@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-09-14",
+  "fetchedAt": "2026-09-15",
   "source": "ccfddl/ccf-deadlines (allconf.yml)",
   "conferences": [
     {
@@ -2855,6 +2855,22 @@
           "timeline": [
             {
               "t": "2025-11-20 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://eurosp2027.ieee-security.org/",
+          "tz": "Etc/GMT+12",
+          "date": "July 5 - 9, 2027",
+          "place": "Madrid, Spain",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-11-25 23:59:59"
+            },
+            {
+              "t": "2026-12-02 23:59:59"
             }
           ]
         }
