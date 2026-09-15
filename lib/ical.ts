@@ -50,9 +50,37 @@ export type IcsEvent = {
   end: number;
 };
 
-/** 转义 iCal 文本（反斜杠/逗号/分号/换行） */
+/**
+ * iCal TEXT 值转义（RFC 5545 §3.3.11）：反斜杠 / 逗号 / 分号 / 换行。
+ *
+ * ⚠ 逗号与分号**必须**转义，此处没有选择余地：
+ *   ① RFC 要求（TEXT 里这几个是特殊字符）；
+ *   ② **Radicale 会吃掉裸逗号之后的全部内容**——它用 vobject 校验并**重新序列化**
+ *      每个 item，而 vobject 把逗号当列表分隔符、只保留第一项。实测（本地
+ *      Radicale）`LOCATION:Providence, RI, USA` 经 PUT 后存成 `LOCATION:Providence`、
+ *      `SUMMARY:Alpha, Beta, Gamma` 存成 `SUMMARY:Alpha` → **静默丢数据**。
+ *   代价是：**不做反转义的客户端**（手机端华为/鸿蒙日历）会把 `\,` 原样显示成
+ *   `Providence\, RI\, USA`（用户报障）；网页端与桌面日历客户端都会反转义，
+ *   所以只有手机端暴露。→ 因此**手机端可见的字段要避免出现这些字符**：
+ *   地点走 `icsLocationText`（逗号 → 中点）。
+ */
 function esc(s: string): string {
   return s.replace(/[\\;,]/g, "\\$&").replace(/\n/g, "\\n");
+}
+
+/**
+ * 写入 ICS 的**地点**文本：逗号 / 分号 → 中点（"Providence, RI, USA" → "Providence · RI · USA"）。
+ *
+ * ⚠ 为什么地点必须这样“改写”：逗号在客户端可见字段上无解——裸逗号会被 Radicale
+ *   （vobject）截断丢数据（见 `esc`），而转义后的 `\,` 在**不做反转义的手机端客户端**
+ *   上会原样显示（用户报障）。中点与站内其它分隔符（`ADMA 2026 · 全文`）同一视觉语言，
+ *   且**不丢信息**（城市/州/国家三段都在）。
+ * ⚠ **只对地点这么做**：LOCATION 是站内数据生成的结构化字段，换分隔符只是排版选择；
+ *   **用户自己写的备注（DESCRIPTION）绝不能这样改写**——那里的转义必须原样保留
+ *   （宁可手机端显示 `\,`，也不能动用户的字）。
+ */
+export function icsLocationText(place: string): string {
+  return place.replace(/\s*[;,]+\s*/g, " · ").trim();
 }
 
 /**
@@ -162,7 +190,9 @@ export function buildIcsText(e: IcsEvent): string {
     `DTEND:${toIcsUtc(e.end)}`,
     `SUMMARY:${esc(e.summary)}`,
     ...(e.confTitle ? [`X-CONF-TITLE:${esc(e.confTitle)}`] : []),
-    ...(e.location ? [`LOCATION:${esc(e.location)}`] : []),
+    // 地点：改写掉逗号（见 icsLocationText——裸逗号会被 Radicale 截断、转义逗号在
+    // 手机端客户端上会原样显示）
+    ...(e.location ? [`LOCATION:${esc(icsLocationText(e.location))}`] : []),
     ...(e.confDates ? [`X-CONF-DATES:${esc(e.confDates)}`] : []),
     ...(e.confName ? [`X-CONF-NAME:${esc(e.confName)}`] : []),
     ...(e.description ? [`DESCRIPTION:${esc(e.description)}`] : []),

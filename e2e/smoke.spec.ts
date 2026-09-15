@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { TOTP } from "otpauth";
@@ -91,6 +91,40 @@ async function waitForHydration(page: Page) {
  *   而在 CI 必红，只是当时这些用例被 TOTP_SECRET 跳过而没暴露）。
  */
 const STANDALONE_DATA_DIR = join(process.cwd(), ".next", "standalone", "data");
+
+/**
+ * 读取 Radicale 存储里某个事件资源的**原始 ICS 文本**（按内容里的 UID 匹配）。
+ *
+ * 为什么需要它：`\,` 这类 TEXT 转义在**读方向**会被本站与桌面客户端反转义，
+ * 只有**不做反转义的手机端 CalDAV 客户端**（华为/鸿蒙日历）才会把
+ * `LOCATION:Providence\, RI\, USA` 原样显示出来——即从 `/api/calendar` 看永远是
+ * 干净的，必须看原始文本才拦得住这类回归。
+ * 存储位置：compose 与 CI 都把仓库的 `radicale/` 挂到容器的 `/data`
+ * （`collections/collection-root/<用户>/<集合>/<href>.ics`）。
+ * ⚠ 别猜文件名：Radicale 的 href → 文件名会剥掉域名段（`uid@host` 只留 `uid`）。
+ */
+function readRawIcs(uidNeedle: string): string {
+  const root = join(process.cwd(), "radicale", "collections", "collection-root");
+  if (!existsSync(root)) {
+    throw new Error(`未找到 Radicale 存储目录 ${root}（本地需启动 radicale 容器）`);
+  }
+  const stack = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      // .Radicale.cache 里是同一份内容的缓存副本，跳过
+      if (entry.name.startsWith(".")) continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.name.endsWith(".ics")) {
+        const text = readFileSync(full, "utf8");
+        if (text.includes(uidNeedle)) return text;
+      }
+    }
+  }
+  throw new Error(`未在 ${root} 找到含 ${uidNeedle} 的 .ics`);
+}
 
 /**
  * 日历服务是否**真的**可用（真实探测，而非只看环境变量）：
@@ -1730,11 +1764,38 @@ test.describe("Deadline 手动同步（主人专属）", () => {
       { utc: Date.UTC(2099, 5, 5, 15, 59, 59), labelKey: "paper", day: "2099-06-05" },
     ];
     const r = await page.request.post("/api/deadlines/caldav", {
-      data: { a: "ZZTEST", n: "E2E Test Conference", year: 2099, nodes },
+      data: {
+        a: "ZZTEST",
+        n: "E2E Test Conference",
+        year: 2099,
+        // 带逗号的地点：用于验证原始 ICS 里**不做** `\,` 转义（见下方断言）
+        place: "Providence, RI, USA",
+        nodes,
+      },
     });
     test.skip(r.status() === 503, "未配置 CalDAV 凭证");
     expect(r.status()).toBe(200);
     expect(((await r.json()) as { added: number }).added).toBe(2);
+
+    // 原始 ICS 里的**地点**：逗号已改写为中点，且**完整未被截断**。
+    // 两个雷区都在这一行上：
+    //   ① Radicale 用 vobject 校验并**重新序列化** item，而 vobject 把裸逗号当列表
+    //      分隔符只保留第一项 → `LOCATION:Providence, RI, USA` 会静默变成
+    //      `LOCATION:Providence`（丢数据）；所以逗号必须转义成 `\,`；
+    //   ② 但**不做反转义的客户端**（手机端华为/鸿蒙日历）会把 `\,` 原样显示出来
+    //      （用户报障）——网页端与桌面客户端都会反转义，故只有手机端暴露。
+    // 两头夹住 → 地点必须**不含逗号**（改写为中点，与站内 `ADMA 2026 · 全文` 一致）。
+    const rawIcs = readRawIcs("zztest-2099");
+    expect(rawIcs, "地点的逗号应改写为中点").toContain(
+      "LOCATION:Providence · RI · USA",
+    );
+    expect(
+      rawIcs,
+      "地点里不得留下 `\\,` / `\\;`（不做反转义的手机端客户端会原样显示）",
+    ).not.toMatch(/LOCATION:.*\\[,;]/);
+    expect(rawIcs, "事件其余字段不得被截断/改写").toContain(
+      "SUMMARY:ZZTEST 2099 · Full Paper",
+    );
 
     const list = await page.request.get(
       "/api/calendar?start=2099-01-01&end=2099-07-01",
