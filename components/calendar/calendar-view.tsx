@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { enUS as enUSDateFns, zhCN as zhCNDateFns } from "date-fns/locale";
 import { enUS as enUSRdp, zhCN as zhCNRdp } from "react-day-picker/locale";
@@ -601,6 +601,20 @@ export function CalendarView() {
     [],
   );
 
+  // 「+N 更多」触发器内容：手机端格子只有约 50px 宽，完整文案（「还有 3 个」）
+  // 会被截断成「还有 3…」→ 窄屏改用「+N」。可访问名不受影响：REUI 会在消费方
+  // 自定义触发器内容时用 labels.more(count) 补一个 aria-label
+  // （见 event-calendar-month-view.tsx），故两种宽度下读屏结果一致。
+  const renderMoreIndicator = useCallback(
+    ({ count }: { count: number }) => (
+      <>
+        <span className="max-sm:hidden">{t("more", { n: count })}</span>
+        <span className="hidden max-sm:inline">+{count}</span>
+      </>
+    ),
+    [t],
+  );
+
   // 日程 hover tooltip：标题 + 类别·时间 + 会议全称 + 备注
   const renderTooltip = useCallback(
     ({ occurrence }: { occurrence: { event: CalendarEvent<AppointmentData> } }) => {
@@ -773,6 +787,11 @@ export function CalendarView() {
                 loading={loading}
                 renderEvent={renderAppointmentChip}
                 renderEventTooltip={renderTooltip}
+                renderMoreIndicator={renderMoreIndicator}
+                // 手机端把格子内容改成横向流式（一排圆点）：globals.css 的
+                // `.calendar-month-cell-content` 窄屏规则挂在 REUI 提供的这个
+                // 类名钩子上（内容容器本身没有 data-slot）
+                classNames={{ monthCellContent: "calendar-month-cell-content" }}
                 eventTooltip={{ side: "top" }}
                 // 站主日历为只读展示：关闭拖拽/缩放/拖选创建
                 interactions={{ drag: false, resize: false, selectSlot: false }}
@@ -785,7 +804,11 @@ export function CalendarView() {
                 todayClassName="bg-transparent border-b-transparent"
                 maxEventsPerCell={3}
                 i18n={ecI18n}
-                className="h-[640px] w-full"
+                // 手机端压缩高度（桌面 h-[640px] 不变）：窄屏格子只放圆点（8px）
+                // 不再有标题行，6 行月历用不着 640px；31rem（格高约 64px）刚好装下
+                // 「跨天条车道 18px + 圆点行 8px + 「+N」行 16px」中最紧的组合，
+                // 且让「月视图 + 下方日程列表」在手机上一屏内同现
+                className="h-[31rem] w-full sm:h-[640px]"
               >
                 <div className="flex flex-wrap items-center gap-2 pe-2">
                   <EventCalendarNav
@@ -824,14 +847,22 @@ export function CalendarView() {
                 </div>
                 <EventCalendarContent />
               </EventCalendar>
-              {/* 颜色指示器：标明各日程颜色对应的语义（类别图例） */}
+              {/* 颜色指示器：标明各日程颜色对应的语义（类别图例）
+                  颜色走 CSS 变量（而非内联 backgroundColor）：窄屏下网格里的
+                  日程是圆点、圆点需要压深一档才达 3:1，图例必须跟着同色，
+                  否则「颜色 = 类别」这条索引就对不上了（见 globals.css） */}
               <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-4 py-3 text-xs">
                 {(Object.keys(CATEGORY) as DdlCategory[]).map((key) => (
                   <span key={key} className="flex items-center gap-1.5">
                     <span
                       aria-hidden
+                      data-slot="calendar-legend-dot"
                       className="size-2 rounded-full"
-                      style={{ backgroundColor: CATEGORY[key].color }}
+                      style={
+                        {
+                          "--legend-color": CATEGORY[key].color,
+                        } as CSSProperties
+                      }
                     />
                     {t(CATEGORY[key].labelKey)}
                   </span>

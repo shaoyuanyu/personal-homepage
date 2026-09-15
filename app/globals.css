@@ -488,3 +488,113 @@ section[id^="ccf-field"] {
   [data-slot="event-calendar-month-day-number"] {
   font-size: 0.8125rem;
 }
+
+/* ---- 我的日历月视图：窄屏（手机）切换为「颜色点」密度（calendar-view.tsx 配套）----
+   桌面格宽约 120px，chip 里的标题能显示六七个字；手机格宽只有约 50px，同一个
+   chip 只会剩下两三个字加一个截断号——既读不出信息，又白占掉一行高度。故窄屏
+   改为「密度优先」：
+     1. 单日定时日程 → 类别色圆点（8px，与下方图例同尺寸）。图标/标题整体隐藏，
+        但 chip 的 `aria-label` 由 REUI 生成（含完整标题与时间），读屏与 role
+        断言不受影响；点圆点仍是打开该日程的详情弹窗。
+     2. 跨天/全天条 → 去掉文字、压扁为 18px 色条：**跨度本身即信息**（哪几天有
+        日程），文字在这一档宽度下无法承载。
+     3. 格子内容改为横向流式（row wrap）：一行可放 3 个圆点；跨天条的车道占位块
+        强制独占一行，圆点仍落在条带下方。
+     4. 日历总高由 640px 降到 31rem（见 calendar-view.tsx 的
+        `h-[31rem] sm:h-[640px]`）—— 手机上一屏能同时看到月视图与下方列表。
+   ⚠ 选择器必须限定在 month-cell / month-bar-overlay 子树内：REUI 的「+N 更多」
+     弹窗与拖拽克隆是 Portal 渲染的，不在这两棵子树里，故弹窗内仍是完整标题
+     （那里宽度够、也该显示完整信息）。
+   ⚠ 隐藏 chip 内容只能用 `> *`（chip 内是消费方自绘的 renderEvent 结构，不固定）。
+   ⚠ 不要给 chip 加 box-shadow: none —— 焦点环（focus-visible:ring-2）与
+     inset-ring 都走 box-shadow；实色圆点上的 inset-ring 是同色 15% 透明，
+     本来就看不见，留着焦点环反而保住了键盘可达性。 */
+@media (width < 40rem) {
+  /* 跨天条车道高度 1.75rem → 1.25rem（车道占位、条带、拖拽占位共用同一变量）
+     ——车道占 18px、圆点行 8px、间距 3px，合起来才装得进格子内容区（约 38px） */
+  [data-slot="event-calendar-month-view"] {
+    --ec-month-bar-h: 1.25rem;
+  }
+
+  /* 格子内容：竖排单列 → 横向流式（一行多枚圆点；不拉伸行间距）
+     间距 3px：360px 视口下格宽仅 45px（内容区 37px），3 枚 8px 圆点 = 30px，
+     至 320px 视口（内容区 33px）仍能同行放下 */
+  .calendar-month-cell-content {
+    flex-flow: row wrap;
+    align-content: flex-start;
+    gap: 0.1875rem;
+  }
+  /* 跨天条的车道占位块独占一行（flex-basis: 100%），圆点不侵入条带区域 */
+  .calendar-month-cell-content
+    > [data-slot="event-calendar-month-lane-spacer"] {
+    flex-basis: 100%;
+  }
+
+  /* 单日日程 chip → 类别色圆点
+     ⚠ 浅色主题下必须把 500 号色压深一档：圆点在这里承载全部信息（数字不加色则
+     基本看不出），而 amber/sky/emerald 的 500 号色对白底只有 2.1~2.7:1，低于
+     「图形元素 3:1」。深色主题下 500 号对近黑底为 4.1~8.4:1，原色即可。 */
+  [data-slot="event-calendar-month-cell"] [data-slot="event-calendar-event"] {
+    width: 0.5rem;
+    height: 0.5rem;
+    min-height: 0;
+    padding: 0;
+    border-radius: 9999px;
+    background-color: color-mix(in oklab, var(--ec-event-color) 80%, black);
+  }
+  .dark
+    [data-slot="event-calendar-month-cell"]
+    [data-slot="event-calendar-event"] {
+    background-color: var(--ec-event-color);
+  }
+  /* 触摸目标比圆点大一圈（12px）：::after 属于按钮自身，只向外扩 2px，
+     小于圆点间距（3px），故不会与相邻圆点的命中区重叠 */
+  [data-slot="event-calendar-month-cell"]
+    [data-slot="event-calendar-event"]::after {
+    content: "";
+    position: absolute;
+    inset: -0.125rem;
+    border-radius: 9999px;
+  }
+  [data-slot="event-calendar-month-cell"]
+    [data-slot="event-calendar-event"]
+    > * {
+    display: none;
+  }
+
+  /* 跨天 / 全天条 → 无文字的色条（比 chip 的 15% 淡底更实，作为「跨度」读） */
+  [data-slot="event-calendar-month-bar-overlay"]
+    [data-slot="event-calendar-event"] {
+    padding-inline: 0;
+    background-color: color-mix(
+      in oklab,
+      var(--ec-event-color) 55%,
+      transparent
+    );
+  }
+  [data-slot="event-calendar-month-bar-overlay"]
+    [data-slot="event-calendar-event"]
+    > * {
+    display: none;
+  }
+
+  /* 「+N 更多」触发器：窄屏标签是「+N」（完整文案会超出格宽被截断）；
+     纵向 2px 内边距把触摸目标从 16px 抬到 20px，同时仍在内容区高度预算内 */
+  [data-slot="event-calendar-month-cell"] [data-slot="event-calendar-more"] {
+    padding: 0.125rem 0.25rem;
+  }
+}
+
+/* 日历下方的颜色图例：颜色经 CSS 变量传递，好让窄屏把圆点压深一档，
+   与网格里的圆点**同一色**（否则图例与网格对不上，颜色就不再是索引）。 */
+[data-slot="calendar-legend-dot"] {
+  background-color: var(--legend-color);
+}
+@media (width < 40rem) {
+  [data-slot="calendar-legend-dot"] {
+    background-color: color-mix(in oklab, var(--legend-color) 80%, black);
+  }
+  .dark [data-slot="calendar-legend-dot"] {
+    background-color: var(--legend-color);
+  }
+}

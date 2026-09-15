@@ -1960,6 +1960,175 @@ test.describe("我的日历（主人专属）", () => {
     ).toBeVisible();
   });
 
+  /**
+   * 手机端月视图 = 「颜色点」密度。
+   *
+   * 窄屏格宽只有约 45~49px（桌面 139px），同一个 chip 里的标题只会剩下两三个字
+   * 加一个截断号，既读不出信息又白占一行高度 → 窄屏把日程退化为**类别色圆点**，
+   * 文字整体隐藏，但 chip 由 REUI 生成的 `aria-label`（含完整标题与时间）保留，
+   * 点圆点仍打开详情弹窗。跨天/全天条同理去掉文字、压扁成色条（跨度本身就是信息）。
+   *
+   * 这条用例锁三件事（都做过反向验证）：
+   *   ① 圆点尺寸/形状/颜色与图例同色，且**完全落在格子内容区内**、不与日号重叠
+   *      ——「跨天条车道占位 + 圆点行 + 「+N」行」的纵向预算曾算错两次（溢出 3px
+   *      / 360px 视口溢出 12px），两次都是靠断言里的 `overflow` 抓出来的；
+   *   ② 「+N 更多」在窄屏是「+N」（完整文案会超出格宽被截断），但可访问名仍是
+   *      `labels.more` 的完整文案（REUI 在消费方自定义指示器时补 aria-label）；
+   *   ③ 桌面端**不受影响**：chip 仍是带标题的完整胶囊、跨天条仍显示文字、高度 640。
+   *
+   * 数据用 `page.route` 打桩（不写真实日历数据）：某天 5 条不同类别的日程
+   * （→ 3 个圆点 + 「+N」），外加一条跨天全天条与落在条下方的一条定时日程。
+   */
+  test("手机端月视图：日程退化为颜色点；桌面端仍显示标题", async ({ page }) => {
+    const code = new TOTP({ secret: totpSecret! }).generate();
+    await loginWithCode(page, code);
+    test.skip(!(await calendarAvailable(page)), "日历服务不可用（本地需先 docker start <radicale 容器>）");
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dayStr = (d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
+    const at = (d: number, h: number) => Date.UTC(y, m, d, h, 0, 0);
+    const mk = (
+      uid: string,
+      summary: string,
+      categories: string[],
+      startUtc: number | null,
+      endUtc: number | null,
+      extra: Record<string, unknown> = {},
+    ) => ({ uid, summary, categories, startUtc, endUtc, ...extra });
+
+    const events = [
+      // 同一天 5 条（不同类别 → 3 个圆点 + 「+N」）
+      // ⚠ 不给 `confTitle`：chip 的可访问名取「洁净标题」优先，给了它就不再是 summary，
+      //   下面的 `aria-label^=` 选择器会全都不中
+      ...["abstract", "paper", "registration", "camera", "notification"].map((c, i) =>
+        mk(`e2e-mobile-${c}`, `E2E MOBILE ${i}`, [c], at(12, 4 + i), at(12, 5 + i)),
+      ),
+      // 跨天全天条（5→7 日：allDayDate 首日 + start/end 定天数）
+      mk("e2e-mobile-bar", "E2E MOBILE BAR", ["paper"], Date.UTC(y, m, 5), Date.UTC(y, m, 7), {
+        allDayDate: dayStr(5),
+      }),
+      // 落在条下方的那一天（车道占位 + 圆点行必须同时装进内容区）
+      mk("e2e-mobile-bar-day", "E2E MOBILE BAR DAY", ["camera"], at(6, 6), at(6, 7)),
+    ];
+    await page.route("**/api/calendar?*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ events }),
+      });
+    });
+
+    /** 圆点几何：尺寸/形状/是否落在内容区内/是否压到日号 */
+    const dotGeometry = (page: Page, selector: string) =>
+      page.locator(selector).first().evaluate((el) => {
+        const content = el.parentElement as HTMLElement;
+        const cell = el.closest("[data-slot=event-calendar-month-cell]")!;
+        const r = el.getBoundingClientRect();
+        const cr = content.getBoundingClientRect();
+        const dr = cell
+          .querySelector("[data-slot=event-calendar-month-day-number]")!
+          .getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return {
+          w: Math.round(r.width),
+          h: Math.round(r.height),
+          radius: cs.borderRadius,
+          bg: cs.backgroundColor,
+          childDisplay: getComputedStyle(el.firstElementChild!).display,
+          insideContent: r.top >= cr.top - 1 && r.bottom <= cr.bottom + 1,
+          clearOfDayNumber: r.bottom <= dr.top + 0.5 || r.right <= dr.left + 0.5,
+          contentOverflow: content.scrollHeight - content.clientHeight,
+          label: el.getAttribute("aria-label"),
+        };
+      });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await gotoReady(page, "/calendar");
+
+    // ① 圆点：8px（size-2）才在 360px 视口（内容区 33~37px）里同行放得下 3 枚
+    //    （曾用 10px → 360px 下换行并溢出 12px）
+    const dot = await dotGeometry(
+      page,
+      '[data-slot=event-calendar-month-cell] [data-slot=event-calendar-event][aria-label^="E2E MOBILE 0"]',
+    );
+    expect(dot.w, "圆点应为 8px（size-2，与图例同尺寸）").toBe(8);
+    expect(dot.h).toBe(8);
+    expect(dot.radius).toBe("9999px");
+    expect(dot.childDisplay, "圆点内不该再渲染图标/标题").toBe("none");
+    expect(dot.insideContent, "圆点必须完整落在格子内容区内").toBe(true);
+    expect(dot.clearOfDayNumber, "圆点不得压到日号").toBe(true);
+    expect(dot.contentOverflow, "格子内容不得溢出（会静默裁掉圆点）").toBeLessThanOrEqual(1);
+    // 视觉退化不影响读屏：可访问名仍是完整标题 + 时间
+    expect(dot.label).toMatch(/^E2E MOBILE \d, .+/);
+
+    // ② 跨天条：压扁为无文字色条；同一天的定时日程（条下方）同样放得下
+    const bar = await page
+      .locator("[data-slot=event-calendar-month-bar-overlay] [data-slot=event-calendar-event]")
+      .first()
+      .evaluate((el) => ({
+        h: Math.round(el.getBoundingClientRect().height),
+        childDisplay: getComputedStyle(el.firstElementChild!).display,
+      }));
+    expect(bar.h, "窄屏条带应压扁（桌面 26px）").toBeLessThanOrEqual(20);
+    expect(bar.childDisplay, "窄屏条带不显示文字（跨度本身即信息）").toBe("none");
+    const underBar = await dotGeometry(
+      page,
+      '[data-slot=event-calendar-month-cell] [data-slot=event-calendar-event][aria-label^="E2E MOBILE BAR DAY"]',
+    );
+    expect(underBar.insideContent, "条带车道下方的圆点仍须落在内容区内").toBe(true);
+    expect(underBar.contentOverflow).toBeLessThanOrEqual(1);
+
+    // ③ 「+N 更多」：窄屏显示「+N」，可访问名仍是完整文案
+    //    （限定在含第 12 日圆点的那一格，「+N」计数才确定 = 5 − 3）
+    const more = page
+      .locator('[data-slot=event-calendar-month-cell]:has([aria-label^="E2E MOBILE 0"])')
+      .locator("[data-slot=event-calendar-more]");
+    await expect(more).toHaveAttribute("aria-label", "还有 2 个");
+    const visibleMoreText = await more.evaluate((el) =>
+      [...el.children]
+        .filter((c) => getComputedStyle(c).display !== "none")
+        .map((c) => c.textContent)
+        .join(""),
+    );
+    expect(visibleMoreText, "窄屏用紧凑的「+N」标签").toBe("+2");
+
+    // ④ 图例与网格同色（颜色是窄屏唯一的类别索引）
+    const colors = await page.evaluate(() => ({
+      dots: [...document.querySelectorAll("[data-slot=event-calendar-month-cell] [data-slot=event-calendar-event]")].map(
+        (el) => getComputedStyle(el).backgroundColor,
+      ),
+      legend: [...document.querySelectorAll("[data-slot=calendar-legend-dot]")].map(
+        (el) => getComputedStyle(el).backgroundColor,
+      ),
+    }));
+    expect(colors.legend.length).toBe(6);
+    for (const c of new Set(colors.dots)) {
+      expect(colors.legend, `圆点色 ${c} 必须能在图例里找到`).toContain(c);
+    }
+
+    // ⑤ 桌面端不受影响：完整胶囊（标题可见）、条带带文字、高度 640
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await gotoReady(page, "/calendar");
+    const desktopDot = await dotGeometry(
+      page,
+      '[data-slot=event-calendar-month-cell] [data-slot=event-calendar-event][aria-label^="E2E MOBILE 0"]',
+    );
+    expect(desktopDot.w, "桌面端仍是完整 chip").toBeGreaterThan(60);
+    expect(desktopDot.childDisplay).toBe("flex");
+    const desktopBar = await page
+      .locator("[data-slot=event-calendar-month-bar-overlay] [data-slot=event-calendar-event]")
+      .first()
+      .evaluate((el) => getComputedStyle(el.firstElementChild!).display);
+    expect(desktopBar, "桌面端条带仍显示文字").toBe("flex");
+    expect(
+      await page.locator("[data-slot=event-calendar]").evaluate((el) => Math.round(el.getBoundingClientRect().height)),
+      "桌面月视图高度保持 640",
+    ).toBe(640);
+  });
+
   test("会议节点日程弹窗：显示该届会议时间线，可跳转同届其它节点日程", async ({ page }) => {
     const code = new TOTP({ secret: totpSecret! }).generate();
     await loginWithCode(page, code);

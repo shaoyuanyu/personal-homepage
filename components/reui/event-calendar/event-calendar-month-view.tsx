@@ -892,6 +892,10 @@ function EventCalendarMonthCell({
         {reservedLanes > 0 && (
           <div
             aria-hidden
+            // Layout hook: the bar lanes are reserved inside the cell content,
+            // so a consumer restyling that container (e.g. a narrow-screen
+            // flow layout) needs to address this spacer to keep the line break.
+            data-slot="event-calendar-month-lane-spacer"
             className="shrink-0"
             style={{
               // lane height already carries the 2px inter-lane gap; subtract
@@ -1138,6 +1142,16 @@ function EventCalendarMoreIndicator({
         data-slot="event-calendar-more"
         data-drop-into={dropInto ? "" : undefined}
         data-drop-invalid={dropInto && !dropInto.valid ? "" : undefined}
+        // A consumer-provided indicator may compress the label at narrow
+        // widths (e.g. "+3" instead of "3 more"), which would leave the
+        // trigger with a cryptic accessible name. Name it with the canonical
+        // label whenever the content is overridden; with the default content
+        // the visible text already IS that label, so no aria-label is added.
+        aria-label={
+          viewConfig.renderMoreIndicator
+            ? settings.i18n.labels.more(count)
+            : undefined
+        }
         className={cn(
           "text-muted-foreground hover:text-foreground cursor-pointer truncate rounded-sm px-1.5 text-start",
           // While a dragged chip will land in this overflow bucket, the "+N more"
