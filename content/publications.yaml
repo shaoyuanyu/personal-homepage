@@ -1,10 +1,46 @@
-# 出版物列表
-# 暂无已发表论文。发表后请按以下格式添加：
-#   key       BibTeX 引用 key（必填）
-#   title     论文标题（必填）
-#   authors   作者数组，`*` 后缀标记本人（必填）
-#   venue     发表场合（必填）
-#   year      年份（必填）
-#   type      conference | journal | preprint | thesis（可选，默认 conference）
-#   url / pdf / doi / arxiv / code / bibtex（可选，有则显示对应按钮）
+# 出版物列表 —— 本站论文的**唯一数据源，纯手工维护**
+#
+# 背景：本站不做任何论文自动获取。arXiv / Semantic Scholar 的同步脚本、Dockerfile
+# 与 CI 里的同步步骤、每周定时工作流均已于 2026-09 全部移除 —— 一年发表数篇，
+# 自动拉取的收益不抵维护成本（两套来源 key 规范不同，还会产生单向重复条目）。
+# 发表后在此追加一条并提交，由流水线构建上线即可。
+#
+# ── 字段（构建期由 Velite + Zod 校验，写错会直接构建失败，坏数据上不了线）──
+#   key      必填。BibTeX 引用 key，同时用作列表的 React key；不能含空格/逗号/花括号
+#            惯例写法：第一作者姓 + 年份 + 关键词，如 yu2026interpretability
+#   title    必填。论文标题
+#   authors  必填（至少 1 项）。作者数组，按论文上的顺序排列
+#            ⚠ 自己那一项可加 `*` 后缀（如 YU Shaoyuan*）——显式标记优先级最高；
+#              不加也能自动识别（顺序/标点无关的姓名匹配，见 lib/publications/authors.ts）。
+#              `*` 只用于识别，不会出现在页面文字或生成的 BibTeX 里。
+#   venue    必填。发表场合全称，如 NeurIPS 2026 / IEEE TPAMI
+#   year     必填。年份整数（1990–2100）
+#   type     可选。conference | journal | preprint | thesis（默认 conference）
+#            决定卡片徽章文案与 BibTeX 条目类型（inproceedings / article / phdthesis）
+#
+# ── 可选链接字段（有则渲染对应按钮）──
+#   url      项目页 / 论文页
+#   pdf      PDF 地址（可写站内相对路径，如 /papers/2026-xxx.pdf）
+#   doi      裸 DOI（如 10.1145/1234567.1234568），页面会自动拼 https://doi.org/
+#   arxiv    裸 arXiv id（如 2501.01234）
+#   code     代码仓库地址
+#   bibtex   直接粘贴出版社提供的 BibTeX：**填了就原样展示/复制**，不再自动生成
+#
+# ── 展示规则 ──
+#   * 页面按 year 倒序分组；**同一年内按本文件中的先后顺序**展示
+#     （想突出代表作就把它写在同年前面）
+#   * 类型筛选档位与 type 的可选值一一对应（单一来源：lib/publications/constants.ts）
+#
+# ── 模板（复制下面这一段到 publications 下，替换字段即可）──
+#   - key: yu2026example
+#     title: An Example Paper Title
+#     authors:
+#       - Shaoyuan Yu*
+#       - Collaborator Name
+#     venue: NeurIPS 2026
+#     year: 2026
+#     type: conference
+#     doi: 10.1145/0000000.0000000
+#     code: https://github.com/shaoyuanyu/example
+
 publications: []

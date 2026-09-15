@@ -10,7 +10,6 @@
     "preview": "pnpm build && pnpm start",
     "lint": "eslint",
     "fetch:favicons": "node scripts/fetch-favicons.mjs",
-    "fetch:publications": "node scripts/fetch-publications.mjs",
     "fetch:ccf-dblp": "node scripts/fetch-ccf-dblp.mjs",
     "fetch:deadlines": "node scripts/fetch-deadlines.mjs",
     "fetch:cas": "node scripts/fetch-cas.mjs",

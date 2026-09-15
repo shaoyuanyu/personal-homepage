@@ -17,7 +17,6 @@
 | 中英双语 i18n | next-intl 中英文切换 | ✅ 已选 |
 | 明暗主题切换 | shadcn 原生支持 | ✅ 已选 |
 | 博客站内搜索 | fuse.js 客户端全文搜索 | ✅ 已选 |
-| 论文自动同步 | arXiv / Semantic Scholar API + 定时任务 | ✅ 已选 |
 | 访问统计 | 自托管 Umami（Docker） | ✅ 已选 |
 
 ## 2. 技术选型
@@ -30,7 +29,7 @@
 | 内容层 | **Velite**（MDX 博客 + YAML 数据 + Zod schema） | 类型安全的内容管道，构建期生成索引 |
 | i18n | **next-intl** | App Router 官方推荐，类型安全的消息加载 |
 | 搜索 | **fuse.js** | 构建期生成搜索索引，客户端模糊搜索 |
-| 论文同步 | **GitHub Actions cron** + arXiv / Semantic Scholar API | 定时自动更新 YAML 数据 |
+| 论文数据 | **手工维护** `content/publications.yaml`（Velite + Zod 校验） | 一年数篇，自动拉取的收益不抵维护成本 |
 | 分析 | **Umami**（自托管，Docker） | 隐私友好、轻量，与站点同机部署 |
 | 部署 | **VPS + Docker Compose + Caddy** | 站点容器 + Umami + Caddy 自动 HTTPS |
 
@@ -75,7 +74,7 @@ ysy-personal-homepage/
 └── .github/workflows/
     ├── ci.yml                    # lint + typecheck + build 门禁
     ├── deploy.yml                # 构建镜像 → 推送 GHCR → SSH 部署 VPS
-    └── sync-papers.yml           # 每周定时同步论文 → PR 人工确认
+    └── sync-deadlines.yml        # 每 12 小时同步 CCF 会议 deadline → PR（自动合并）
 ```
 
 ## 4. 关键设计原则
@@ -97,12 +96,13 @@ ysy-personal-homepage/
 ### 4.4 自动化流水线
 
 ```
-论文同步（每周 cron）              CI 门禁                   部署
-arXiv API ──→ publications.yaml ──→ lint/typecheck/build ──→ docker build
-Semantic Scholar API ──┘            （失败禁止合并）           → 推 GHCR
-        ↑ 自动提交 PR，人工确认                              → SSH 到 VPS
-                                                            → compose pull && up -d
-                                                            → Caddy 自动 HTTPS
+保留的定时任务：CCF 会议 deadline 每 12 小时同步（→ PR 自动合并）
+
+                          CI 门禁                        部署
+content/*.yaml（手工维护）──▶ lint/typecheck/build ──▶ docker build
+                            （失败禁止合并）             → 推 GHCR
+                                                        → SSH 到 VPS
+                                                        → compose pull && up -d
 ```
 
 ### 4.5 渲染策略
@@ -129,7 +129,7 @@ Semantic Scholar API ──┘            （失败禁止合并）           →
 |---|---|
 | **M1 骨架** | 项目初始化、shadcn 配置、i18n/主题、布局与导航、部署流水线跑通 |
 | **M2 核心** | 主页、出版物（BibTeX）、博客（列表+详情+搜索）、导航页 |
-| **M3 扩展** | CV、Talks、Projects、论文自动同步、Umami 接入 |
+| **M3 扩展** | CV、Talks、Projects、论文页（手工维护）、Umami 接入 |
 | **M4 打磨** | SEO/OG 图、性能优化、内容补全、404 页 |
 
 ## 7. 预留的可扩展点（暂未选，可随时加入）

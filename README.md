@@ -16,7 +16,7 @@
 | 📋 简历 | 结构化在线 CV + PDF 下载 |
 | 🌐 i18n | 中英双语（next-intl），一键切换 |
 | 🌙 主题 | 明暗主题切换 |
-| 📡 论文自动同步 | GitHub Actions 每周从 arXiv 拉取新论文并提交 PR |
+| 📡 论文自动同步 | ~~GitHub Actions 每周从 arXiv 拉取新论文并提交 PR~~（已下线：改为手工维护 `content/publications.yaml`） |
 
 ## 🛠 技术栈
 
@@ -127,6 +127,6 @@ lib/
   i18n/               # next-intl 配置
   bibtex.ts           # BibTeX 生成器
 messages/             # i18n 文案（zh/en）
-scripts/              # 论文自动同步脚本
+scripts/              # 数据同步与运维脚本（CCF 目录 / deadline / 分区表 / 字体子集 / 本地验收）
 .velite/              # Velite 构建输出（git 忽略）
 ```
