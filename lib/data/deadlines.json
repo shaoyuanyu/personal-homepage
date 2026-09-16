@@ -1417,6 +1417,22 @@
               "t": "2025-12-26 23:59:59"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://www.codaspy.org/2027/",
+          "tz": "Etc/GMT+12",
+          "date": "June 14-17, 2027",
+          "place": "Fort Collins, Colorado, USA",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-11-16 23:59:59"
+            },
+            {
+              "t": "2026-11-23 23:59:59"
+            }
+          ]
         }
       ]
     },
@@ -2166,6 +2182,22 @@
             },
             {
               "t": "2025-09-26 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://dfrws.org/conferences/dfceurope2027/",
+          "tz": "Etc/GMT+12",
+          "date": "March 30 - April 2, 2027",
+          "place": "Edinburgh, Scotland",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-09-18 23:59:59"
+            },
+            {
+              "t": "2026-09-25 23:59:59"
             }
           ]
         }
@@ -3890,7 +3922,7 @@
           "place": "Toronto, Canada",
           "timeline": [
             {
-              "t": "2026-09-16 23:59:59"
+              "t": "2026-09-23 23:59:59"
             }
           ]
         }
@@ -4131,6 +4163,19 @@
           "timeline": [
             {
               "t": "2026-01-20 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://icdf2c.eai-conferences.org/2027/",
+          "tz": "Etc/GMT+12",
+          "date": "June 25-27, 2027",
+          "place": "New York, USA",
+          "timeline": [
+            {
+              "t": "2026-12-15 23:59:59",
+              "c": "Full Paper Submission deadline"
             }
           ]
         }
@@ -5049,6 +5094,19 @@
           "timeline": [
             {
               "t": "2025-09-30 23:59:59",
+              "c": "Submission Deadline"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://www.ifip119.org/Conferences/",
+          "tz": "Etc/GMT+12",
+          "date": "January 7 - 8, 2027",
+          "place": "New Delhi, India",
+          "timeline": [
+            {
+              "t": "2026-10-10 23:59:59",
               "c": "Submission Deadline"
             }
           ]
@@ -7635,6 +7693,23 @@
               "c": "Second Cycle"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://www.sacmat.org/2027/",
+          "tz": "Etc/GMT+12",
+          "date": "July 19-21, 2027",
+          "place": "Durham, England, United Kingdom",
+          "timeline": [
+            {
+              "t": "2026-10-30 23:59:59",
+              "c": "First Cycle"
+            },
+            {
+              "t": "2027-02-12 23:59:59",
+              "c": "Second Cycle"
+            }
+          ]
         }
       ]
     },
@@ -7962,6 +8037,19 @@
           "timeline": [
             {
               "t": "2025-12-15 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://securecomm.eai-conferences.org/2027/",
+          "tz": "Etc/GMT+12",
+          "date": "October 15-18, 2027",
+          "place": "Hefei, China",
+          "timeline": [
+            {
+              "t": "2027-03-01 23:59:59",
+              "c": "Full Paper Submission deadline"
             }
           ]
         }
