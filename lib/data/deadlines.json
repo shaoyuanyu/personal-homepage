@@ -9256,12 +9256,12 @@
         {
           "y": 2027,
           "link": "https://wcnc2027.ieee-wcnc.org/",
-          "tz": "Etc/GMT+12",
+          "tz": "Etc/GMT+4",
           "date": "April 5-8, 2027",
           "place": "Panama City, Panama",
           "timeline": [
             {
-              "t": "2026-09-15 23:59:59"
+              "t": "2026-10-05 23:59:59"
             }
           ]
         }
