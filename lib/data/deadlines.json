@@ -1808,6 +1808,39 @@
       ]
     },
     {
+      "a": "CSCWD",
+      "n": "International Conference on Computer Supported Cooperative Work in",
+      "l": "C",
+      "f": "人机交互与普适计算",
+      "d": "https://dblp.org/db/conf/cscwd/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "http://2026.cscwd.org",
+          "tz": "Etc/GMT+12",
+          "date": "May 13-15, 2026",
+          "place": "Fuzhou, China",
+          "timeline": [
+            {
+              "t": "2025-11-30 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "http://2027.cscwd.org",
+          "tz": "Etc/GMT+12",
+          "date": "May 26-28, 2027",
+          "place": "Brisbane, Australia",
+          "timeline": [
+            {
+              "t": "2026-10-31 23:59:59"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "a": "CSFW",
       "n": "IEEE Computer Security Foundations Symposium",
       "l": "B",
@@ -2996,8 +3029,8 @@
       "a": "EUSIPCO",
       "n": "European Signal Processing Conference",
       "l": "",
-      "f": "软件工程/系统软件/程序设计语言",
-      "d": "https://dblp.org/db/conf/eusipcolyon/",
+      "f": "计算机图形学与多媒体",
+      "d": "https://dblp.org/db/conf/eusipco/",
       "years": [
         {
           "y": 2026,
@@ -5059,23 +5092,6 @@
       "d": "https://dblp.org/db/conf/cgo/",
       "years": [
         {
-          "y": 2027,
-          "link": "https://conf.researchr.org/home/cgo-2027",
-          "tz": "Etc/GMT+12",
-          "date": "March 20-24, 2027",
-          "place": "Salt Lake City, Utah, USA",
-          "timeline": [
-            {
-              "t": "2026-06-11 23:59:59",
-              "c": "First Submission"
-            },
-            {
-              "t": "2026-09-10 23:59:59",
-              "c": "Second Submission"
-            }
-          ]
-        },
-        {
           "y": 2026,
           "link": "https://conf.researchr.org/home/cgo-2026",
           "tz": "Etc/GMT+12",
@@ -5088,6 +5104,23 @@
             },
             {
               "t": "2025-09-11 23:59:59",
+              "c": "Second Submission"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://conf.researchr.org/home/cgo-2027",
+          "tz": "Etc/GMT+12",
+          "date": "March 20-24, 2027",
+          "place": "Salt Lake City, Utah, USA",
+          "timeline": [
+            {
+              "t": "2026-06-11 23:59:59",
+              "c": "First Submission"
+            },
+            {
+              "t": "2026-09-10 23:59:59",
               "c": "Second Submission"
             }
           ]
@@ -6906,6 +6939,18 @@
               "t": "2025-11-15 23:59:59"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://www.pakdd2027.org/",
+          "tz": "Etc/GMT+12",
+          "date": "June 29-July 2, 2027",
+          "place": "Wellington, New Zealand",
+          "timeline": [
+            {
+              "t": "2026-11-20 23:59:59"
+            }
+          ]
         }
       ]
     },
@@ -7842,18 +7887,6 @@
       "d": "https://dblp.org/db/conf/satml/",
       "years": [
         {
-          "y": 2027,
-          "link": "https://satml.org/",
-          "tz": "Etc/GMT+12",
-          "date": "May 2027 (exact dates TBD)",
-          "place": "Reykjavik, Iceland",
-          "timeline": [
-            {
-              "t": "2026-09-29 23:59:59"
-            }
-          ]
-        },
-        {
           "y": 2026,
           "link": "https://www.satml.org",
           "tz": "Etc/GMT+12",
@@ -7862,6 +7895,18 @@
           "timeline": [
             {
               "t": "2025-09-24 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://satml.org/",
+          "tz": "Etc/GMT+12",
+          "date": "May 2027 (exact dates TBD)",
+          "place": "Reykjavik, Iceland",
+          "timeline": [
+            {
+              "t": "2026-09-29 23:59:59"
             }
           ]
         }
@@ -8917,6 +8962,27 @@
             {
               "t": "2026-11-01 23:59:59",
               "c": "fourth round"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "a": "UIC",
+      "n": "IEEE International Conference on Ubiquitous Intelligence and Computing",
+      "l": "C",
+      "f": "人机交互与普适计算",
+      "d": "https://dblp.org/db/conf/uic/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "https://swc-ieee-2026.github.io/uic/",
+          "tz": "Etc/GMT-2",
+          "date": "Sept 7 - 11, 2026",
+          "place": "Rende, Italy",
+          "timeline": [
+            {
+              "t": "2026-05-31 23:59:59"
             }
           ]
         }
