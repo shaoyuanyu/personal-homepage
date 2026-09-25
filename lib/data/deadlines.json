@@ -1280,10 +1280,10 @@
           "timeline": [
             {
               "k": "abstract",
-              "t": "2026-01-12 23:59:59"
+              "t": "2026-02-01 23:59:59"
             },
             {
-              "t": "2026-01-19 23:59:59"
+              "t": "2026-02-01 23:59:59"
             }
           ]
         }
@@ -2144,7 +2144,12 @@
           "place": "Amsterdam, Netherlands",
           "timeline": [
             {
-              "t": "2026-10-01 23:59:00"
+              "t": "2026-09-01 23:59:59",
+              "c": "Round 1"
+            },
+            {
+              "t": "2026-10-01 23:59:59",
+              "c": "Round 2"
             }
           ]
         }
@@ -3120,7 +3125,7 @@
           "link": "https://ets2026.uniwa.gr/",
           "tz": "Etc/GMT+12",
           "date": "May 25-29, 2026",
-          "place": "Chania, Greec",
+          "place": "Chania, Greece",
           "timeline": [
             {
               "k": "abstract",
@@ -3802,11 +3807,11 @@
           "place": "Honolulu, Hawaii, USA",
           "timeline": [
             {
-              "t": "2026-06-05 23:59:59",
+              "t": "2026-06-19 23:59:59",
               "c": "Title and Abstract Due (Conference Track)"
             },
             {
-              "t": "2026-06-12 23:59:59",
+              "t": "2026-06-19 23:59:59",
               "c": "Submission Due (Conference Track)"
             }
           ]
@@ -4679,7 +4684,7 @@
         {
           "y": 2027,
           "link": "https://icde2027.github.io/",
-          "tz": "Etc/GMT+7",
+          "tz": "America/Los_Angeles",
           "date": "May 17-21, 2027",
           "place": "Copenhagen, Denmark",
           "timeline": [
@@ -4743,10 +4748,6 @@
           "date": "November 12-15, 2026",
           "place": "Shenyang, China",
           "timeline": [
-            {
-              "k": "abstract",
-              "t": "2026-05-30 23:59:59"
-            },
             {
               "t": "2026-06-06 23:59:59"
             }
@@ -5244,7 +5245,7 @@
           "place": "Lyon, France",
           "timeline": [
             {
-              "t": "2025-12-20 23:59:59"
+              "t": "2026-01-10 23:59:59"
             }
           ]
         }
@@ -5562,6 +5563,27 @@
             },
             {
               "t": "2026-01-15 23:59:59",
+              "c": "3rd Full-paper Deadline"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://www.icwsm.org/2027/",
+          "tz": "Etc/GMT+12",
+          "date": "TBD",
+          "place": "Edinburgh, Scotland",
+          "timeline": [
+            {
+              "t": "2026-05-15 23:59:59",
+              "c": "1st Full-paper Deadline"
+            },
+            {
+              "t": "2026-09-15 23:59:59",
+              "c": "2nd Full-paper Deadline"
+            },
+            {
+              "t": "2027-01-15 23:59:59",
               "c": "3rd Full-paper Deadline"
             }
           ]
@@ -6081,6 +6103,31 @@
       ]
     },
     {
+      "a": "INTERACT",
+      "n": "IFIP TC13 International Conference on Human-Computer Interaction",
+      "l": "C",
+      "f": "人机交互与普适计算",
+      "d": "https://dblp.org/db/conf/interact/",
+      "years": [
+        {
+          "y": 2027,
+          "link": "https://interact2027.org/",
+          "tz": "Etc/GMT+12",
+          "date": "August 23-27, 2027",
+          "place": "Tallinn, Estonia",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2027-01-25 23:59:59"
+            },
+            {
+              "t": "2027-02-01 23:59:59"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "a": "Internetware",
       "n": "Asia-Pacific Symposium on Internetware",
       "l": "C",
@@ -6267,7 +6314,7 @@
           "place": "Rennes, France",
           "timeline": [
             {
-              "t": "2026-06-22 23:59:59"
+              "t": "2026-07-02 23:59:59"
             }
           ]
         }
@@ -6315,18 +6362,6 @@
           "timeline": [
             {
               "t": "2025-10-12 23:59:59"
-            }
-          ]
-        },
-        {
-          "y": 2027,
-          "link": "https://2027.ieee-iscas.org/",
-          "tz": "Etc/GMT+12",
-          "date": "June 6-9, 2027",
-          "place": "Bordeaux, France",
-          "timeline": [
-            {
-              "t": "2026-10-13 23:59:59"
             }
           ]
         }
@@ -6442,16 +6477,41 @@
         {
           "y": 2026,
           "link": "https://ispass.org/ispass2026/",
-          "tz": "Etc/GMT+12",
+          "tz": "Etc/GMT+5",
           "date": "April 26-28, 2026",
           "place": "Seoul, South Korea",
           "timeline": [
             {
               "k": "abstract",
-              "t": "2025-12-05 23:59:59"
+              "t": "2025-12-08 17:00:00"
             },
             {
-              "t": "2025-12-12 23:59:59"
+              "t": "2025-12-15 17:00:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "a": "ISPD",
+      "n": "International Symposium on Physical Design",
+      "l": "C",
+      "f": "计算机体系结构/并行与分布计算/存储系统",
+      "d": "https://dblp.org/db/conf/ispd/",
+      "years": [
+        {
+          "y": 2027,
+          "link": "https://ispd.cc/ispd2027/",
+          "tz": "Etc/GMT+12",
+          "date": "March 30 - April 2, 2027",
+          "place": "Taipei, Taiwan",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-09-21 23:59:59"
+            },
+            {
+              "t": "2026-09-28 23:59:59"
             }
           ]
         }
@@ -6471,6 +6531,14 @@
           "date": "November 23-26, 2026",
           "place": "Turin, Italy",
           "timeline": [
+            {
+              "t": "2025-03-14 23:59:59",
+              "c": "First round 2025"
+            },
+            {
+              "t": "2025-07-25 23:59:59",
+              "c": "Second round 2025"
+            },
             {
               "t": "2026-02-12 23:59:59",
               "c": "Winter round"
@@ -6773,7 +6841,7 @@
           "place": "Coimbra, Portugal",
           "timeline": [
             {
-              "t": "2026-04-20 23:59:59"
+              "t": "2026-05-04 23:59:59"
             }
           ]
         }
@@ -7157,6 +7225,31 @@
             },
             {
               "t": "2026-04-20 23:59:59"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "a": "MobileHCI",
+      "n": "ACM International Conference on Mobile Human-Computer Interaction",
+      "l": "B",
+      "f": "人机交互与普适计算",
+      "d": "https://dblp.org/db/conf/mhci/",
+      "years": [
+        {
+          "y": 2027,
+          "link": "https://mobilehci.acm.org/2027/",
+          "tz": "Etc/GMT+12",
+          "date": "September 20-23, 2027",
+          "place": "Limassol, Cyprus",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2027-02-10 23:59:59"
+            },
+            {
+              "t": "2027-02-17 23:59:59"
             }
           ]
         }
@@ -7864,6 +7957,10 @@
           "place": "Virtual",
           "timeline": [
             {
+              "k": "abstract",
+              "t": "2025-10-15 23:59:59"
+            },
+            {
               "t": "2025-10-15 23:59:59"
             }
           ]
@@ -7891,6 +7988,27 @@
             {
               "t": "2026-10-20 23:59:59",
               "c": "Second Cycle"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "a": "PEPM",
+      "n": "ACM SIGPLAN Workshop on Partial Evaluation and Program Manipulation",
+      "l": "C",
+      "f": "软件工程/系统软件/程序设计语言",
+      "d": "https://dblp.org/db/conf/pepm/",
+      "years": [
+        {
+          "y": 2027,
+          "link": "https://popl27.sigplan.org/home/pepm-2027",
+          "tz": "Etc/GMT+12",
+          "date": "January 12, 2027",
+          "place": "Mexico City, Mexico",
+          "timeline": [
+            {
+              "t": "2026-10-23 23:59:59"
             }
           ]
         }
@@ -8759,7 +8877,7 @@
       ]
     },
     {
-      "a": "SAI Computing Conference",
+      "a": "SAI",
       "n": "Computing Conference (SAI)",
       "l": "",
       "f": "交叉/综合/新兴",
@@ -9027,10 +9145,10 @@
           "timeline": [
             {
               "k": "abstract",
-              "t": "2026-04-24 23:59:59"
+              "t": "2026-05-08 23:59:59"
             },
             {
-              "t": "2026-05-01 23:59:59"
+              "t": "2026-05-08 23:59:59"
             }
           ]
         }
@@ -10434,7 +10552,12 @@
           "place": "Mexico City, Mexico",
           "timeline": [
             {
-              "t": "2026-09-16 23:59:59"
+              "t": "2026-09-23 23:59:59",
+              "c": "Paper Registration"
+            },
+            {
+              "t": "2026-09-30 23:59:59",
+              "c": "Paper Submission"
             }
           ]
         }
@@ -10510,11 +10633,11 @@
           "y": 2026,
           "link": "http://wasa-conference.org/WASA2026/",
           "tz": "Etc/GMT+12",
-          "date": "July 6-9, 2026",
+          "date": "June 26-29, 2026",
           "place": "Xi'an, China",
           "timeline": [
             {
-              "t": "2026-03-15 23:59:59"
+              "t": "2026-04-10 23:59:59"
             }
           ]
         }
@@ -10538,16 +10661,25 @@
               "t": "2025-09-14 23:59:59"
             }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "a": "WHC",
+      "n": "IEEE World Haptics Conference",
+      "l": "C",
+      "f": "人机交互与普适计算",
+      "d": "https://dblp.org/db/conf/haptics/",
+      "years": [
         {
           "y": 2027,
-          "link": "https://wcnc2027.ieee-wcnc.org/",
-          "tz": "Etc/GMT+4",
-          "date": "April 5-8, 2027",
-          "place": "Panama City, Panama",
+          "link": "https://2027.worldhaptics.org/",
+          "tz": "Etc/GMT+12",
+          "date": "July 12-15, 2027",
+          "place": "Boston, Massachusetts, USA",
           "timeline": [
             {
-              "t": "2026-10-05 23:59:59"
+              "t": "2027-01-29 23:59:59"
             }
           ]
         }
@@ -10688,6 +10820,18 @@
             },
             {
               "t": "2025-12-05 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://wowmom2027.dii.unipi.it/index.html",
+          "tz": "Etc/GMT+12",
+          "date": "June 21-24, 2027",
+          "place": "Irvine, California, USA",
+          "timeline": [
+            {
+              "t": "2026-12-01 23:59:59"
             }
           ]
         }
