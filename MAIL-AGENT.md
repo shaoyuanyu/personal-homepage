@@ -1,6 +1,6 @@
 # 邮件系统与 agent · 设计方案
 
-> 状态：设计已定，尚未开始实现
+> 状态：第 1 步（maild 取信与索引）已完成，正在实现第 2 步
 > 关联：`CLAUDE.md`（主站开发规范）、`ARCHITECTURE.md`（主站技术架构）
 
 **这份文档是什么**：邮件系统与 agent 的完整设计——要做什么、边界在哪、用什么轮子、按什么顺序做。
@@ -235,6 +235,30 @@ SPF 已配 `-all`（硬失败）、DKIM 已在签名，伪造你的地址发信�
 
 前端那个只读入口要展示 agent 的产物，读的是 **agent 导出的只读视图**（只读文件或只读接口），不是直连 agent 的库。这不违反隔离：产物是 agent 的输出，只读暴露不引入任何写路径。
 
+### 4.6 webmaild 进程形态与 API
+
+- **独立包 `webmail/`（与 `mail/` 平级）、独立进程**。红线 9：常驻 IMAP 状态放在 Next.js 进程里会随 route handler 每请求重新求值而作废，连接与索引必须放独立进程。
+- **共享代码方向：`webmail/` import `mail/src` 的纯读取模块**（imap / message / config / db / fetcher / search）。写操作（任意 `STORE`、`COPY`/`MOVE`、`EXPUNGE`、`APPEND`、SMTP）全部只存在于 `webmail/`——`mail/` 包内「不出现写调用」这句审查项继续字面成立（3.8）。
+- **数据各自持有（4.5）**：`WEBMAIL_DATA_DIR`（缺省 `data/webmail`）下有自己的 `accounts.json`（账号注册表 + SMTP 字段）/ `credentials.json`（chmod 600，含 IMAP + SMTP 凭据）/ `webmail.db` / `eml/`。账号注册表与 agent 侧是两份文件——webmail 侧多 SMTP 字段，结构不同，不共用。
+- **通道**：Next.js 的 `/api/mail/*` route handler 经 `isOwner` 守卫后转发到 webmaild 的 HTTP API（绑 `127.0.0.1:9710`）。webmaild 只监听回环、不做认证——信任边界在本机，与 Radicale 同一处理方式。
+- **同步策略**：60 秒定时增量轮询 + `/sync` 端点（页面刷新时触发）。IDLE 长连接由 agent 侧持有，webmaild 不重复开。
+- **发信**：nodemailer 的 `MailComposer` 构造一次 MIME → **同一份字节发两次**（红线 6）：SMTP 发送 + IMAP `APPEND` 到该账号「已发送」。Message-ID 由 webmaild 生成（`<随机@账号域名>`）写进 MIME，SMTP 与 APPEND 用的是同一份，会话不会断成两封。「已发送」文件夹探测 `\Sent` 特殊用途标志位（RFC 6154），探测不到回退常见名（`Sent` / `Sent Items` / `已发送邮件`），仍找不到则报错拒发（红线 5：不留底到错误位置）。
+- **标记写回**：打开邮件、点星标为触发，对该 Message-ID 的**所有副本**一起 `STORE`（红线 8），随后更新本地索引。
+- **删除与移动**：优先 `MOVE` 扩展（RFC 6851），服务端不支持时回退 `COPY` + `\Deleted` + `EXPUNGE`。
+
+API 形状（均 JSON，下划线端点为站内代理的转发对象）：
+
+| 端点 | 用途 |
+|---|---|
+| `GET /health` | 存活与每账号最近同步状态 |
+| `GET /accounts` | 账号列表（注册表字段，不含凭据） |
+| `GET /messages?account=&q=&before=` | 合并视图（跨账号按时间倒序，游标分页） |
+| `GET /message/:id` | 完整邮件（正文 sanitize + 远程资源占位，见 4.4） |
+| `POST /send` | 发信（SMTP + `APPEND` 留底，同一份字节） |
+| `POST /flags` | 已读 / 星标（对该消息的所有副本一起写） |
+| `POST /move`、`POST /delete` | 移动与删除 |
+| `POST /sync` | 立即增量同步 |
+
 ---
 
 ## 五、agent 系统
@@ -392,14 +416,16 @@ SnappyMail / Roundcube 都不用。前端要自己写：要 shadcn 风格、要�
 | 5 | 「已发送」文件夹名硬编码 | 各家叫法不同，留底落到错误位置或不落 | 探测 `\Sent` 标志位 |
 | 6 | 发信与留底各构造一次 MIME | Message-ID 不同，会话断成两封 | **同一份字节发两次** |
 | 7 | 产物关联键用 `(账号, UID)` | 多副本被拆成几条 | 用 `Message-ID` |
-| 8 | 多副本只写一份标记 | 一个邮箱已读、另一个未读 | 对所有副本一起写 |；agent 并行只在 worker 池，IMAP 连接每账号一条 |
+| 8 | 多副本只写一份标记 | 一个邮箱已读、另一个未读 | 对所有副本一起写 |
+| 9 | 常驻 IMAP 状态放在 Next.js 进程里 | route handler 每请求重新求值，模块级状态作废 | 常驻状态放独立进程（主站已有同款教训） |
+| 10 | 对同一账号并发开多条连接 | 阿里云 / 腾讯都有限制，会被掐 | 串行遍历文件夹；agent 并行只在 worker 池，IMAP 连接每账号一条 |
 | 11 | 把 `APPEND` 当跨账号投递用 | 走不通（`APPEND` 只能写本账号内部） | 跨账号投递只能用 SMTP |
 | 12 | 附件默认全量下载 | 磁盘被很快吃掉 | 只存元数据、按需拉；大附件一律按需 |
 | 13 | HTML 邮件直接渲染远程资源 | 打开即泄露「已读 + IP + 时间」（跟踪像素）；`agent@` 入口的只读承诺被绕过 | 远程内容白名单（见 4.4） |
 | 14 | IDLE 断开不重连、重连不补抓 | 新邮件静默丢失，且无任何报错 | 断线重连 + 重连后增量补抓；IDLE 不可用回退轮询（见 5.1） |
-| 15 | base64 附件内容进 FTS 索引 | 索引膨胀数倍，搜索变慢 | 只索引文本部分；附件只存元数据文件夹 || 16 | 流式 `fetch` 未耗尽就在同一连接发新命令 | **死锁**（单 socket 命令串行）：命令排队等 fetch 完成，fetch 等队列 | 先把结果收集成数组，再在流外发后续命令（`listNewMeta` / `listFlagsSince`） |
-| 17 | 增量用裸 `UID n:*` 不过滤 | **每轮重抓最后一封**（RFC 3501：`*` 即最大 UID，与 n 无关） | 结果必须 `uid > lastSeenUid` 过滤 || 11 | 把 `APPEND` 当跨账号投递用 | 走不通（`APPEND` 只能写本账号内部） | 跨账号投递只能用 SMTP |
-| 12 | 附件默认全量下载 | 磁盘被很快吃掉 | 只存元数据、按需拉；大附件一律按需 |
+| 15 | base64 附件内容进 FTS 索引 | 索引膨胀数倍，搜索变慢 | 只索引文本部分；附件只存元数据文件夹 |
+| 16 | 流式 `fetch` 未耗尽就在同一连接发新命令 | **死锁**（单 socket 命令串行）：命令排队等 fetch 完成，fetch 等队列 | 先把结果收集成数组，再在流外发后续命令（`listNewMeta` / `listFlagsSince`） |
+| 17 | 增量用裸 `UID n:*` 不过滤 | **每轮重抓最后一封**（RFC 3501：`*` 即最大 UID，与 n 无关） | 结果必须 `uid > lastSeenUid` 过滤 |
 
 ### 7.1 第 1 条单列（最严重）
 
@@ -436,7 +462,10 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 
 ### 2. webmaild 与 `/mail` 前端（正常 webmail）
 
-- 三家账号的读写、发信、`APPEND` 到各自的「已发送」（`\Sent` 文件夹要探测）
+- 独立包 `webmail/`、独立进程、localhost HTTP API（进程形态与 API 形状见 4.6）
+- 三家账号的读写、发信、`APPEND` 到各自的「已发送」（`\Sent` 文件夹要探测，探测不到按 4.6 的回退链处理）
+- 标记写回对该 Message-ID 的所有副本一起 `STORE`（红线 8）；删除 / 移动优先 `MOVE` 扩展
+- 集成测试沿用 Dovecot 容器；SMTP 用内存接收端断言「SMTP 发出与 `APPEND` 留底是同一份字节」
 - 聚合视图：默认合并、保留账号视角 + 账号筛选（见 4.2）
 
 ### 3. 受限工具面（MCP）
@@ -490,6 +519,8 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 | 模型厂家 = DeepSeek / Kimi / GLM 等国产开源模型 | 海外 API / 自部署 | VPS 可直连；均可拿到真实推理输出（5.2 依赖）；自部署硬件不够 |
 | IDLE 事件驱动唤醒 | 纯定时轮询 | 邮件到达即处理；IDLE 不可用时回退轮询兜底 |
 | worker 池进程内并行 | 多容器多实例 | 模型调用是 IO 密集，进程内并发足够；多实例只增加部署复杂度 |
+| webmaild 独立进程 + localhost HTTP | 写进 Next.js route handler | 红线 9：route handler 模块状态每请求作废，连接与索引必须放独立进程；写操作也因此留在 `webmail/` 包内（3.8） |
+| webmaild 复用 `mail/src` 的读取模块 | 抽第三个公共包 | `mail/` 本就是纯读取代码的家，import 方向 webmail→mail 让审查项保持字面成立；多一个包只多一份构建配置 |
 | 备份等购买 OSS 后实施 | 现在照抄 backup-ideas.sh 推 git | 邮件库 GB 级持续增长，git 不适合做这种载体 |
 
 ---
