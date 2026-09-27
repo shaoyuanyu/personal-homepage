@@ -1,6 +1,6 @@
 # 邮件系统与 agent · 设计方案
 
-> 状态：第 1、2 步已完成，下一步第 3 步（受限工具面）
+> 状态：第 1、2、3 步已完成，下一步第 4 步（agent worker 池与产物）
 > 关联：`CLAUDE.md`（主站开发规范）、`ARCHITECTURE.md`（主站技术架构）
 
 **这份文档是什么**：邮件系统与 agent 的完整设计——要做什么、边界在哪、用什么轮子、按什么顺序做。
@@ -148,7 +148,7 @@ SPF 已配 `-all`（硬失败）、DKIM 已在签名，伪造你的地址发信�
 3.9 把「以 `agent@` 名义发出邮件」列为注入后的可能后果之一，它是三类后果里唯一会波及第三方的：被注入的 agent 向任意外部地址发垃圾邮件，代价是阿里云封号、域名进黑名单。因此 `send_as_agent` 带一道闸门：
 
 - 收件人默认白名单：你的三个地址。白名单内的发送直接发出。
-- 白名单外的发送进入**待确认队列**：邮件本体先写好但不发出，在 `/mail` 的 agent 页签里展示，你点确认后才发出。
+- 白名单外的发送进入**待确认队列**：邮件本体先写好但不发出，在 `/mail` 的 agent 页签里展示，你点确认后才发出；也可以**丢弃**（队列里只进不出会堆垃圾）。确认与丢弃走 maild 的 HTTP 端点（`/pending-sends/:id/confirm|discard`），**不 exposed 成 MCP 工具**——agent 不能自己给自己的外发开闸。
 - 待确认队列的通知：页面被动展示为主；若队列有待确认项，agent 在当日的汇报里附一句提醒，不单独发提醒信。
 - 闸门在工具层实现，与 5.3 的台账同一位置——agent 无法绕过。
 
@@ -322,6 +322,9 @@ reasoning   id, message_id, run_kind(run|followup|rejudge),
 
 **二、邮件能力是一个受限工具面，不是「允许它调 IMAP」。** agent 只能调一组固定函数：
 
+```
+list_accounts / search_messages / read_message
+get_attachment / set_flags / send_as_agent / get_ledger
 create_event
 ```
 
@@ -329,9 +332,13 @@ create_event
 
 - `send_as_agent` 经 3.7 的发信闸门：白名单地址直发，白名单外进待确认队列。
 - `create_event` 把提取出的日程写入主站 CalDAV（Radicale）的 `agent-schedule` 集合，复用 `/calendar` 展示——邮件系统里不造第二套日历。
-list_accounts / search_messages / read_message
-get_attachment / set_flags / send_as_agent / get_ledger
-```
+
+工具面的实现形态（第 3 步定）：
+
+- **工具面进程内嵌在 maild**，传输用 MCP 的 streamable HTTP，绑 `127.0.0.1:9711`、不做认证（与 webmaild 同一信任边界）。同一 HTTP 服务上另挂几个**非 MCP 的 JSON 端点**：`/ledger`、`/pending-sends`、`/pending-sends/:id/confirm|discard`、`/health`——这是给前端 / 人工用的只读视图与确认动作，**确认不 exposed 成 MCP 工具**（agent 不能自己给自己的外发开闸）。
+- **台账与待确认队列存独立的 `agent.db`**（与 `mail.db` 同目录）。`mail.db` 仍是纯原始邮件索引；5.2 的 `judgment` / `reasoning` 届时也进 `agent.db`——工具层产物与模型产物同属「非原始邮件」一侧。
+- **写操作的 IMAP 连接策略**：工具面不碰抓取器的 IDLE 连接（IDLE 中的连接无法插入命令，打断 IDLE 又伤实时性）；`set_flags` 与 `APPEND` 各开**短时第二条连接**，按账号互斥串行、用完即断。这是对红线 10 的补充说明：它防的是「并行抓取的常驻多连接」，工具面写操作低频秒级，与抓取器同账号最多瞬时两条。
+- `send_as_agent` v1 只发纯文本正文（回执与汇报够用），不支持附件；Message-ID 由 maild 生成写进 MIME，SMTP 与 `APPEND` 同一份字节（红线 6）。
 
 **「不能删除邮件」靠的是没有这个函数，不是靠提示词**——提示词层面的约束，在能执行任意代码的前提下等于没有。
 
@@ -418,7 +425,7 @@ SnappyMail / Roundcube 都不用。前端要自己写：要 shadcn 风格、要�
 | 7 | 产物关联键用 `(账号, UID)` | 多副本被拆成几条 | 用 `Message-ID` |
 | 8 | 多副本只写一份标记 | 一个邮箱已读、另一个未读 | 对所有副本一起写 |
 | 9 | 常驻 IMAP 状态放在 Next.js 进程里 | route handler 每请求重新求值，模块级状态作废 | 常驻状态放独立进程（主站已有同款教训） |
-| 10 | 对同一账号并发开多条连接 | 阿里云 / 腾讯都有限制，会被掐 | 串行遍历文件夹；agent 并行只在 worker 池，IMAP 连接每账号一条 |
+| 10 | 对同一账号并发开多条连接 | 阿里云 / 腾讯都有限制，会被掐 | 串行遍历文件夹；agent 并行只在 worker 池，抓取连接每账号一条；工具面写操作（`set_flags` / `APPEND`）另开**短时第二条连接**，账号级互斥、用完即断（见 5.3） |
 | 11 | 把 `APPEND` 当跨账号投递用 | 走不通（`APPEND` 只能写本账号内部） | 跨账号投递只能用 SMTP |
 | 12 | 附件默认全量下载 | 磁盘被很快吃掉 | 只存元数据、按需拉；大附件一律按需 |
 | 13 | HTML 邮件直接渲染远程资源 | 打开即泄露「已读 + IP + 时间」（跟踪像素）；`agent@` 入口的只读承诺被绕过 | 远程内容白名单（见 4.4） |
@@ -472,9 +479,12 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 
 ### 3. 受限工具面（MCP）
 
-- 暴露 5.3 列出的函数（含发信闸门与 `create_event`）
-- **没有**删除、移动、`EXPUNGE` 的函数
-- 每次调用落台账
+**已完成（2026-10-03，`mail/` 包内，45 条测试全过，详见 `mail/README.md`）**
+
+- 暴露 5.3 列出的 8 个函数（含发信闸门与 `create_event`），MCP over streamable HTTP（`127.0.0.1:9711`）+ 非 MCP 的 JSON 端点（`/ledger` `/pending-sends` `/pending-sends/:id/confirm|discard` `/health`）
+- **没有**删除、移动、`EXPUNGE` 的函数；`test/audit.test.ts` 把「写调用落点唯一」机器化为常驻源码审查
+- 每次调用落台账（`agent.db` 的 `tool_ledger`，只追加）；待确认队列入 `pending_sends`（含 MIME 字节，确认后原样发出）
+- 实现期实测踩中两个坑并修复（`mail/README.md` 实现经验 5/6）：工具面 messageId 需宽容归一（库键是 `mid:` 前缀）；`eml_path` 是相对 dataDir 的路径
 
 ### 4. agent worker 池与产物
 
@@ -523,6 +533,9 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 | worker 池进程内并行 | 多容器多实例 | 模型调用是 IO 密集，进程内并发足够；多实例只增加部署复杂度 |
 | webmaild 独立进程 + localhost HTTP | 写进 Next.js route handler | 红线 9：route handler 模块状态每请求作废，连接与索引必须放独立进程；写操作也因此留在 `webmail/` 包内（3.8） |
 | webmaild 复用 `mail/src` 的读取模块 | 抽第三个公共包 | `mail/` 本就是纯读取代码的家，import 方向 webmail→mail 让审查项保持字面成立；多一个包只多一份构建配置 |
+| 工具面 = MCP over streamable HTTP（`127.0.0.1:9711`） | stdio / 另起独立工具进程 | 凭据只该有一个落点（maild 进程内嵌）；HTTP 传输让未来的独立容器 worker 与 harness 都能接；stdio 只覆盖同机子进程一种形态 |
+| 台账与待确认队列存 `agent.db`（独立于 `mail.db`） | 塞进 `mail.db` 新表 | `mail.db` 保持纯原始邮件索引；工具层产物与模型产物（5.2）同属「非原始邮件」一侧，一个库装齐 |
+| 工具面写操作开短时第二条连接（账号互斥） | 复用/打断抓取器的 IDLE 连接 | IDLE 中的连接无法插入命令；写操作低频秒级，瞬时双连可接受（红线 10 防的是常驻并行抓取） |
 | 备份等购买 OSS 后实施 | 现在照抄 backup-ideas.sh 推 git | 邮件库 GB 级持续增长，git 不适合做这种载体 |
 
 ---
