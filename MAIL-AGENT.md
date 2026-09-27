@@ -1,6 +1,6 @@
 # 邮件系统与 agent · 设计方案
 
-> 状态：第 1 步（maild 取信与索引）已完成，正在实现第 2 步
+> 状态：第 1、2 步已完成，下一步第 3 步（受限工具面）
 > 关联：`CLAUDE.md`（主站开发规范）、`ARCHITECTURE.md`（主站技术架构）
 
 **这份文档是什么**：邮件系统与 agent 的完整设计——要做什么、边界在哪、用什么轮子、按什么顺序做。
@@ -461,6 +461,8 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 - **把 PEEK 那条写成常驻测试**（见 7.1），这一步不过关不往下走
 
 ### 2. webmaild 与 `/mail` 前端（正常 webmail）
+
+**已完成（2026-09-27）：** `webmail/` 独立包（16 条集成测试全过，详见 `webmail/README.md`）+ Next.js 侧 `/api/mail/*` 代理与 `/mail` 前端（`/mail`、`/mail/message/[id]`、`/mail/compose`，5 条 E2E 打桩用例并入 `e2e/smoke.spec.ts` 常驻回归）。
 
 - 独立包 `webmail/`、独立进程、localhost HTTP API（进程形态与 API 形状见 4.6）
 - 三家账号的读写、发信、`APPEND` 到各自的「已发送」（`\Sent` 文件夹要探测，探测不到按 4.6 的回退链处理）

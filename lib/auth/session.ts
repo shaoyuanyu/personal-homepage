@@ -8,6 +8,16 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export const SESSION_COOKIE = "owner_session";
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 天
 
+/**
+ * 会话 Cookie 的 domain：shaoyuanyu.cn 主域及其子域（mail.shaoyuanyu.cn 等）共享登录态
+ * （MAIL-AGENT.md 2.1）。localhost / IP 直连不设 domain（浏览器对 IP 与裸域名的
+ * Domain 属性处理不一致，不设反而正确）。
+ */
+export function sessionCookieDomain(host: string | null | undefined): string | undefined {
+  const h = (host ?? "").split(":")[0];
+  return h === "shaoyuanyu.cn" || h.endsWith(".shaoyuanyu.cn") ? ".shaoyuanyu.cn" : undefined;
+}
+
 interface SessionPayload {
   v: 1;
   iat: number;

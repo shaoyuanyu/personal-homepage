@@ -270,6 +270,43 @@
   font-size: 0.875rem;
 }
 
+/* ---- 邮件正文容器（/mail 详情页，message-view.tsx 配套）----
+   邮件 HTML 已由 webmaild 做过 sanitize + 远程资源剥除（4.4），这里只补排版。 */
+.mail-body :where(img) {
+  max-width: 100%;
+  height: auto;
+}
+.mail-body :where(a) {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.mail-body :where(blockquote) {
+  border-left: 3px solid var(--border);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  color: var(--muted-foreground);
+}
+.mail-body :where(pre) {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+.mail-body :where(table) {
+  border-collapse: collapse;
+}
+.mail-body :where(td, th) {
+  padding: 0.25rem 0.5rem;
+}
+/* 被剥除的远程图片占位：给一个可见的虚线框，点击「显示图片」后换回原图 */
+.mail-body :where(img[data-remote-src]) {
+  min-width: 2rem;
+  min-height: 2rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
 /* ---- 字体 @font-face 来源 ----
    - Inter / Tinos / Noto Serif SC：由 app/layout.tsx 导入 @fontsource 的 CSS
      （自托管，按 unicode-range 分片，浏览器只下载用到的分片）。

@@ -12,6 +12,7 @@ import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
   createSessionToken,
+  sessionCookieDomain,
 } from "@/lib/auth/session";
 import { verifyTotp } from "@/lib/auth/totp";
 
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
     secure: isHttps(req),
     sameSite: "lax",
     path: "/",
+    domain: sessionCookieDomain(req.headers.get("host")),
     maxAge: Math.floor(SESSION_TTL_MS / 1000),
   });
   return res;

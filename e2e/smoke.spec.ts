@@ -2862,3 +2862,293 @@ test.describe("我的日历（主人专属）", () => {
     fs.rmSync(join(STANDALONE_DATA_DIR, "caldav-reset.json"), { force: true });
   });
 });
+
+/* ============================================================
+ * 站内邮件（/mail）
+ * 前端 UI 用例对 /api/mail/* 打桩（webmaild 后端的集成测试在 webmail/ 包内，
+ * 用真实 Dovecot 容器跑）；游客守卫用例不需要打桩（代理层先 401）。
+ * ============================================================ */
+
+const MAIL_ACCOUNTS = [
+  {
+    id: "acc1",
+    displayName: "主账号",
+    email: "me@mail.example.cn",
+    provider: "test",
+    color: "cyan",
+    folders: ["INBOX", "Sent"],
+    enabled: true,
+  },
+  {
+    id: "acc2",
+    displayName: "学校",
+    email: "ysy@edu.example.cn",
+    provider: "test",
+    color: "violet",
+    folders: ["INBOX", "Sent"],
+    enabled: true,
+  },
+];
+
+function mailItem(over: Record<string, unknown>) {
+  return {
+    messageId: "mid:w01@test.local",
+    date: "2026-09-25T02:00:00.000Z",
+    subject: "面试通知",
+    fromAddr: "zhang@example.com",
+    fromName: "张老师",
+    snippet: "你好，你的面试的通知时间是周五下午三点",
+    size: 300,
+    truncated: false,
+    seen: false,
+    flagged: false,
+    copies: [{ accountId: "acc1", folder: "INBOX", uid: 1 }],
+    accounts: ["acc1"],
+    ...over,
+  };
+}
+
+const MAIL_LIST = [
+  mailItem({
+    messageId: "mid:w04@test.local",
+    date: "2026-09-25T05:00:00.000Z",
+    subject: "Report with attachment",
+    fromAddr: "boss@example.com",
+    fromName: "",
+    snippet: "See attached report.",
+  }),
+  mailItem({
+    messageId: "mid:w03@test.local",
+    date: "2026-09-25T04:00:00.000Z",
+    subject: "HTML Newsletter",
+    fromAddr: "newsletter@example.com",
+    fromName: "",
+    snippet: "HTML newsletter body",
+  }),
+  mailItem({
+    messageId: "mid:w02@test.local",
+    date: "2026-09-25T03:00:00.000Z",
+    subject: "Weekly Digest",
+    fromAddr: "newsletter@example.com",
+    fromName: "",
+    snippet: "This week in research",
+    copies: [{ accountId: "acc2", folder: "INBOX", uid: 2 }],
+    accounts: ["acc2"],
+  }),
+  mailItem({
+    messageId: "mid:w01@test.local",
+    date: "2026-09-25T02:00:00.000Z",
+    copies: [
+      { accountId: "acc1", folder: "INBOX", uid: 1 },
+      { accountId: "acc2", folder: "INBOX", uid: 1 },
+    ],
+    accounts: ["acc1", "acc2"],
+  }),
+];
+
+const MAIL_DETAIL_HTML = `<p>newsletter body</p>
+<img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/%3E" data-remote-src="https://tracker.example.com/pixel.png" />
+<img src="https://pics.edu.cn/logo.png" />
+<img src="/api/mail/message/mid%3Aw03%40test.local/attachment/0" />`;
+
+/** 按 path 分发 /api/mail/** 的桩；写操作（flags/send/delete）记录请求体供断言 */
+function stubMailApi(
+  page: Page,
+  calls: { flags: unknown[]; send: unknown[]; delete: unknown[] },
+) {
+  return page.route("**/api/mail/**", (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname.replace(/^\/api\/mail/, "");
+    const json = (body: unknown) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+
+    if (path === "/accounts") return json(MAIL_ACCOUNTS);
+    if (path === "/messages") {
+      const account = url.searchParams.get("account");
+      const q = url.searchParams.get("q");
+      let items = MAIL_LIST;
+      if (account) items = items.filter((m) => m.accounts.includes(account));
+      if (q) items = items.filter((m) => m.subject.includes(q) || m.snippet.includes(q));
+      return json({ items, next: null });
+    }
+    if (path === "/flags") {
+      calls.flags.push(route.request().postDataJSON());
+      return json({ updated: 2 });
+    }
+    if (path === "/send") {
+      calls.send.push(route.request().postDataJSON());
+      return json({ messageId: "<new@local>", sentFolder: "Sent" });
+    }
+    if (path === "/delete") {
+      calls.delete.push(route.request().postDataJSON());
+      return json({ affected: 2 });
+    }
+    if (path.startsWith("/message/")) {
+      // 按请求的消息 id 分发：w01 是多副本（删除用例），其余返回 w03 详情
+      const isShared = path.includes("w01");
+      if (isShared) {
+        return json(
+          mailItem({
+            messageId: "mid:w01@test.local",
+            seen: false,
+            copies: [
+              { accountId: "acc1", folder: "INBOX", uid: 1 },
+              { accountId: "acc2", folder: "INBOX", uid: 1 },
+            ],
+            accounts: ["acc1", "acc2"],
+            to: [{ name: "", address: "me@mail.example.cn" }],
+            cc: [],
+            text: "你好，你的面试的通知时间是周五下午三点，请提前十分钟到。",
+            html: "",
+            remoteBlocked: 0,
+            attachments: [],
+          }),
+        );
+      }
+      return json(
+        mailItem({
+          messageId: "mid:w03@test.local",
+          subject: "HTML Newsletter",
+          fromAddr: "newsletter@example.com",
+          fromName: "",
+          seen: false,
+          to: [{ name: "", address: "me@mail.example.cn" }],
+          cc: [],
+          text: "",
+          html: MAIL_DETAIL_HTML,
+          remoteBlocked: 1,
+          attachments: [
+            {
+              index: 0,
+              filename: "logo.png",
+              contentType: "image/png",
+              size: 70,
+              cid: "logo-inline",
+              inline: true,
+            },
+          ],
+        }),
+      );
+    }
+    return json({ error: `未打桩的端点: ${path}` });
+  });
+}
+
+test.describe("站内邮件（/mail）", () => {
+  test("游客：页面重定向到登录页，API 一律 401", async ({ page }) => {
+    await page.goto("/mail", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/login$/);
+    const res = await page.request.get("/api/mail/messages");
+    expect(res.status()).toBe(401);
+  });
+
+  test.describe("登录态（API 打桩）", () => {
+    test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
+
+    test("合并视图：跨账号副本聚合 + 账号筛选 + 搜索", async ({ page }) => {
+      const calls = { flags: [], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      const rows = page.locator('[data-slot="mail-list"] > li');
+      await expect(rows).toHaveCount(4);
+      // 多副本消息：账号色点 2 个，title 标注两个账号
+      const shared = rows.nth(3).locator("span[title]");
+      await expect(shared).toHaveAttribute("title", "主账号、学校");
+      await expect(rows.nth(3).locator("span[title] > span")).toHaveCount(2);
+      await expect(rows.nth(0)).toContainText("Report with attachment");
+
+      // 账号筛选：只显示该账号的 2 条
+      await page.getByRole("button", { name: "学校" }).click();
+      await expect(rows).toHaveCount(2);
+
+      // 搜索（300ms 防抖后发出 q 请求）
+      await page.getByRole("button", { name: "全部" }).click();
+      await page.getByPlaceholder("搜索邮件…").fill("面试");
+      await expect(rows).toHaveCount(1);
+      await expect(rows.nth(0)).toContainText("面试通知");
+    });
+
+    test("详情页：远程图片占位 + 「显示图片」逐封加载 + 打开即标已读", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      await page.locator('[data-slot="mail-list"] > li').nth(1).locator("button").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+
+      // 打开即标已读（对该消息所有副本）
+      await expect.poll(() => calls.flags.length).toBe(1);
+      expect(calls.flags[0]).toEqual({ messageId: "mid:w03@test.local", seen: true });
+
+      // 远程内容提示条 + 占位图（白名单外的 tracker 被剥除、白名单内的 edu.cn 保留）
+      await expect(page.getByText(/已拦截 1 个远程内容/)).toBeVisible();
+      const body = page.locator(".mail-body");
+      await expect(body.locator("img[data-remote-src]")).toHaveCount(1);
+      await expect(body.locator('img[src="https://pics.edu.cn/logo.png"]')).toHaveCount(1);
+      // cid 内联附件重写到附件端点
+      await expect(
+        body.locator('img[src^="/api/mail/message/"][src$="/attachment/0"]'),
+      ).toHaveCount(1);
+
+      // 「显示图片」：占位图换回原远程 URL，提示条消失
+      await page.getByRole("button", { name: "显示图片" }).click();
+      await expect(body.locator("img[data-remote-src]")).toHaveCount(0);
+      await expect(body.locator('img[src="https://tracker.example.com/pixel.png"]')).toHaveCount(1);
+      await expect(page.getByText(/已拦截 1 个远程内容/)).toHaveCount(0);
+    });
+
+    test("写邮件：表单提交发出正确请求体", async ({ page }) => {
+      const calls = { flags: [], send: [] as unknown[], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail/compose");
+      await page.locator("#mail-to").fill("someone@example.org");
+      await page.locator("#mail-subject").fill("测试主题");
+      await page.locator("#mail-body").fill("正文内容");
+      await page.getByRole("button", { name: "发送" }).click();
+
+      await expect.poll(() => calls.send.length).toBe(1);
+      const sent = calls.send[0] as {
+        accountId: string;
+        to: string[];
+        subject: string;
+        text: string;
+      };
+      expect(sent.accountId).toBe("acc1");
+      expect(sent.to).toEqual(["someone@example.org"]);
+      expect(sent.subject).toBe("测试主题");
+      expect(sent.text).toBe("正文内容");
+      await expect(page).toHaveURL(/\/mail$/);
+    });
+
+    test("删除：确认弹窗后对该消息的全部副本发出删除", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] as unknown[] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      // 打开多副本消息（第 4 条）
+      await page.locator('[data-slot="mail-list"] > li').nth(3).locator("button").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+      await page.getByRole("button", { name: "删除" }).first().click();
+
+      // 确认弹窗出现，确认后才真正删除
+      const dialog = page.locator('[data-slot="confirm-dialog"]');
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: "删除" }).click();
+
+      await expect.poll(() => calls.delete.length).toBe(1);
+      const body = calls.delete[0] as { copies: { accountId: string; folder: string; uid: number }[] };
+      expect(body.copies.length).toBe(2);
+      await expect(page).toHaveURL(/\/mail$/);
+    });
+  });
+});
