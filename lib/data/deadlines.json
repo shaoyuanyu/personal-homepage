@@ -1154,6 +1154,27 @@
       ]
     },
     {
+      "a": "CCC",
+      "n": "Computational Complexity Conference",
+      "l": "B",
+      "f": "计算机科学理论",
+      "d": "https://dblp.org/db/conf/coco/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "https://computationalcomplexity.org/Archive/2026/cfp.html",
+          "tz": "Etc/GMT+12",
+          "date": "August 3-6, 2026",
+          "place": "Lisbon, Portugal",
+          "timeline": [
+            {
+              "t": "2026-02-06 23:59:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "a": "CCCG",
       "n": "Canadian Conference on Computational Geometry",
       "l": "",
@@ -3196,6 +3217,19 @@
       "d": "https://dblp.org/db/conf/eurogp/",
       "years": [
         {
+          "y": 2026,
+          "link": "https://www.evostar.org/2026/eurogp/",
+          "tz": "Etc/GMT+12",
+          "date": "April 8-10, 2026",
+          "place": "Toulouse, France (Hybrid)",
+          "timeline": [
+            {
+              "t": "2025-11-15 23:59:59",
+              "c": "Regular papers; extended deadline"
+            }
+          ]
+        },
+        {
           "y": 2027,
           "link": "https://www.evostar.org/2027/eurogp/",
           "tz": "Etc/GMT+12",
@@ -3438,6 +3472,19 @@
       "d": "https://dblp.org/db/conf/evoapps/",
       "years": [
         {
+          "y": 2026,
+          "link": "https://www.evostar.org/2026/evoapps/",
+          "tz": "Etc/GMT+12",
+          "date": "April 8-10, 2026",
+          "place": "Toulouse, France (Hybrid)",
+          "timeline": [
+            {
+              "t": "2025-11-15 23:59:59",
+              "c": "Regular papers; extended deadline"
+            }
+          ]
+        },
+        {
           "y": 2027,
           "link": "https://www.evostar.org/2027/evoapps/",
           "tz": "Etc/GMT+12",
@@ -3460,6 +3507,19 @@
       "d": "https://dblp.org/db/conf/evocop/",
       "years": [
         {
+          "y": 2026,
+          "link": "https://www.evostar.org/2026/evocop/",
+          "tz": "Etc/GMT+12",
+          "date": "April 8-10, 2026",
+          "place": "Toulouse, France (Hybrid)",
+          "timeline": [
+            {
+              "t": "2025-11-15 23:59:59",
+              "c": "Regular papers; extended deadline"
+            }
+          ]
+        },
+        {
           "y": 2027,
           "link": "https://www.evostar.org/2027/evocop/",
           "tz": "Etc/GMT+12",
@@ -3481,6 +3541,19 @@
       "f": "人工智能",
       "d": "https://dblp.org/db/conf/evomusart/",
       "years": [
+        {
+          "y": 2026,
+          "link": "https://www.evostar.org/2026/evomusart/",
+          "tz": "Etc/GMT+12",
+          "date": "April 8-10, 2026",
+          "place": "Toulouse, France (Hybrid)",
+          "timeline": [
+            {
+              "t": "2025-11-15 23:59:59",
+              "c": "Regular papers; extended deadline"
+            }
+          ]
+        },
         {
           "y": 2027,
           "link": "https://www.evostar.org/2027/evomusart/",
@@ -3668,7 +3741,8 @@
               "t": "2025-11-25 23:59:00"
             },
             {
-              "t": "2025-12-02 23:59:00"
+              "t": "2025-12-02 23:59:00",
+              "c": "Optional abstract registration"
             }
           ]
         }
@@ -3760,12 +3834,11 @@
           "place": "Monterey, California, USA",
           "timeline": [
             {
-              "t": "2025-09-24 23:59:59",
-              "c": "Abstracts Due"
+              "k": "abstract",
+              "t": "2025-09-24 23:59:59"
             },
             {
-              "t": "2025-10-01 23:59:59",
-              "c": "Submissions Due"
+              "t": "2025-10-01 23:59:59"
             }
           ]
         },
@@ -3809,6 +3882,31 @@
             {
               "t": "2026-06-19 23:59:59",
               "c": "Submission Due (Conference Track)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "a": "FSCD",
+      "n": "International Conference on Formal Structures for Computation and Deduction",
+      "l": "C",
+      "f": "计算机科学理论",
+      "d": "https://dblp.org/db/conf/fscd/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "https://fscd2026.github.io/",
+          "tz": "Etc/GMT+12",
+          "date": "July 20-23, 2026",
+          "place": "Lisbon, Portugal",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-01-23 23:59:59"
+            },
+            {
+              "t": "2026-01-30 23:59:59"
             }
           ]
         }
@@ -5807,28 +5905,6 @@
           "timeline": [
             {
               "t": "2026-10-10 23:59:59",
-              "c": "Submission Deadline"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "a": "IH&MMSec",
-      "n": "ACM Workshop on Information Hiding and Multimedia Security",
-      "l": "C",
-      "f": "网络与信息安全",
-      "d": "https://dblp.org/db/conf/ih/",
-      "years": [
-        {
-          "y": 2026,
-          "link": "https://www.ihmmsec.org/cms/home/home2026.html",
-          "tz": "Etc/GMT+12",
-          "date": "June 17-19, 2026",
-          "place": "Florence, Italy",
-          "timeline": [
-            {
-              "t": "2026-02-16 23:59:59",
               "c": "Submission Deadline"
             }
           ]
@@ -8239,6 +8315,31 @@
       "d": "https://dblp.org/db/conf/pods/",
       "years": [
         {
+          "y": 2026,
+          "link": "https://2026.sigmod.org/",
+          "tz": "Etc/GMT+12",
+          "date": "May 31 - June 5, 2026",
+          "place": "Bengaluru, India",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2025-06-03 23:59:00"
+            },
+            {
+              "t": "2025-06-10 23:59:00",
+              "c": "First submission cycle"
+            },
+            {
+              "k": "abstract",
+              "t": "2025-12-03 23:59:00"
+            },
+            {
+              "t": "2025-12-10 23:59:00",
+              "c": "Second submission cycle"
+            }
+          ]
+        },
+        {
           "y": 2027,
           "link": "https://2027.sigmod.org/",
           "tz": "Etc/GMT+12",
@@ -8650,7 +8751,7 @@
           "place": "Saint Malo, France",
           "timeline": [
             {
-              "t": "2025-11-13 11:59:59"
+              "t": "2025-11-13 23:59:59"
             }
           ]
         },
@@ -9959,12 +10060,12 @@
           "place": "Hannover, Germany",
           "timeline": [
             {
-              "t": "2026-02-12 23:59:59",
-              "c": "Mandatory Paper Registration Deadline"
+              "k": "abstract",
+              "t": "2026-02-12 23:59:59"
             },
             {
               "t": "2026-02-19 23:59:59",
-              "c": "Paper Submission Deadline"
+              "c": "Mandatory paper registration with title and abstract"
             }
           ]
         }
@@ -10736,10 +10837,11 @@
           "timeline": [
             {
               "k": "abstract",
-              "t": "2026-04-21 23:59:59"
+              "t": "2026-05-18 23:59:59"
             },
             {
-              "t": "2026-04-28 23:59:59"
+              "t": "2026-05-18 23:59:59",
+              "c": "Regular papers; final abstract and paper cutoffs from the official"
             }
           ]
         }
