@@ -256,7 +256,8 @@
               "t": "2026-01-15 22:00:00"
             },
             {
-              "t": "2026-01-22 22:00:00"
+              "t": "2026-01-22 22:00:00",
+              "c": "Regular conference papers; submission form registration and initial"
             }
           ]
         }
@@ -3850,12 +3851,11 @@
           "place": "Monterey, California, USA",
           "timeline": [
             {
-              "t": "2026-10-01 23:59:59",
-              "c": "Abstracts Due"
+              "k": "abstract",
+              "t": "2026-10-01 23:59:59"
             },
             {
-              "t": "2026-10-08 23:59:59",
-              "c": "Submissions Due"
+              "t": "2026-10-08 23:59:59"
             }
           ]
         }
@@ -5448,7 +5448,7 @@
             },
             {
               "t": "2025-07-18 23:59:59",
-              "c": "Second Cycle: Submission"
+              "c": "Second Cycle: Submission; optional abstract registration"
             }
           ]
         },
