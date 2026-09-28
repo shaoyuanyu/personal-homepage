@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-09-27",
+  "fetchedAt": "2026-09-28",
   "source": "ccfddl/ccf-deadlines (allconf.yml)",
   "conferences": [
     {
@@ -5786,7 +5786,8 @@
               "t": "2026-03-21 23:59:59"
             },
             {
-              "t": "2026-03-31 23:59:59"
+              "t": "2026-03-31 23:59:59",
+              "c": "Regular full papers; mandatory abstract and initial submission"
             }
           ]
         }
@@ -8676,7 +8677,8 @@
               "t": "2025-10-10 23:59:59"
             },
             {
-              "t": "2025-10-17 23:59:59"
+              "t": "2025-10-17 23:59:59",
+              "c": "Regular research papers; abstract submission is optional"
             }
           ]
         },
@@ -8692,7 +8694,8 @@
               "t": "2026-11-05 23:59:59"
             },
             {
-              "t": "2026-11-12 23:59:59"
+              "t": "2026-11-12 23:59:59",
+              "c": "Regular research papers; abstract submission is optional"
             }
           ]
         }
@@ -9010,12 +9013,12 @@
           "place": "Limassol, Cyprus",
           "timeline": [
             {
-              "t": "2025-10-09 23:59:59",
-              "c": "Research Track Abstract submission (mandatory)"
+              "k": "abstract",
+              "t": "2025-10-09 23:59:59"
             },
             {
               "t": "2025-10-16 23:59:59",
-              "c": "Research Track Paper submission deadline"
+              "c": "Regular research papers; abstract submission is mandatory"
             }
           ]
         },
@@ -9160,16 +9163,16 @@
         {
           "y": 2026,
           "link": "https://computeranimation.org/",
-          "tz": "Etc/GMT+12",
+          "tz": "UTC",
           "date": "July 8-10, 2026",
           "place": "Barcelona, Spain",
           "timeline": [
             {
               "k": "abstract",
-              "t": "2026-04-10 23:59:59"
+              "t": "2026-04-10 23:59:00"
             },
             {
-              "t": "2026-04-17 23:59:59",
+              "t": "2026-04-17 23:59:00",
               "c": "Submission deadline (papers)"
             }
           ]
@@ -9365,7 +9368,8 @@
           "place": "Toronto, Canada & Virtual",
           "timeline": [
             {
-              "t": "2026-05-10 23:59:00"
+              "t": "2026-05-10 23:59:59",
+              "c": "Regular papers; midnight EST"
             }
           ]
         }
