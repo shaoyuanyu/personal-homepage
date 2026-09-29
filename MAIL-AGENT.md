@@ -1,6 +1,6 @@
 # 邮件系统与 agent · 设计方案
 
-> 状态：第 1、2、3、4 步已完成，下一步第 5 步（harness 评测与 `/mail` 的 `agent@` 只读入口）
+> 状态：第 1、2、3、4、5 步已完成；第 6 步 harness 条件触发（5.4，现在不做）；第 7 步归档备份等 OSS
 > 关联：`CLAUDE.md`（主站开发规范）、`ARCHITECTURE.md`（主站技术架构）
 
 **这份文档是什么**：邮件系统与 agent 的完整设计——要做什么、边界在哪、用什么轮子、按什么顺序做。
@@ -507,8 +507,18 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 
 ### 5. `/mail` 的 `agent@` 只读入口
 
+**已完成（2026-10-04）：** mail 侧 `agentview.ts` + `/agent/*` 端点 8 条测试全过（77 条，详见 `mail/README.md`）；站点侧 `/api/mail/agent/*` 代理 + `/mail/agent` 双页签页面，3 条 E2E 打桩用例并入 `e2e/smoke.spec.ts` 常驻回归。
+
 - 收 + 发合并时间线、原始邮件、可展开的 `message/rfc822`、`.eml` 下载
 - 第二个页签：处理台账（工具调用 + 判定 + 推理）
+
+**实现细则（2026-09-30 定）：**
+
+- **数据通路**：站点 `app/api/mail/agent/[...path]`（`isOwner` 守卫；静态段 `agent` 优先于既有 `[...path]` 代理）→ maild 同一 HTTP 服务（`127.0.0.1:9711`）的 `/agent/*` **只读端点**（4.5：前端读 agent 导出的只读视图，不直连 agent 的库）。只读端点挂在 `mcp.ts` 的 HTTP 服务上、查询逻辑独立成 `agentview.ts`（查询 mail.db + agent.db，无写路径）。
+- **端点**（一律 GET）：`/agent/timeline`（agent 账号全部副本合并时间线，方向 = from 是否 agent 地址，`(date, message_id)` 游标分页）；`/agent/message/<key>`（完整头部按原始顺序 + MIME 结构树 + 附件列表 + text 正文 + copies + judgment 摘要 + reasoning 计数——**推理本体不在内**，5.2）；`/agent/message/<key>/eml`（原件下载）；`/agent/message/<key>/rfc822/<part>`（就地展开 `message/rfc822` 附件，返回同构的头部 + 结构 + 正文）；`/agent/judgments`（判定列表，关联 subject/from/date）；`/agent/reasoning?message=<key>`（该消息全部推理行，**只在展开单封信时才拉**）。工具调用台账与待确认队列复用既有 `/ledger` `/pending-sends`（确认/丢弃仍只走 POST，是人操作）。
+- **展示原则（4.3/4.4 落地）**：正文展示 `text/plain` 原文；HTML 邮件只展示 strip 后的纯文本，结构树里标注 html part——**不渲染 HTML、不加载任何远程内容**（「展示原始邮件，不是渲染结果」）。页面上没有任何写操作入口（无回复/无标记/无 compose），唯二的 POST 是待确认队列的确认/丢弃（人操作）。
+- **页面**：`/mail/agent`（`requireOwner`），两个页签——**时间线**（行 = 方向徽章 + 主题 + 对方 + 时间；点开详情：完整头部 / MIME 结构 / 附件 / rfc822 就地展开 / .eml 下载 / 正文）与**台账**（判定列表可展开拉推理行、工具调用台账、待确认队列）。`/mail` 主页放专门入口链接；`agent@` 不进合并视图与账号筛选（webmaild 的注册表本就没有它，天然成立）。
+- **推理区两种文本分开展示**（5.2）：模型真实推理 `trace` 标「模型推理」、`summary` 标「处理说明（agent 自述，不作证据）」；每行带 model + prompt_version。
 
 ### 6. harness（条件触发，现在不做）
 

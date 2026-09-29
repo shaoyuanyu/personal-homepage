@@ -3152,3 +3152,230 @@ test.describe("站内邮件（/mail）", () => {
     });
   });
 });
+
+// ---- /mail/agent 只读入口打桩（MAIL-AGENT.md 第八节第 5 步；数据形状对应 maild /agent/* 端点）----
+
+const AGENT_TIMELINE = [
+  {
+    messageId: "mid:agent-report-1@test.local",
+    date: "2026-09-26T13:00:00.000Z",
+    direction: "out",
+    subject: "今日汇总",
+    fromAddr: "agent@mail.example.cn",
+    fromName: "agent",
+    toJson: "[]",
+    snippet: "重要 1 封，原信附后",
+    truncated: false,
+    folders: ["Sent"],
+    seen: true,
+  },
+  {
+    messageId: "mid:m1@test.local",
+    date: "2026-09-25T01:00:00.000Z",
+    direction: "in",
+    subject: "面试通知",
+    fromAddr: "hr@example.com",
+    fromName: "HR",
+    toJson: "[]",
+    snippet: "周五下午三点",
+    truncated: false,
+    folders: ["INBOX"],
+    seen: false,
+  },
+];
+
+const AGENT_DETAIL = {
+  headersRaw:
+    "From: =?UTF-8?B?YWdlbnQ=?= <agent@mail.example.cn>\r\nMessage-ID: <agent-report-1@test.local>\r\nSubject: =?UTF-8?B?5pel5oql5Yy65aSA?=",
+  subject: "今日汇总",
+  from: "agent <agent@mail.example.cn>",
+  date: "2026-09-26T13:00:00.000Z",
+  messageId: "mid:agent-report-1@test.local",
+  parts: [
+    { kind: "text", contentType: "text/plain", size: 40 },
+    { kind: "attachment", contentType: "message/rfc822", size: 900, filename: "original.eml" },
+  ],
+  text: "今日汇总：重要 1 封。原信附后，供核对。",
+  rfc822: [{ index: 0, filename: "original.eml", size: 900 }],
+  direction: "out",
+  copies: [{ accountId: "agent", folder: "Sent", uid: 5, flags: "\\Seen" }],
+  judgment: null,
+  reasoningCount: 0,
+};
+
+const AGENT_RFC822 = {
+  headersRaw: "From: 教授 <prof@example.edu>\r\nMessage-ID: <paper-invite@test.local>",
+  subject: "特刊投稿邀请",
+  from: "教授 <prof@example.edu>",
+  date: "2026-09-26T01:30:00.000Z",
+  messageId: "mid:paper-invite@test.local",
+  parts: [
+    { kind: "text", contentType: "text/plain", size: 30 },
+    { kind: "html", contentType: "text/html", size: 120 },
+  ],
+  text: "下个月截止的特刊，欢迎你投稿。",
+  rfc822: [],
+};
+
+function stubMailAgentApi(page: Page, calls: { pending: { id: number; action: string }[] }) {
+  let pendingItems = [
+    { id: 7, created_at: "2026-09-26T12:00:00.000Z", to_json: '["someone@example.org"]', subject: "代发确认", text: "请确认是否发出这封邮件。" },
+  ];
+  return page.route("**/api/mail/agent/**", (route) => {
+    const url = new URL(route.request().url());
+    const path = decodeURIComponent(url.pathname.replace(/^\/api\/mail\/agent/, ""));
+    const json = (body: unknown) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+
+    if (path === "/timeline") return json({ items: AGENT_TIMELINE, next: null });
+    if (path === "/judgments") {
+      return json({
+        items: [
+          {
+            message_id: "mid:m1@test.local",
+            verdict: "important",
+            labels_json: '["todo"]',
+            confidence: 0.9,
+            model: "test-model",
+            prompt_version: "judge-v1",
+            judged_at: "2026-09-26T10:00:00.000Z",
+            subject: "面试通知",
+            from_addr: "hr@example.com",
+            date: "2026-09-25T01:00:00.000Z",
+          },
+        ],
+        next: null,
+      });
+    }
+    if (path === "/reasoning") {
+      return json({
+        items: [
+          {
+            id: 1,
+            run_kind: "run",
+            trace: "真实推理过程",
+            summary: "需要站主处理",
+            model: "test-model",
+            prompt_version: "judge-v1",
+            tokens: 123,
+            started_at: "2026-09-26T10:00:00.000Z",
+            finished_at: "2026-09-26T10:00:02.000Z",
+          },
+        ],
+      });
+    }
+    if (path === "/ledger") {
+      return json({
+        items: [
+          { id: 3, ts: "2026-09-26T10:00:01.000Z", tool: "read_message", ok: 1, message_id: "mid:m1@test.local", detail_json: "{}", error: null },
+        ],
+      });
+    }
+    if (path === "/pending-sends") return json({ items: pendingItems });
+    const pendingMatch = path.match(/^\/pending-sends\/(\d+)\/(confirm|discard)$/);
+    if (pendingMatch && route.request().method() === "POST") {
+      calls.pending.push({ id: Number(pendingMatch[1]), action: pendingMatch[2] });
+      pendingItems = [];
+      return json(pendingMatch[2] === "confirm" ? { ok: true, sent: 1 } : { discarded: true });
+    }
+    if (path === "/message/mid:agent-report-1@test.local") return json(AGENT_DETAIL);
+    if (path === "/message/mid:agent-report-1@test.local/rfc822/0") return json(AGENT_RFC822);
+    if (path === "/message/mid:agent-report-1@test.local/eml") {
+      return route.fulfill({
+        contentType: "message/rfc822",
+        headers: { "content-disposition": 'attachment; filename="agent-report-1.eml"' },
+        body: "From: agent <agent@mail.example.cn>\r\n\r\n今日汇总",
+      });
+    }
+    return json({ error: `未打桩的端点: ${path}` });
+  });
+}
+
+test.describe("agent 邮件入口（/mail/agent）", () => {
+  test("游客：页面重定向到登录页，API 一律 401", async ({ page }) => {
+    await page.goto("/mail/agent", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/login$/);
+    const res = await page.request.get("/api/mail/agent/timeline");
+    expect(res.status()).toBe(401);
+  });
+
+  test.describe("登录态（API 打桩）", () => {
+    test.skip(!totpSecret, "未配置 TOTP_SECRET，跳过登录测试");
+
+    test("时间线：方向徽章 + 详情弹窗（头部/结构/正文）+ rfc822 就地展开 + 无写入口", async ({ page }) => {
+      const calls = { pending: [] as { id: number; action: string }[] };
+      await stubMailAgentApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      // /mail 主页的专门入口链接
+      await gotoReady(page, "/mail");
+      await page.getByRole("link", { name: "agent 入口" }).click();
+      await expect(page).toHaveURL(/\/mail\/agent$/);
+
+      // 时间线：收 + 发合并，方向徽章正确
+      const rows = page.locator('[data-slot="agent-timeline"] > li');
+      await expect(rows).toHaveCount(2);
+      await expect(rows.nth(0).locator('[data-slot="agent-dir-badge"]')).toContainText("发");
+      await expect(rows.nth(1).locator('[data-slot="agent-dir-badge"]')).toContainText("收");
+      await expect(rows.nth(1)).toContainText("面试通知");
+
+      // 点开详情：完整头部原文 / MIME 结构 / 正文 / 下载链接
+      await rows.nth(0).locator("button").click();
+      const dialog = page.locator('[data-slot="dialog-content"]');
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText("Message-ID: <agent-report-1@test.local>");
+      await expect(dialog.locator('[data-slot="agent-parts"]')).toContainText("message/rfc822");
+      await expect(dialog).toContainText("今日汇总：重要 1 封");
+      const download = dialog.getByRole("link", { name: "下载 .eml 原件" });
+      await expect(download).toHaveAttribute(
+        "href",
+        `/api/mail/agent/message/${encodeURIComponent("mid:agent-report-1@test.local")}/eml`,
+      );
+
+      // rfc822 就地展开：内嵌邮件同构展示，且不出现任何远程内容
+      await dialog.getByRole("button", { name: /展开内嵌邮件/ }).click();
+      const inner = dialog.locator('[data-slot="agent-rfc822"]');
+      await expect(inner).toContainText("特刊投稿邀请");
+      await expect(inner).toContainText("prof@example.edu");
+      await expect(inner).toContainText("欢迎你投稿");
+      await expect(inner.locator("img")).toHaveCount(0);
+
+      // 只读原则：整页没有任何写操作入口（无回复/无标记/无 compose）
+      await expect(page.locator('a[href*="/mail/compose"]')).toHaveCount(0);
+      await expect(dialog.getByRole("button", { name: /回复|转发|标为/ })).toHaveCount(0);
+    });
+
+    test("台账：待确认 POST 确认、判定展开拉推理（两种文本分开）、工具调用台账", async ({ page }) => {
+      const calls = { pending: [] as { id: number; action: string }[] };
+      await stubMailAgentApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail/agent");
+      await page.getByRole("tab", { name: "处理台账" }).click();
+
+      // 待确认队列：确认发出（页面唯二的 POST，人操作）
+      const pending = page.locator('[data-slot="agent-pending"]');
+      await expect(pending).toContainText("代发确认");
+      await pending.getByRole("button", { name: "确认发出" }).click();
+      await expect.poll(() => calls.pending).toEqual([{ id: 7, action: "confirm" }]);
+      await expect(pending).toContainText("没有待确认的外发");
+
+      // 判定列表：展开后才拉推理；trace 与 summary 分开展示并带 model/prompt_version
+      const judgments = page.locator('[data-slot="agent-judgments"]');
+      await judgments.getByRole("button").first().click();
+      const reasoning = judgments.locator('[data-slot="agent-reasoning"]');
+      await expect(reasoning).toContainText("模型推理");
+      await expect(reasoning).toContainText("真实推理过程");
+      await expect(reasoning).toContainText("处理说明（agent 自述，不作证据）");
+      await expect(reasoning).toContainText("需要站主处理");
+      await expect(reasoning).toContainText("test-model · judge-v1");
+
+      // 工具调用台账
+      const ledger = page.locator('[data-slot="agent-ledger"]');
+      await expect(ledger).toContainText("read_message");
+      await expect(ledger).toContainText("mid:m1@test.local");
+    });
+  });
+});
