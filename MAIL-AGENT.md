@@ -454,10 +454,10 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 ### 0. 前置（基础设施，不写代码）
 
 - [x] DNS：A / MX / SPF（`v=spf1 include:spf.qiye.aliyun.com -all`）/ DKIM（`default._domainkey`，2048 位）/ DMARC（组织域，`p=none`）——**已配置完成并实测**（2026-09-24；DMARC 升级路径见第十节）
-- [ ] 阿里云管理后台开启员工账号的 POP3 / IMAP / SMTP
-- [ ] 为每个账号生成客户端专用密码（阿里云叫「三方客户端安全密码」，腾讯叫「客户端专用密码」）。**不要用主密码。**
-- [ ] 从 VPS 用每个账号实测一次 IMAP 登录。服务端可达已实测，但**账号级能不能登录还没验证过**，这是先决条件
-- [ ] 实测腾讯与阿里的 IMAP 是否支持 IDLE 与 `THREAD` 扩展——影响 5.1 的唤醒方式与 6.1 的会话组装在哪一侧做
+- [x] 阿里云管理后台开启员工账号的 POP3 / IMAP / SMTP（2026-09-30。⚠ 还有「禁止使用外部客户端」类默认策略需一并关闭，否则 IMAP `NO LOGIN failed` / SMTP `526 Authentication failure`，两种协议同样报错）
+- [x] agent@ 凭据已生成并实测登录通过（2026-09-30 本机实测 IMAP/SMTP 均 OK；`mail/scripts/probe-imap.ts` 可复测，不打印凭据）；me@ 与学校邮箱凭据待补。**不要用主密码**（腾讯与开了专用密码的账号）
+- [ ] 从 VPS 用每个账号实测一次 IMAP 登录（agent@ 本机已实测，VPS 侧随部署验证）
+- [x] 阿里 IMAP 能力实测（2026-09-30，`agent@mail.shaoyuanyu.cn`）：**IDLE ✓**（5.1 事件驱动成立）；**`THREAD` ✗**（会话组装走 6.1 的本地 References 拼接）；**SPECIAL-USE ✗**（`\Sent` 走常见名回退——实际文件夹名「已发送」，已在回退链内）；**MOVE ✗**（imapflow 自动回退 COPY + `\Deleted` + EXPUNGE；阿里有 UIDPLUS，UID EXPUNGE 只清指定 UID）；文件夹 = INBOX / 已发送 / 草稿 / 垃圾邮件 / 已删除邮件。腾讯待实测
 
 ### 1. maild：取信与索引
 
