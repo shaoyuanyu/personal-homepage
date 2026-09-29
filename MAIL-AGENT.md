@@ -1,6 +1,6 @@
 # 邮件系统与 agent · 设计方案
 
-> 状态：第 1、2、3 步已完成，下一步第 4 步（agent worker 池与产物）
+> 状态：第 1、2、3、4 步已完成，下一步第 5 步（harness 评测与 `/mail` 的 `agent@` 只读入口）
 > 关联：`CLAUDE.md`（主站开发规范）、`ARCHITECTURE.md`（主站技术架构）
 
 **这份文档是什么**：邮件系统与 agent 的完整设计——要做什么、边界在哪、用什么轮子、按什么顺序做。
@@ -492,6 +492,19 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 - 写 `judgment` 与 `reasoning` 两张表（见 5.2）
 - 汇报发给 `me@`，并 `APPEND` 到 `agent@` 自己的「已发送」
 
+**实现细则（2026-09-29 定）：**
+
+- **worker 池在 maild 进程内，但工具调用一律经 MCP client 走 HTTP 自连**（`@ai-sdk/mcp` 的 `createMCPClient` 连 `127.0.0.1:9711/mcp`）：worker 模块不 import 任何凭据/写操作模块（`test/audit.test.ts` 扫 import 清单锁定），将来拆独立容器时零代码改动。
+- **任务队列 = `agent.db` 的 `tasks` 表**：`id, kind(judge|command|report), message_id, payload_json, priority, status(pending|running|done|failed), attempts, run_after, created_at, started_at, finished_at, error`。原子领取用 `UPDATE ... WHERE id = (SELECT id FROM tasks WHERE status='pending' AND run_after<=now ORDER BY priority DESC, id LIMIT 1) RETURNING`（better-sqlite3 同步 API，单进程内天然串行，不会重复取）。失败 `attempts+1` 指数退避 `run_after`，3 次后标 `failed`（5.5 的告警面）。
+- **触发接线**：抓取器 IDLE 唤醒/轮询入库新邮件后投 `judge` 任务；指令认证通过（3.6）的改投 `command`（更高优先级）。
+- **指令认证用 mailauth 自验**（不依赖服务商的 `Authentication-Results`，3.6）：`authenticate(eml, { trustReceived: true })` 从 Received 链取第一跳 ip/helo 验 SPF，DKIM 直接验签。`resolver` 参数可注入 DNS 解析器——测试注入假 resolver，生产用系统 DNS。
+- **指令执行循环**：认证通过的指令邮件正文 → `generateText` + MCP tools + `stopWhen: stepCountIs(10)` 多轮工具调用 → 回执经 `send_as_agent` 发给指令来源地址（白名单内直发）。指令与回执都记 `reasoning`（`run_kind='command'`）。
+- **判定（`judge`）**：`generateObject` + zod schema，产出 `verdict(important|normal|noise)` + `labels[]`（`todo`/`event` 等）+ `confidence`；`labels` 含 `event` 时经 MCP `create_event` 写入日程。judgment 一封信一行（重判覆盖），reasoning 一次处理一行（只追加）。
+- **每日汇报**：定时器投 `report` 任务（默认 21:00，可配），汇总当日 judgment 分布 + 重要邮件清单 + 待确认队列提醒（3.7），经 `send_as_agent` 发 `me@`。
+- **模型配置**：`accounts.json` 顶层 `model` 段（`baseURL` / `model` 名），apiKey 在 `credentials.json` 的 `model` 键（凭据不混进注册表）。provider 一律 `@ai-sdk/openai-compatible`（DeepSeek/Kimi/GLM 同端点形态）。
+- **prompt_version 是代码常量**（如 `JUDGE_PROMPT_VERSION = "judge-v1"`），改提示词时递增，随判定落库——「当时为什么这么判」靠它可答（5.2）。
+- **模型客户端可注入**：judge/worker 依赖一个 `createModel()` 工厂（生产读配置走 AI SDK，测试注入 `MockLanguageModel`），模型层的单测不依赖外部 API。
+
 ### 5. `/mail` 的 `agent@` 只读入口
 
 - 收 + 发合并时间线、原始邮件、可展开的 `message/rfc822`、`.eml` 下载
@@ -536,6 +549,10 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 | 工具面 = MCP over streamable HTTP（`127.0.0.1:9711`） | stdio / 另起独立工具进程 | 凭据只该有一个落点（maild 进程内嵌）；HTTP 传输让未来的独立容器 worker 与 harness 都能接；stdio 只覆盖同机子进程一种形态 |
 | 台账与待确认队列存 `agent.db`（独立于 `mail.db`） | 塞进 `mail.db` 新表 | `mail.db` 保持纯原始邮件索引；工具层产物与模型产物（5.2）同属「非原始邮件」一侧，一个库装齐 |
 | 工具面写操作开短时第二条连接（账号互斥） | 复用/打断抓取器的 IDLE 连接 | IDLE 中的连接无法插入命令；写操作低频秒级，瞬时双连可接受（红线 10 防的是常驻并行抓取） |
+| worker 工具调用经 MCP client 走 HTTP 自连 | 同进程直接函数调用 | 「不持有凭据」要机器可审（audit 锁 import 清单）；将来拆容器零代码改动；一跳本机 HTTP 代价可忽略 |
+| 指令认证用 mailauth 自验 SPF/DKIM | 信服务商的 Authentication-Results / 自写 SPF 解析 | 3.6 明确不依赖服务商判断；SPF 语义复杂（include/redirect/mx），自写必错；mailauth 支持注入 resolver（测试可离线） |
+| 模型客户端走可注入工厂 + AI SDK | 测试里 mock fetch / 测试直连真实 API | 外部 API 不进测试；MockLanguageModel 是官方测试设施 |
+| 任务队列放 `agent.db` 的 `tasks` 表 | 独立队列库 / 内存队列 | 与台账同库同事务边界；better-sqlite3 同步 API 单进程天然串行，原子领取一条 UPDATE...RETURNING 即可；崩溃不丢任务 |
 | 备份等购买 OSS 后实施 | 现在照抄 backup-ideas.sh 推 git | 邮件库 GB 级持续增长，git 不适合做这种载体 |
 
 ---
