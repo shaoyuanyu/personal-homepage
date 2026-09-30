@@ -505,12 +505,13 @@
         {
           "y": 2026,
           "link": "https://www.apbc2026.com/home",
-          "tz": "UTC",
+          "tz": "Etc/GMT+12",
           "date": "October 21-24, 2026",
           "place": "Hsinchu, Taiwan， China",
           "timeline": [
             {
-              "t": "2026-06-15 23:59:59"
+              "t": "2026-07-17 23:59:00",
+              "c": "Regular full papers; extended submission deadline in the organizer"
             }
           ]
         }
@@ -1546,6 +1547,28 @@
       ]
     },
     {
+      "a": "CNS",
+      "n": "IEEE Conference on Communications and Network Security",
+      "l": "",
+      "f": "网络与信息安全",
+      "d": "https://dblp.org/db/conf/cns/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "https://cns2026.ieee-cns.org/",
+          "tz": "Etc/GMT+12",
+          "date": "September 14-16, 2026",
+          "place": "Newark, Delaware, USA",
+          "timeline": [
+            {
+              "t": "2026-05-18 23:59:00",
+              "c": "Regular papers; official extended deadline. Clock 23:59:00 and timezone"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "a": "COCOON",
       "n": "International Computing and Combinatorics Conference",
       "l": "B",
@@ -1689,12 +1712,13 @@
         {
           "y": 2026,
           "link": "https://collaboratecom.eai-conferences.org/2026/",
-          "tz": "Etc/GMT+8",
+          "tz": "Etc/GMT+12",
           "date": "November 14-15, 2026",
           "place": "Hong Kong SAR, China",
           "timeline": [
             {
-              "t": "2026-05-01 23:59:59"
+              "t": "2026-05-01 23:59:00",
+              "c": "Regular track; cutoff clock and timezone unpublished. Separate late"
             }
           ]
         }
@@ -2323,18 +2347,6 @@
               "t": "2025-10-27 23:59:59"
             }
           ]
-        },
-        {
-          "y": 2027,
-          "link": "https://dasfaa2027.github.io/",
-          "tz": "Etc/GMT+12",
-          "date": "May 27-30, 2027",
-          "place": "Shenyang, China",
-          "timeline": [
-            {
-              "t": "2026-11-25 23:59:59"
-            }
-          ]
         }
       ]
     },
@@ -2386,6 +2398,19 @@
       "f": "计算机图形学与多媒体",
       "d": "https://dblp.org/db/conf/dcc/",
       "years": [
+        {
+          "y": 2026,
+          "link": "https://datacompressionconference.org/",
+          "tz": "Etc/GMT+12",
+          "date": "March 25-27, 2026",
+          "place": "Snowbird, Utah, United States",
+          "timeline": [
+            {
+              "t": "2025-10-03 23:59:00",
+              "c": "Regular full papers; official CFP date. Clock 23:59:00 and timezone"
+            }
+          ]
+        },
         {
           "y": 2027,
           "link": "https://datacompressionconference.org/",
@@ -2887,7 +2912,8 @@
           "place": "Lille, France",
           "timeline": [
             {
-              "t": "2026-02-04 23:59:59"
+              "t": "2026-02-04 13:00:00",
+              "c": "Official February cutoff is 17:00 PST (UTC-8), represented as the equivalent"
             },
             {
               "t": "2026-06-10 23:59:59"
@@ -3143,10 +3169,28 @@
           "timeline": [
             {
               "k": "abstract",
-              "t": "2025-12-15 23:59:59"
+              "t": "2025-12-15 23:59:00"
             },
             {
-              "t": "2026-01-12 23:59:59"
+              "t": "2026-01-14 23:59:00",
+              "c": "Regular research papers; full-paper extension. Cutoff clocks and timezone"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://www.ets2027.co.uk/",
+          "tz": "Etc/GMT+12",
+          "date": "May 24-28, 2027",
+          "place": "London, UK",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-12-08 23:59:00"
+            },
+            {
+              "t": "2026-12-15 23:59:00",
+              "c": "Regular papers; official CFP dates. Clock 23:59:00 and timezone AoE"
             }
           ]
         }
@@ -4328,12 +4372,12 @@
           "place": "Cleveland, OH, USA",
           "timeline": [
             {
-              "t": "2026-01-29 23:59:59",
-              "c": "abstract registration deadline"
+              "k": "abstract",
+              "t": "2026-01-29 23:59:00"
             },
             {
-              "t": "2026-02-05 23:59:59",
-              "c": "paper submission deadline"
+              "t": "2026-02-05 23:59:00",
+              "c": "Dates and AoE verified; 23:59:00 is the repository default for the"
             }
           ]
         }
@@ -5259,7 +5303,8 @@
           "place": "Tokyo, Japan",
           "timeline": [
             {
-              "t": "2026-06-30 23:59:59"
+              "t": "2026-08-15 23:59:00",
+              "c": "Research papers; extended firm deadline. Cutoff clock and timezone"
             }
           ]
         }
@@ -5280,11 +5325,8 @@
           "place": "Rio de Janeiro, Brazil",
           "timeline": [
             {
-              "k": "abstract",
-              "t": "2025-10-19 23:59:59"
-            },
-            {
-              "t": "2025-10-23 23:59:59"
+              "t": "2025-10-23 23:59:00",
+              "c": "'Research track abstract deadline conflict: CFP October 19, 2025 AoE;"
             }
           ]
         },
@@ -5739,12 +5781,8 @@
           "place": "Madrid, Spain",
           "timeline": [
             {
-              "t": "2026-03-17 23:59:59",
-              "c": "Regular Paper"
-            },
-            {
-              "t": "2026-05-14 23:59:59",
-              "c": "Auxiliary Paper"
+              "t": "2026-03-17 23:59:00",
+              "c": "Regular full technical papers; official AoE date. Clock 23:59:00 uses"
             }
           ]
         },
@@ -5892,8 +5930,8 @@
           "place": "New Delhi, India",
           "timeline": [
             {
-              "t": "2025-09-30 23:59:59",
-              "c": "Submission Deadline"
+              "t": "2025-10-31 23:59:00",
+              "c": "Regular paper submission; unspecified clock and timezone use repository"
             }
           ]
         },
@@ -6415,12 +6453,11 @@
           "place": "Raleigh, USA",
           "timeline": [
             {
-              "t": "2025-11-10 23:59:59",
-              "c": "abstract deadline"
+              "k": "abstract",
+              "t": "2025-11-10 23:59:00"
             },
             {
-              "t": "2025-11-17 23:59:59",
-              "c": "full paper deadline"
+              "t": "2025-11-17 23:59:00"
             }
           ]
         }
@@ -6886,12 +6923,13 @@
         {
           "y": 2026,
           "link": "https://ksem2026.rosc.org.cn/",
-          "tz": "UTC",
+          "tz": "Etc/GMT+12",
           "date": "July 17-19, 2026",
           "place": "Beijing, China",
           "timeline": [
             {
-              "t": "2026-01-15 23:59:59"
+              "t": "2026-02-28 23:59:00",
+              "c": "Regular papers; cutoff clock and timezone unpublished. 23:59:00 uses"
             }
           ]
         }
@@ -7148,7 +7186,8 @@
           "place": "Prague, Czech Republic",
           "timeline": [
             {
-              "t": "2025-08-19 23:59:59"
+              "t": "2025-09-02 23:59:00",
+              "c": "Regular papers; extended deadline"
             }
           ]
         },
@@ -7478,12 +7517,17 @@
         {
           "y": 2026,
           "link": "https://mswimconf.com/2026/",
-          "tz": "Etc/GMT-1",
+          "tz": "Etc/GMT+12",
           "date": "October 26-30, 2026",
           "place": "Paris, France",
           "timeline": [
             {
-              "t": "2026-06-01 23:59:59"
+              "k": "abstract",
+              "t": "2026-06-14 23:59:00"
+            },
+            {
+              "t": "2026-06-15 23:59:00",
+              "c": "Regular papers; extended abstract registration and full-paper dates."
             }
           ]
         }
@@ -7525,12 +7569,17 @@
         {
           "y": 2026,
           "link": "https://www.ncmmsc.org.cn/",
-          "tz": "Etc/GMT-8",
+          "tz": "Etc/GMT+12",
           "date": "Nov 5-8, 2026",
           "place": "Hengqin, China",
           "timeline": [
             {
-              "t": "2026-07-05 23:59:59"
+              "k": "abstract",
+              "t": "2026-07-05 23:59:00"
+            },
+            {
+              "t": "2026-07-12 23:59:00",
+              "c": "Regular full papers; full-paper extension. Cutoff clocks and timezone"
             }
           ]
         }
@@ -7689,12 +7738,13 @@
         {
           "y": 2026,
           "link": "https://noms2026.ieee-noms.org/",
-          "tz": "Etc/GMT-10",
+          "tz": "Etc/GMT+12",
           "date": "May 18-22, 2026",
           "place": "Rome, Italy",
           "timeline": [
             {
-              "t": "2025-10-13 19:59:59"
+              "t": "2025-11-10 23:59:00",
+              "c": "'Regular full technical paper final deadline: November 10, 2025; 23:59:00"
             }
           ]
         },
@@ -8052,6 +8102,18 @@
       "f": "软件工程/系统软件/程序设计语言",
       "d": "https://dblp.org/db/conf/pepm/",
       "years": [
+        {
+          "y": 2026,
+          "link": "https://popl26.sigplan.org/home/pepm-2026",
+          "tz": "Etc/GMT+12",
+          "date": "January 13, 2026",
+          "place": "Rennes, France",
+          "timeline": [
+            {
+              "t": "2025-10-24 23:59:59"
+            }
+          ]
+        },
         {
           "y": 2027,
           "link": "https://popl27.sigplan.org/home/pepm-2027",
@@ -10756,7 +10818,21 @@
           "place": "Kuala Lumpur, Malaysia",
           "timeline": [
             {
-              "t": "2025-09-14 23:59:59"
+              "t": "2025-10-26 23:59:00",
+              "c": "Regular papers; final deadline. Cutoff clock and timezone unpublished."
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://wcnc2027.ieee-wcnc.org/",
+          "tz": "Etc/GMT+12",
+          "date": "April 5-8, 2027",
+          "place": "Panama City, Panama",
+          "timeline": [
+            {
+              "t": "2026-09-15 23:59:00",
+              "c": "Technical papers; official IEEE ComSoc calendar date. Clock 23:59:00"
             }
           ]
         }
