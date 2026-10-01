@@ -133,15 +133,21 @@ agent 对外部数据源与 `me@` 一律只读，落实为：
 
 ### 3.6 指令认证（如何判定一封指令来自你）
 
-`agent@` 的地址会出现在它发出的每封汇报的信封上，任何人都能向它发信。因此「指令」与「普通邮件」必须在入口处分开：
+`agent@` 的地址会出现在它发出的每封汇报的信封上，任何人都能向它发信。因此「指令」与「普通邮件」必须在入口处分开。判定按**来信通道**分两路（2026-10 真机实测后修订）：
 
-- 一封信要进入指令路径，必须**同时**满足：① `From` 在白名单内（`me@`、学校、个人三个地址）；② **SPF 与 DKIM 校验双双通过**（maild 自行校验，不依赖服务商已做的判断）。
-- 不同时满足的来信一律按普通邮件处理——正常入库、正常判定，但不触发任何指令行为。
-- 每封指令信的校验结果记入台账：SPF / DKIM 结果、是否进入指令路径、指令内容摘要。
+- **域内直投信**（`me@` → `agent@` 这类同域投递）：**From 在白名单即指令**。
+  - 识别：顶层 `Received` 是阿里云**提交服务**所盖（`from 127.0.0.1(…) by smtp.aliyun-inc.com`），与外部入站的 MX 接收章（`from <主机>(mailfrom:… ip:<真实IP>) by mx*.aliyun-inc.com`）形状不同。
+  - 为什么可信：域内投递要求发送方先通过 SMTP 认证（密码）；外部伪造 `me@` 则会在 MX 门口被本域 SPF `-all` 硬拒。**伪造只能发生在阿里云入口之外，而入口检查是阿里云的本职**——实测确认（2026-10-02）。
+  - 为什么不再要求 SPF+DKIM：阿里云域内投递**不签 DKIM、不盖 `Authentication-Results`**，首跳 Received 是 `127.0.0.1` 内部 hop → SPF 恒 temperror。域内信在下游**结构性不可验**，双条件会把域内指令全部饿死。
+  - 安全性边界：判据依赖 MTA prepend 语义——伪造者写在信里的假 Received 永远压在阿里云真章**下面**，只读顶层章即免疫。
+- **外部来信**：必须**同时**满足 ① `From` 在白名单内；② **SPF 与 DKIM 校验双双通过**（maild 自行校验，不依赖服务商已做的判断）。
+  - ⚠️ 阿里云不盖 `Return-Path`、外部入站章的 IP/envelope 藏在括号注释里（非 mailauth 认识的标准格式）——maild 须从顶层 Received 提取 `mailfrom:` / `ip:` 注入 mailauth，否则 SPF 退化为 temperror / 误查中继主机名（2026-10-02 真机实测修复）。
+- 两路都不满足的来信一律按普通邮件处理——正常入库、正常判定，但不触发任何指令行为。
+- 每封指令信的校验结果记入台账：通道（域内/外部）、SPF / DKIM 结果、是否进入指令路径、指令内容摘要。
 - 指令回执：指令执行完毕后，agent 向 `me@` 回执结果（成功 / 失败 + 摘要）。不单独回执「已收到」——回执的价值在执行结果，收到与否从 `agent@` 只读入口的时间线即可看到。
 - DMARC 聚合与取证报告（rua / ruf 指向 `agent@`）作为普通数据处理，agent 可据此发现伪造尝试。
 
-SPF 已配 `-all`（硬失败）、DKIM 已在签名，伪造你的地址发信无法同时通过两项校验。共享密钥 token 暂不加——双条件已足够，token 泄露后的轮换成本反而高。
+共享密钥 token 不加——域内通道由阿里云入口背书，外部通道由 SPF+DKIM 背书，token 泄露后的轮换成本反而高。
 
 ### 3.7 发信闸门（`send_as_agent` 的外发限制）
 
@@ -497,7 +503,7 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 - **worker 池在 maild 进程内，但工具调用一律经 MCP client 走 HTTP 自连**（`@ai-sdk/mcp` 的 `createMCPClient` 连 `127.0.0.1:9711/mcp`）：worker 模块不 import 任何凭据/写操作模块（`test/audit.test.ts` 扫 import 清单锁定），将来拆独立容器时零代码改动。
 - **任务队列 = `agent.db` 的 `tasks` 表**：`id, kind(judge|command|report), message_id, payload_json, priority, status(pending|running|done|failed), attempts, run_after, created_at, started_at, finished_at, error`。原子领取用 `UPDATE ... WHERE id = (SELECT id FROM tasks WHERE status='pending' AND run_after<=now ORDER BY priority DESC, id LIMIT 1) RETURNING`（better-sqlite3 同步 API，单进程内天然串行，不会重复取）。失败 `attempts+1` 指数退避 `run_after`，3 次后标 `failed`（5.5 的告警面）。
 - **触发接线**：抓取器 IDLE 唤醒/轮询入库新邮件后投 `judge` 任务；指令认证通过（3.6）的改投 `command`（更高优先级）。
-- **指令认证用 mailauth 自验**（不依赖服务商的 `Authentication-Results`，3.6）：`authenticate(eml, { trustReceived: true })` 从 Received 链取第一跳 ip/helo 验 SPF，DKIM 直接验签。`resolver` 参数可注入 DNS 解析器——测试注入假 resolver，生产用系统 DNS。
+- **指令认证按通道分两路（3.6，2026-10 修订）**：先按顶层 `Received` 形状区分域内直投（`by smtp.aliyun-inc.com`，信任，白名单即指令）与外部来信（`by mx*.aliyun-inc.com`，白名单 + SPF/DKIM 双过）。外部路径用 mailauth 自验（不依赖服务商的 `Authentication-Results`）：阿里云不盖 `Return-Path` 且 Received 注释格式非标准，须由 `extractSenderFromTopReceived` 提取 `mailfrom:`/`ip:` 显式注入 `authenticate()`，DKIM 直接验签。`resolver` 参数可注入 DNS 解析器——测试注入假 resolver，生产用系统 DNS。
 - **指令执行循环**：认证通过的指令邮件正文 → `generateText` + MCP tools + `stopWhen: stepCountIs(10)` 多轮工具调用 → 回执经 `send_as_agent` 发给指令来源地址（白名单内直发）。指令与回执都记 `reasoning`（`run_kind='command'`）。
 - **判定（`judge`）**：`generateObject` + zod schema，产出 `verdict(important|normal|noise)` + `labels[]`（`todo`/`event` 等）+ `confidence`；`labels` 含 `event` 时经 MCP `create_event` 写入日程。judgment 一封信一行（重判覆盖），reasoning 一次处理一行（只追加）。
 - **每日汇报**：定时器投 `report` 任务（默认 21:00，可配），汇总当日 judgment 分布 + 重要邮件清单 + 待确认队列提醒（3.7），经 `send_as_agent` 发 `me@`。
@@ -546,7 +552,7 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 | 产物关联键用 `Message-ID` | `(账号, UID)` | 多副本会被拆成多条 |
 | agent 可以写两个标记 | 完全只读 | 手机与本站的已读状态需要一致；只开 `\Seen` / `\Flagged` |
 | 前端可以发信 | 前端只读 | 要正常 webmail 的体验；代价是各账号 SMTP 凭据上 VPS |
-| 指令认证 = From 白名单 + SPF/DKIM 双通过 | 无认证 / 共享密钥 token | 无认证则任何人可下达指令；SPF `-all` 与 DKIM 已配置，双条件足够，token 轮换成本高 |
+| 指令认证 = 域内直投信任 + 外部白名单/SPF/DKIM 双过 | 全域 SPF/DKIM 双过 / 无认证 / 共享密钥 token | 真机实测（2026-10）：阿里云域内投递不签 DKIM、首跳 Received 是 127.0.0.1，全域双过会把域内指令全部饿死；域内伪造由 SPF `-all` 在 MX 门口硬拒、且要求 SMTP 认证提交，下游无凭证可验亦无必要；无认证则任何人可下达指令；token 轮换成本高 |
 | `send_as_agent` 带发信闸门 | 不加闸门 | 被注入时外发给第三方的后果（封号、域名黑名单）不可接受；白名单外进待确认队列 |
 | 远程内容白名单 | 全部剥除 / 全部放行 | 全放行会被跟踪像素泄露已读与 IP；全剥影响正常阅读，白名单兼顾 |
 | FTS5 trigram 分词 | unicode61 / ICU / 应用层 jieba | unicode61 把中文整句当一个词；ICU 需自行编译 SQLite；jieba 要维护词序列副本且高亮错位；trigram 原生支持子串模糊搜索 |
