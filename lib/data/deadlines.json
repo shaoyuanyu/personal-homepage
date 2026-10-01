@@ -13,8 +13,8 @@
           "y": 2026,
           "link": "https://3dvconf.github.io/2026/",
           "tz": "Etc/GMT+7",
-          "date": "March 24-27, 2026",
-          "place": "Metro Vancouver, BC, Canada",
+          "date": "March 20-23, 2026",
+          "place": "Vancouver, BC, Canada",
           "timeline": [
             {
               "t": "2025-08-18 23:59:59"
@@ -51,7 +51,7 @@
           "y": 2026,
           "link": "https://aaai.org/conference/aaai/aaai-26/",
           "tz": "Etc/GMT+12",
-          "date": "January 20 - 27, 2026",
+          "date": "January 22-25, 2026",
           "place": "Singapore EXPO",
           "timeline": [
             {
@@ -92,7 +92,7 @@
           "y": 2026,
           "link": "https://cyprusconferences.org/aamas2026",
           "tz": "Etc/GMT+12",
-          "date": "May 25-29, 2026",
+          "date": "May 27-29, 2026",
           "place": "Paphos, Cyprus",
           "timeline": [
             {
@@ -100,7 +100,12 @@
               "t": "2025-10-01 23:59:59"
             },
             {
-              "t": "2025-10-08 23:59:59"
+              "t": "2025-10-08 23:59:59",
+              "c": "Main track"
+            },
+            {
+              "t": "2025-11-17 23:59:00",
+              "c": "AAAI track"
             }
           ]
         },
@@ -133,7 +138,7 @@
           "y": 2026,
           "link": "https://accv2026.org/",
           "tz": "UTC",
-          "date": "December 14-18, 2026",
+          "date": "December 16-18, 2026",
           "place": "Osaka, Japan",
           "timeline": [
             {
@@ -158,16 +163,16 @@
           "y": 2026,
           "link": "https://acisp-conference.github.io/acisp2026/index.html",
           "tz": "Etc/GMT+12",
-          "date": "July 6-9, 2026",
+          "date": "July 7-9, 2026",
           "place": "Perth, Australia",
           "timeline": [
             {
               "t": "2025-11-27 23:59:59",
-              "c": "1st round Deadline"
+              "c": "Round 1"
             },
             {
               "t": "2026-02-26 23:59:59",
-              "c": "2nd round Deadline"
+              "c": "Round 2"
             }
           ]
         },
@@ -209,6 +214,19 @@
               "c": "ARR submission; ACL commitment deadline: March 14, 2026."
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://2027.aclweb.org/",
+          "tz": "Etc/GMT+12",
+          "date": "August 17-22, 2027",
+          "place": "Kyoto, Japan",
+          "timeline": [
+            {
+              "t": "2027-01-04 23:59:59",
+              "c": "ARR Submission"
+            }
+          ]
         }
       ]
     },
@@ -223,7 +241,7 @@
           "y": 2026,
           "link": "https://2026.acmmm.org/",
           "tz": "Etc/GMT+12",
-          "date": "November 10-14, 2026",
+          "date": "November 11-14, 2026",
           "place": "Rio de Janeiro, Brazil",
           "timeline": [
             {
@@ -257,7 +275,7 @@
             },
             {
               "t": "2026-01-22 22:00:00",
-              "c": "Regular conference papers; submission form registration and initial"
+              "c": "Registration / full paper"
             }
           ]
         }
@@ -282,7 +300,8 @@
               "t": "2026-05-05 23:59:00"
             },
             {
-              "t": "2026-05-12 23:59:00"
+              "t": "2026-05-12 23:59:00",
+              "c": "Registration / full paper"
             }
           ]
         }
@@ -299,9 +318,13 @@
           "y": 2026,
           "link": "https://www.acml-conf.org/2026/",
           "tz": "Etc/GMT+12",
-          "date": "December 1-4, 2026",
+          "date": "TBD",
           "place": "Melbourne, Australia",
           "timeline": [
+            {
+              "t": "2026-06-20 23:59:00",
+              "c": "Journal Track"
+            },
             {
               "t": "2026-07-05 23:59:59",
               "c": "Conference Track"
@@ -389,8 +412,7 @@
           "place": "Hong Kong, China",
           "timeline": [
             {
-              "t": "2026-07-17 23:59:59",
-              "c": "Main Track"
+              "t": "2026-07-17 23:59:59"
             }
           ]
         }
@@ -432,7 +454,7 @@
           "y": 2026,
           "link": "https://virtual.aistats.org/Conferences/2026",
           "tz": "Etc/GMT+12",
-          "date": "May 2-5, 2026",
+          "date": "May 2-4, 2026",
           "place": "Tangier, Morocco",
           "timeline": [
             {
@@ -570,7 +592,7 @@
           "y": 2026,
           "link": "https://www.appt-conference.com/2026",
           "tz": "Etc/GMT+12",
-          "date": "July 27-31, 2026",
+          "date": "July 27-30, 2026",
           "place": "Brussels, Belgium",
           "timeline": [
             {
@@ -603,7 +625,8 @@
               "t": "2026-07-13 23:59:59"
             },
             {
-              "t": "2026-07-20 23:59:59"
+              "t": "2026-07-20 23:59:59",
+              "c": "Optional abstract"
             }
           ]
         }
@@ -697,11 +720,12 @@
           "y": 2026,
           "link": "https://conf.researchr.org/home/ase-2026",
           "tz": "Etc/GMT+12",
-          "date": "October 12 - 16, 2026",
+          "date": "October 13-15, 2026",
           "place": "Munich, Germany",
           "timeline": [
             {
-              "t": "2026-03-26 23:59:59"
+              "t": "2026-03-26 23:59:59",
+              "c": "March 30 updates only"
             }
           ]
         }
@@ -718,16 +742,16 @@
           "y": 2026,
           "link": "https://asiaccs2026.cse.iitkgp.ac.in/",
           "tz": "Etc/GMT+12",
-          "date": "June 1-5, 2026",
+          "date": "June 3-5, 2026",
           "place": "Bangalore, India",
           "timeline": [
             {
               "t": "2025-08-25 23:59:59",
-              "c": "1st round Deadline"
+              "c": "Round 1"
             },
             {
               "t": "2025-12-12 23:59:59",
-              "c": "2nd round Deadline"
+              "c": "Round 2"
             }
           ]
         },
@@ -782,7 +806,7 @@
           "y": 2026,
           "link": "https://www.aspdac.com/aspdac2026/",
           "tz": "Etc/GMT+12",
-          "date": "Jan 19-22, 2026",
+          "date": "January 20-22, 2026",
           "place": "Hong Kong Disneyland",
           "timeline": [
             {
@@ -823,7 +847,7 @@
           "y": 2026,
           "link": "https://www.asplos-conference.org/asplos2026/cfp/",
           "tz": "Etc/GMT+4",
-          "date": "March 22-26, 2026",
+          "date": "March 23-26, 2026",
           "place": "Pittsburgh, PA, USA",
           "timeline": [
             {
@@ -832,15 +856,15 @@
             },
             {
               "t": "2025-03-12 23:59:59",
-              "c": "Spring Submission Deadline"
+              "c": "Spring; later portal upload cutoff has unconfirmed scope"
             },
             {
               "k": "abstract",
-              "t": "2025-08-13 23:59:59"
+              "t": "2025-08-14 07:59:00"
             },
             {
               "t": "2025-08-20 23:59:59",
-              "c": "Summer Submission Deadline"
+              "c": "Summer; later portal upload cutoff has unconfirmed scope"
             }
           ]
         },
@@ -1087,7 +1111,7 @@
           "y": 2026,
           "link": "https://caise26.polimi.it/",
           "tz": "Etc/GMT+12",
-          "date": "June 8-12, 2026",
+          "date": "June 10-12, 2026",
           "place": "Verona, Italy",
           "timeline": [
             {
@@ -1250,16 +1274,24 @@
           "y": 2026,
           "link": "https://www.sigsac.org/ccs/CCS2026/",
           "tz": "Etc/GMT+12",
-          "date": "November 15-19, 2026",
+          "date": "November 16-18, 2026",
           "place": "World Forum, Hague, Netherlands",
           "timeline": [
             {
+              "k": "abstract",
+              "t": "2026-01-07 23:59:59"
+            },
+            {
               "t": "2026-01-14 23:59:59",
-              "c": "First Review Cycle"
+              "c": "Cycle 1"
+            },
+            {
+              "k": "abstract",
+              "t": "2026-04-22 23:59:59"
             },
             {
               "t": "2026-04-29 23:59:59",
-              "c": "Second Review Cycle"
+              "c": "Cycle 2"
             }
           ]
         }
@@ -1341,19 +1373,19 @@
           "timeline": [
             {
               "t": "2025-07-15 23:59:59",
-              "c": "Schedule for TCHES Volume 2026/1"
+              "c": "TCHES 2026/1"
             },
             {
               "t": "2025-10-15 23:59:59",
-              "c": "Schedule for TCHES Volume 2026/2"
+              "c": "TCHES 2026/2"
             },
             {
               "t": "2026-01-15 23:59:59",
-              "c": "Schedule for TCHES Volume 2026/3"
+              "c": "TCHES 2026/3"
             },
             {
               "t": "2026-04-15 23:59:59",
-              "c": "Schedule for TCHES Volume 2026/4"
+              "c": "TCHES 2026/4"
             }
           ]
         },
@@ -1453,7 +1485,7 @@
           "y": 2026,
           "link": "https://www.cidrdb.org/cidr2026/",
           "tz": "Etc/GMT+7",
-          "date": "Jan 18-21, 2026",
+          "date": "January 19-21, 2026",
           "place": "Chaminade Resort & Spa, Santa Cruz, California, USA",
           "timeline": [
             {
@@ -1486,7 +1518,7 @@
           "y": 2026,
           "link": "https://cikm2026.diag.uniroma1.it/",
           "tz": "Etc/GMT+12",
-          "date": "November 7-11, 2026",
+          "date": "November 9-11, 2026",
           "place": "Rome, Italy",
           "timeline": [
             {
@@ -1511,7 +1543,7 @@
           "y": 2026,
           "link": "https://services.conferences.computer.org/2026/cloud/",
           "tz": "Etc/GMT+12",
-          "date": "July 13-18, 2026",
+          "date": "July 13-17, 2026",
           "place": "Sydney, Australia",
           "timeline": [
             {
@@ -1532,7 +1564,7 @@
           "y": 2026,
           "link": "https://clustercomp.org/2026",
           "tz": "Etc/GMT+12",
-          "date": "September 22-25, 2026",
+          "date": "September 23-25, 2026",
           "place": "Alexandria, Virginia, USA",
           "timeline": [
             {
@@ -1561,8 +1593,7 @@
           "place": "Newark, Delaware, USA",
           "timeline": [
             {
-              "t": "2026-05-18 23:59:00",
-              "c": "Regular papers; official extended deadline. Clock 23:59:00 and timezone"
+              "t": "2026-05-18 23:59:00"
             }
           ]
         }
@@ -1717,8 +1748,7 @@
           "place": "Hong Kong SAR, China",
           "timeline": [
             {
-              "t": "2026-05-01 23:59:00",
-              "c": "Regular track; cutoff clock and timezone unpublished. Separate late"
+              "t": "2026-05-01 23:59:00"
             }
           ]
         }
@@ -1735,7 +1765,7 @@
           "y": 2026,
           "link": "https://colm.cc/Conferences/2026/CallForPapers",
           "tz": "Etc/GMT+12",
-          "date": "October 6-9, 2026",
+          "date": "October 6-8, 2026",
           "place": "Hilton Union Square, San Francisco, USA",
           "timeline": [
             {
@@ -1760,7 +1790,7 @@
           "y": 2026,
           "link": "https://learningtheory.org/colt2026/",
           "tz": "Etc/GMT+12",
-          "date": "June 29 - July 3, 2026",
+          "date": "June 30 - July 3, 2026",
           "place": "San Diego, California",
           "timeline": [
             {
@@ -1894,7 +1924,7 @@
           "y": 2026,
           "link": "https://www.corl.org/",
           "tz": "Etc/GMT+12",
-          "date": "November 9-12, 2026",
+          "date": "November 9-11, 2026",
           "place": "Austin, Texas, USA",
           "timeline": [
             {
@@ -1944,7 +1974,7 @@
           "y": 2026,
           "link": "https://cpal.cc/2026/",
           "tz": "Etc/GMT+12",
-          "date": "March 23-26, 2026",
+          "date": "March 24-26, 2026",
           "place": "Tübingen, Germany",
           "timeline": [
             {
@@ -2007,7 +2037,7 @@
           "place": "Shanghai, China",
           "timeline": [
             {
-              "t": "2026-08-01 23:59:59"
+              "t": "2026-09-15 23:59:00"
             }
           ]
         }
@@ -2162,6 +2192,27 @@
       "d": "https://dblp.org/db/conf/cvc/",
       "years": [
         {
+          "y": 2026,
+          "link": "https://saiconference.com/Conferences/CVC2026",
+          "tz": "Etc/GMT+12",
+          "date": "May 21-22, 2026",
+          "place": "Amsterdam, Netherlands",
+          "timeline": [
+            {
+              "t": "2025-10-01 23:59:00",
+              "c": "Round 1"
+            },
+            {
+              "t": "2026-02-01 23:59:00",
+              "c": "Round 2"
+            },
+            {
+              "t": "2026-03-01 23:59:00",
+              "c": "Late-breaking round"
+            }
+          ]
+        },
+        {
           "y": 2027,
           "link": "https://saiconference.com/CVC",
           "tz": "Etc/GMT+12",
@@ -2232,8 +2283,8 @@
           "y": 2026,
           "link": "https://cvpr.thecvf.com/Conferences/2026",
           "tz": "Etc/GMT+12",
-          "date": "June 3-7, 2026",
-          "place": "Denver, Colorado, United States",
+          "date": "June 5-7, 2026",
+          "place": "Denver, Colorado, United States (Hybrid)",
           "timeline": [
             {
               "k": "abstract",
@@ -2336,7 +2387,7 @@
           "y": 2026,
           "link": "https://dasfaa2026.github.io/",
           "tz": "Etc/GMT+12",
-          "date": "April 21-24, 2026",
+          "date": "April 28-30, 2026",
           "place": "Jeju Island, South Korea",
           "timeline": [
             {
@@ -2441,10 +2492,10 @@
           "timeline": [
             {
               "k": "abstract",
-              "t": "2025-09-19 23:59:59"
+              "t": "2025-10-03 23:59:00"
             },
             {
-              "t": "2025-09-26 23:59:59"
+              "t": "2025-10-10 23:59:00"
             }
           ]
         },
@@ -2503,16 +2554,16 @@
           "y": 2026,
           "link": "https://www.dimva.org/dimva2026/",
           "tz": "Etc/GMT+12",
-          "date": "July 1-3, 2026",
+          "date": "July 2-3, 2026",
           "place": "Chania, Greece",
           "timeline": [
             {
               "t": "2025-12-10 23:59:59",
-              "c": "Cycle 1 submission deadline"
+              "c": "Cycle 1"
             },
             {
               "t": "2026-02-18 23:59:59",
-              "c": "Cycle 2 submission deadline"
+              "c": "Cycle 2"
             }
           ]
         }
@@ -2570,7 +2621,7 @@
           "y": 2026,
           "link": "https://dsn2026.github.io",
           "tz": "Etc/GMT+12",
-          "date": "June 22-25, 2026",
+          "date": "June 23-25, 2026",
           "place": "Charlotte, USA",
           "timeline": [
             {
@@ -2611,8 +2662,8 @@
           "y": 2026,
           "link": "https://2026.eacl.org/",
           "tz": "Etc/GMT+12",
-          "date": "March 24-29, 2026",
-          "place": "Rabat, Morocco",
+          "date": "March 25-27, 2026",
+          "place": "Rabat, Morocco (Hybrid)",
           "timeline": [
             {
               "t": "2025-10-06 23:59:59",
@@ -2697,7 +2748,7 @@
           "y": 2026,
           "link": "https://2026.ijcai.org/",
           "tz": "Etc/GMT+12",
-          "date": "August 15-21, 2026",
+          "date": "August 18-21, 2026",
           "place": "Bremen, Germany",
           "timeline": [
             {
@@ -2734,7 +2785,7 @@
           "y": 2026,
           "link": "https://eccv.ecva.net/",
           "tz": "Etc/GMT+8",
-          "date": "September 8 - 12, 2026",
+          "date": "September 10-12, 2026",
           "place": "Malmö, Sweden",
           "timeline": [
             {
@@ -2805,10 +2856,27 @@
           "timeline": [
             {
               "k": "abstract",
+              "t": "2025-10-30 23:59:00"
+            },
+            {
+              "t": "2025-10-30 23:59:00",
+              "c": "Journal track, cycle 1; CMT abstract and journal manuscript"
+            },
+            {
+              "k": "abstract",
+              "t": "2026-01-15 23:59:00"
+            },
+            {
+              "t": "2026-01-15 23:59:00",
+              "c": "Journal track, cycle 2; CMT abstract and journal manuscript"
+            },
+            {
+              "k": "abstract",
               "t": "2026-03-05 23:59:59"
             },
             {
-              "t": "2026-03-12 23:59:59"
+              "t": "2026-03-12 23:59:59",
+              "c": "Research track"
             }
           ]
         }
@@ -2825,16 +2893,16 @@
           "y": 2026,
           "link": "https://2026.ecoop.org/",
           "tz": "Etc/GMT+12",
-          "date": "June 29 - July 3, 2026",
+          "date": "July 1-3, 2026",
           "place": "Brussels, Belgium",
           "timeline": [
             {
               "t": "2025-11-27 23:59:59",
-              "c": "Submission R1"
+              "c": "Round 1"
             },
             {
               "t": "2026-02-12 23:59:59",
-              "c": "Submission R2"
+              "c": "Round 2"
             }
           ]
         },
@@ -2960,8 +3028,8 @@
           "y": 2026,
           "link": "https://2026.emnlp.org/",
           "tz": "Etc/GMT+12",
-          "date": "October 24 - 29, 2026",
-          "place": "Budapest, Hungary",
+          "date": "October 25-27, 2026",
+          "place": "Budapest, Hungary (Hybrid)",
           "timeline": [
             {
               "t": "2026-05-25 23:59:59",
@@ -2986,7 +3054,7 @@
           "y": 2026,
           "link": "https://esweek.org/emsoft/",
           "tz": "Etc/GMT+12",
-          "date": "October 4 - 9, 2026",
+          "date": "October 5-7, 2026",
           "place": "Barcelona, Spain",
           "timeline": [
             {
@@ -3035,12 +3103,12 @@
         {
           "y": 2026,
           "link": "https://www.esann.org/",
-          "tz": "Etc/GMT+8",
+          "tz": "Etc/GMT+12",
           "date": "April 22 - 24, 2026",
           "place": "Bruges, Belgium and Online",
           "timeline": [
             {
-              "t": "2025-11-19 23:59:59"
+              "t": "2025-11-26 23:59:00"
             }
           ]
         },
@@ -3069,7 +3137,7 @@
           "y": 2026,
           "link": "https://conf.researchr.org/home/eseiw-2026",
           "tz": "Etc/GMT+12",
-          "date": "October 4 - 9, 2026",
+          "date": "October 8-9, 2026",
           "place": "München, Germany",
           "timeline": [
             {
@@ -3094,16 +3162,16 @@
           "y": 2026,
           "link": "https://sites.google.com/di.uniroma1.it/esorics2026/home",
           "tz": "Etc/GMT+12",
-          "date": "September 14-18, 2026",
+          "date": "September 14-16, 2026",
           "place": "Rome, Italy",
           "timeline": [
             {
               "t": "2026-01-09 23:59:59",
-              "c": "First Submission deadline"
+              "c": "Winter"
             },
             {
               "t": "2026-04-21 23:59:59",
-              "c": "Second Submission deadline"
+              "c": "Spring"
             }
           ]
         }
@@ -3120,16 +3188,16 @@
           "y": 2026,
           "link": "https://etaps.org/2026",
           "tz": "Etc/GMT+12",
-          "date": "April 11-16, 2026",
+          "date": "April 13-16, 2026",
           "place": "Torino, Italy",
           "timeline": [
             {
               "t": "2025-06-03 23:59:59",
-              "c": "Submission deadline ESOP round 1"
+              "c": "ESOP round 1"
             },
             {
               "t": "2025-10-16 23:59:59",
-              "c": "Submission deadline ESOP round 2"
+              "c": "ESOP round 2, FASE, FoSSaCS, TACAS"
             }
           ]
         },
@@ -3206,7 +3274,7 @@
           "y": 2026,
           "link": "https://2026.euro-par.org/",
           "tz": "Etc/GMT+12",
-          "date": "August 24-28, 2026",
+          "date": "August 26-28, 2026",
           "place": "Pisa, Italy",
           "timeline": [
             {
@@ -3268,8 +3336,7 @@
           "place": "Toulouse, France (Hybrid)",
           "timeline": [
             {
-              "t": "2025-11-15 23:59:59",
-              "c": "Regular papers; extended deadline"
+              "t": "2025-11-15 23:59:59"
             }
           ]
         },
@@ -3340,7 +3407,7 @@
           "y": 2026,
           "link": "https://eurosp2026.ieee-security.org/",
           "tz": "Etc/GMT+12",
-          "date": "July 6 - 10, 2026",
+          "date": "July 7-9, 2026",
           "place": "Lisbon, Portugal",
           "timeline": [
             {
@@ -3381,7 +3448,7 @@
           "y": 2026,
           "link": "https://2026.eurosys.org/",
           "tz": "Etc/GMT+12",
-          "date": "April 13-16, 2026",
+          "date": "April 28-30, 2026",
           "place": "Edinburgh, UK",
           "timeline": [
             {
@@ -3523,8 +3590,7 @@
           "place": "Toulouse, France (Hybrid)",
           "timeline": [
             {
-              "t": "2025-11-15 23:59:59",
-              "c": "Regular papers; extended deadline"
+              "t": "2025-11-15 23:59:59"
             }
           ]
         },
@@ -3558,8 +3624,7 @@
           "place": "Toulouse, France (Hybrid)",
           "timeline": [
             {
-              "t": "2025-11-15 23:59:59",
-              "c": "Regular papers; extended deadline"
+              "t": "2025-11-15 23:59:59"
             }
           ]
         },
@@ -3702,7 +3767,7 @@
           "y": 2026,
           "link": "https://www.fccm.org/past/2026/",
           "tz": "Etc/GMT+12",
-          "date": "May 13-16, 2026",
+          "date": "May 14-15, 2026",
           "place": "Atlanta, Georgia, USA",
           "timeline": [
             {
@@ -3727,7 +3792,7 @@
           "y": 2026,
           "link": "https://fg2026.ieee-biometrics.org/",
           "tz": "Etc/GMT+12",
-          "date": "May 25-29, 2026",
+          "date": "May 26-28, 2026",
           "place": "Kyoto, Japan",
           "timeline": [
             {
@@ -3740,11 +3805,11 @@
             },
             {
               "k": "abstract",
-              "t": "2026-01-09 23:59:59"
+              "t": "2026-01-25 23:59:00"
             },
             {
               "t": "2026-01-25 23:59:59",
-              "c": "Round 2 (paper deadline extended)"
+              "c": "Round 2"
             }
           ]
         },
@@ -3777,7 +3842,7 @@
           "y": 2026,
           "link": "https://conf.researchr.org/home/fm-2026",
           "tz": "Etc/GMT+12",
-          "date": "May 18-22, 2026",
+          "date": "May 20-22, 2026",
           "place": "Tokyo, Japan",
           "timeline": [
             {
@@ -3849,7 +3914,7 @@
           "y": 2026,
           "link": "https://www.discotec.org/2026/forte",
           "tz": "Etc/GMT+12",
-          "date": "June 8-12, 2026",
+          "date": "June 9-11, 2026",
           "place": "Urbino, Italy",
           "timeline": [
             {
@@ -3874,8 +3939,8 @@
           "y": 2026,
           "link": "https://www.isfpga.org/",
           "tz": "Etc/GMT+12",
-          "date": "February 22 - February 24, 2026",
-          "place": "Monterey, California, USA",
+          "date": "February 23-24, 2026",
+          "place": "Seaside, California, USA",
           "timeline": [
             {
               "k": "abstract",
@@ -3915,16 +3980,20 @@
           "y": 2026,
           "link": "https://fpt2026.uark.edu",
           "tz": "Etc/GMT+12",
-          "date": "December 07 - December 10, 2026",
+          "date": "December 8-10, 2026",
           "place": "Honolulu, Hawaii, USA",
           "timeline": [
             {
-              "t": "2026-06-19 23:59:59",
-              "c": "Title and Abstract Due (Conference Track)"
+              "t": "2026-05-01 23:59:00",
+              "c": "Journal track"
+            },
+            {
+              "k": "abstract",
+              "t": "2026-06-19 23:59:59"
             },
             {
               "t": "2026-06-19 23:59:59",
-              "c": "Submission Due (Conference Track)"
+              "c": "Conference track"
             }
           ]
         }
@@ -3971,19 +4040,19 @@
           "timeline": [
             {
               "t": "2025-03-01 23:59:59",
-              "c": "ToSC, Volume 2025, Issue 2 Submission deadline"
+              "c": "ToSC 2025/2"
             },
             {
               "t": "2025-06-01 23:59:59",
-              "c": "ToSC, Volume 2025, Issue 3 Submission deadline"
+              "c": "ToSC 2025/3"
             },
             {
               "t": "2025-09-01 23:59:59",
-              "c": "ToSC, Volume 2025, Issue 4 Submission deadline"
+              "c": "ToSC 2025/4"
             },
             {
               "t": "2025-11-23 23:59:59",
-              "c": "ToSC, Volume 2026, Issue 1 Submission deadline"
+              "c": "ToSC 2026/1"
             }
           ]
         },
@@ -4017,7 +4086,7 @@
           "y": 2026,
           "link": "https://conf.researchr.org/home/fse-2026",
           "tz": "Etc/GMT+12",
-          "date": "July 6-10, 2026",
+          "date": "July 7-9, 2026",
           "place": "Montréal, Canada",
           "timeline": [
             {
@@ -4064,6 +4133,32 @@
             {
               "t": "2026-01-26 23:59:00",
               "c": "Full papers (traditional category)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "a": "GI",
+      "n": "Graphics Interface",
+      "l": "C",
+      "f": "人机交互与普适计算",
+      "d": "https://dblp.org/db/conf/graphicsinterface/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "https://conferences.graphicsinterface.org/2026/",
+          "tz": "Etc/GMT+12",
+          "date": "June 10-12, 2026",
+          "place": "Kitchener-Waterloo, Canada",
+          "timeline": [
+            {
+              "t": "2026-01-30 23:59:00",
+              "c": "Round 1"
+            },
+            {
+              "t": "2026-04-03 23:59:00",
+              "c": "Round 2"
             }
           ]
         }
@@ -4278,7 +4373,12 @@
           "place": "Salt Lake City, Utah, USA",
           "timeline": [
             {
-              "t": "2026-07-16 23:59:59"
+              "k": "abstract",
+              "t": "2026-07-16 23:59:58"
+            },
+            {
+              "t": "2026-07-16 23:59:59",
+              "c": "Registration / full paper"
             }
           ]
         }
@@ -4316,7 +4416,7 @@
           "y": 2026,
           "link": "https://hpca-conf.org/2026/",
           "tz": "UTC",
-          "date": "Feb 25-Mar 1, 2026",
+          "date": "February 2-4, 2026",
           "place": "Sydney, NSW, Australia",
           "timeline": [
             {
@@ -4378,7 +4478,7 @@
           "y": 2026,
           "link": "https://hpdc.sci.utah.edu/2026/",
           "tz": "Etc/GMT+12",
-          "date": "July 13-16, 2026",
+          "date": "July 14-16, 2026",
           "place": "Cleveland, OH, USA",
           "timeline": [
             {
@@ -4386,8 +4486,7 @@
               "t": "2026-01-29 23:59:00"
             },
             {
-              "t": "2026-02-05 23:59:00",
-              "c": "Dates and AoE verified; 23:59:00 is the repository default for the"
+              "t": "2026-02-05 23:59:00"
             }
           ]
         }
@@ -4488,9 +4587,13 @@
           "y": 2026,
           "link": "https://icalppodcspaa2026.cs.rhul.ac.uk/",
           "tz": "Etc/GMT+12",
-          "date": "July 6-10, 2026",
+          "date": "July 7-10, 2026",
           "place": "London, UK",
           "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-02-03 23:59:00"
+            },
             {
               "t": "2026-02-06 23:59:59"
             }
@@ -4584,7 +4687,7 @@
           "y": 2026,
           "link": "https://2026.ieeeicassp.org/",
           "tz": "Etc/GMT+12",
-          "date": "May 4-8, 2026",
+          "date": "May 5-8, 2026",
           "place": "Barcelona, Spain",
           "timeline": [
             {
@@ -4616,12 +4719,12 @@
         {
           "y": 2026,
           "link": "https://icc2026.ieee-icc.org",
-          "tz": "Etc/GMT+4",
+          "tz": "Etc/GMT+12",
           "date": "May 24-28, 2026",
           "place": "Glasgow, Scotland, UK",
           "timeline": [
             {
-              "t": "2025-10-31 00:59:59"
+              "t": "2025-11-10 23:59:00"
             }
           ]
         },
@@ -4733,8 +4836,7 @@
               "t": "2026-06-03 23:59:00"
             },
             {
-              "t": "2026-06-10 23:59:00",
-              "c": "abstract and full paper deadline"
+              "t": "2026-06-10 23:59:00"
             }
           ]
         }
@@ -4751,16 +4853,20 @@
           "y": 2026,
           "link": "https://icdar2026.org/",
           "tz": "Etc/GMT+12",
-          "date": "August 30 - September 4, 2026",
+          "date": "August 31-September 2, 2026",
           "place": "Vienna, Austria",
           "timeline": [
+            {
+              "t": "2025-11-14 23:59:00",
+              "c": "Journal track"
+            },
             {
               "k": "abstract",
               "t": "2026-02-13 23:59:59"
             },
             {
               "t": "2026-02-27 23:59:59",
-              "c": "Conference papers"
+              "c": "Conference track"
             }
           ]
         },
@@ -4793,7 +4899,7 @@
           "y": 2026,
           "link": "http://icdcs2026.icdcs.org/",
           "tz": "Etc/GMT+12",
-          "date": "June 22-25, 2026",
+          "date": "June 22-24, 2026",
           "place": "Seoul, South Korea",
           "timeline": [
             {
@@ -4818,7 +4924,7 @@
           "y": 2026,
           "link": "https://icde2026.github.io/",
           "tz": "Etc/GMT+7",
-          "date": "May 4-8, 2026",
+          "date": "May 5-8, 2026",
           "place": "Montréal, Canada",
           "timeline": [
             {
@@ -4976,8 +5082,11 @@
           "place": "Brisbane, Australia",
           "timeline": [
             {
-              "t": "2026-07-20 23:59:59",
-              "c": "Abstract and full paper submission"
+              "k": "abstract",
+              "t": "2026-07-20 23:59:00"
+            },
+            {
+              "t": "2026-07-20 23:59:59"
             }
           ]
         }
@@ -4994,9 +5103,13 @@
           "y": 2026,
           "link": "https://icfem2026.github.io/",
           "tz": "Etc/GMT+12",
-          "date": "November 17-20, 2026",
+          "date": "November 18-20, 2026",
           "place": "Southampton, UK",
           "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-06-22 23:59:00"
+            },
             {
               "t": "2026-06-22 23:59:59"
             }
@@ -5095,7 +5208,7 @@
           "y": 2026,
           "link": "https://2026.ieeeicip.org/",
           "tz": "Etc/GMT+12",
-          "date": "Sep 13-17, 2026",
+          "date": "September 14-16, 2026",
           "place": "Tampere, Finland",
           "timeline": [
             {
@@ -5116,7 +5229,7 @@
           "y": 2026,
           "link": "https://iclr.cc/Conferences/2026",
           "tz": "Etc/GMT+12",
-          "date": "April 23-27, 2026",
+          "date": "April 23-25, 2026",
           "place": "Rio de Janeiro, Brazil",
           "timeline": [
             {
@@ -5157,7 +5270,7 @@
           "y": 2026,
           "link": "https://2026.ieeeicme.org/",
           "tz": "Etc/GMT+12",
-          "date": "July 6 - July 10, 2026",
+          "date": "July 5-9, 2026",
           "place": "Bangkok, Thailand",
           "timeline": [
             {
@@ -5230,7 +5343,7 @@
           "y": 2026,
           "link": "https://icmr2026.org/calls.html",
           "tz": "Etc/GMT+12",
-          "date": "June 16-19, 2026",
+          "date": "June 17-19, 2026",
           "place": "Amsterdam, Netherlands",
           "timeline": [
             {
@@ -5263,7 +5376,7 @@
           "y": 2026,
           "link": "https://icnp26.cs.ucr.edu/",
           "tz": "Etc/GMT+12",
-          "date": "October 5-8, 2026",
+          "date": "October 6-8, 2026",
           "place": "Tempe, Arizona, USA",
           "timeline": [
             {
@@ -5335,8 +5448,11 @@
           "place": "Rio de Janeiro, Brazil",
           "timeline": [
             {
-              "t": "2025-10-23 23:59:00",
-              "c": "'Research track abstract deadline conflict: CFP October 19, 2025 AoE;"
+              "k": "abstract",
+              "t": "2025-10-20 09:00:00"
+            },
+            {
+              "t": "2025-10-23 23:59:00"
             }
           ]
         },
@@ -5369,7 +5485,7 @@
           "y": 2026,
           "link": "https://icpp2026.github.io/",
           "tz": "Etc/GMT+12",
-          "date": "September 28-October 1, 2026",
+          "date": "September 29-October 1, 2026",
           "place": "Singapore",
           "timeline": [
             {
@@ -5394,7 +5510,7 @@
           "y": 2026,
           "link": "https://icpr2026.org/",
           "tz": "Etc/GMT+12",
-          "date": "August 17-22, 2026",
+          "date": "August 17-20, 2026",
           "place": "Lyon, France",
           "timeline": [
             {
@@ -5449,7 +5565,7 @@
           "y": 2026,
           "link": "https://dipsa-qub.github.io/ICS2026-webpage/",
           "tz": "Etc/GMT+12",
-          "date": "July 6-9, 2026",
+          "date": "July 7-9, 2026",
           "place": "Belfast, Northern Ireland, United Kingdom",
           "timeline": [
             {
@@ -5483,7 +5599,7 @@
           "y": 2026,
           "link": "https://conf.researchr.org/home/icse-2026",
           "tz": "Etc/GMT+12",
-          "date": "April 12-18, 2026",
+          "date": "April 15-17, 2026",
           "place": "Rio De Janeiro, Brazil",
           "timeline": [
             {
@@ -5492,7 +5608,7 @@
             },
             {
               "t": "2025-03-14 23:59:59",
-              "c": "First Cycle: Submission"
+              "c": "Cycle 1"
             },
             {
               "k": "abstract",
@@ -5500,7 +5616,7 @@
             },
             {
               "t": "2025-07-18 23:59:59",
-              "c": "Second Cycle: Submission; optional abstract registration"
+              "c": "Cycle 2; optional abstract"
             }
           ]
         },
@@ -5534,7 +5650,7 @@
           "y": 2026,
           "link": "https://conf.researchr.org/home/icsme-2026",
           "tz": "Etc/GMT+12",
-          "date": "September 14-18, 2026",
+          "date": "September 16-18, 2026",
           "place": "Benevento, Italy",
           "timeline": [
             {
@@ -5542,8 +5658,7 @@
               "t": "2026-02-27 23:59:59"
             },
             {
-              "t": "2026-03-06 23:59:59",
-              "c": "Research Papers Track"
+              "t": "2026-03-06 23:59:59"
             }
           ]
         },
@@ -5578,7 +5693,7 @@
           "timeline": [
             {
               "t": "2026-05-10 23:59:59",
-              "c": "Early paper submissions"
+              "c": "Early round"
             },
             {
               "k": "abstract",
@@ -5586,7 +5701,7 @@
             },
             {
               "t": "2026-07-19 23:59:59",
-              "c": "Regular papers"
+              "c": "Regular round"
             }
           ]
         }
@@ -5603,7 +5718,7 @@
           "y": 2026,
           "link": "https://conf.researchr.org/home/icst-2026",
           "tz": "Etc/GMT+12",
-          "date": "May 18-22, 2026",
+          "date": "May 19-21, 2026",
           "place": "Daejeon, South Korea",
           "timeline": [
             {
@@ -5779,7 +5894,7 @@
           "y": 2026,
           "link": "https://attend.ieee.org/wcci-2026/ieee-cec-2025/",
           "tz": "Etc/GMT+12",
-          "date": "June 21-26, 2026",
+          "date": "June 22-26, 2026",
           "place": "Maastricht Exhibition & Congress Centre (MECC), The Netherlands",
           "timeline": [
             {
@@ -5918,7 +6033,7 @@
           "y": 2026,
           "link": "https://conf.researchr.org/home/cgo-2026",
           "tz": "Etc/GMT+12",
-          "date": "January 31 - 4 February, 2026",
+          "date": "February 2-4, 2026",
           "place": "Sydney, Australia",
           "timeline": [
             {
@@ -5965,8 +6080,7 @@
           "place": "New Delhi, India",
           "timeline": [
             {
-              "t": "2025-10-31 23:59:00",
-              "c": "Regular paper submission; unspecified clock and timezone use repository"
+              "t": "2025-10-31 23:59:00"
             }
           ]
         },
@@ -5980,6 +6094,27 @@
             {
               "t": "2026-10-10 23:59:59",
               "c": "Submission Deadline"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "a": "IH&MMSec",
+      "n": "ACM Workshop on Information Hiding and Multimedia Security",
+      "l": "C",
+      "f": "网络与信息安全",
+      "d": "https://dblp.org/db/conf/ih/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "https://www.ihmmsec.org/cms/home/home2026.html",
+          "tz": "Etc/GMT+12",
+          "date": "June 17-19, 2026",
+          "place": "Florence, Italy",
+          "timeline": [
+            {
+              "t": "2026-03-02 23:59:00"
             }
           ]
         }
@@ -6021,7 +6156,7 @@
           "y": 2026,
           "link": "https://2026.ijcai.org/",
           "tz": "Etc/GMT+12",
-          "date": "August 15-21, 2026",
+          "date": "August 18-21, 2026",
           "place": "Bremen, Germany",
           "timeline": [
             {
@@ -6147,7 +6282,7 @@
           "y": 2026,
           "link": "https://conferences.sigcomm.org/imc/2026/",
           "tz": "Etc/GMT+12",
-          "date": "Oct 12-16, 2026",
+          "date": "October 13-16, 2026",
           "place": "Karlsruhe, Germany",
           "timeline": [
             {
@@ -6156,7 +6291,7 @@
             },
             {
               "t": "2025-11-20 23:59:59",
-              "c": "Cycle 1 Deadline"
+              "c": "Cycle 1"
             },
             {
               "k": "abstract",
@@ -6164,7 +6299,7 @@
             },
             {
               "t": "2026-04-29 23:59:59",
-              "c": "Cycle 2 Deadline"
+              "c": "Cycle 2"
             }
           ]
         }
@@ -6203,7 +6338,7 @@
           "y": 2026,
           "link": "https://infocom2026.ieee-infocom.org/",
           "tz": "Etc/GMT+12",
-          "date": "May 18 - 21, 2026",
+          "date": "May 19-21, 2026",
           "place": "Tokyo, Japan",
           "timeline": [
             {
@@ -6358,7 +6493,7 @@
           "y": 2026,
           "link": "https://www.ipdps.org/",
           "tz": "Etc/GMT+12",
-          "date": "May 25-29, 2026",
+          "date": "May 27-29, 2026",
           "place": "New Orleans, USA",
           "timeline": [
             {
@@ -6420,11 +6555,11 @@
           "y": 2026,
           "link": "https://www.algo-door.com/isaac2026/index.html",
           "tz": "Etc/GMT+12",
-          "date": "December 6-9, 2026",
+          "date": "December 7-9, 2026",
           "place": "Hangzhou, China",
           "timeline": [
             {
-              "t": "2026-06-26 23:59:59"
+              "t": "2026-06-29 23:59:00"
             }
           ]
         }
@@ -6484,7 +6619,7 @@
           "y": 2026,
           "link": "https://iscaconf.org/isca2026/",
           "tz": "Etc/GMT+12",
-          "date": "June 27-July 1, 2026",
+          "date": "June 29-July 1, 2026",
           "place": "Raleigh, USA",
           "timeline": [
             {
@@ -6513,7 +6648,7 @@
           "place": "Shanghai, China",
           "timeline": [
             {
-              "t": "2025-10-12 23:59:59"
+              "t": "2025-10-26 23:59:00"
             }
           ]
         },
@@ -6526,6 +6661,27 @@
           "timeline": [
             {
               "t": "2026-10-13 23:59:59"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "a": "ISCC",
+      "n": "IEEE Symposium on Computers and Communications",
+      "l": "C",
+      "f": "计算机网络",
+      "d": "https://dblp.org/db/conf/iscc/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "https://ieee-iscc.computer.org/2026/",
+          "tz": "Etc/GMT+12",
+          "date": "June 24-26, 2026",
+          "place": "Vilamoura, Algarve, Portugal",
+          "timeline": [
+            {
+              "t": "2026-02-27 23:59:00"
             }
           ]
         }
@@ -6621,7 +6777,7 @@
           "y": 2026,
           "link": "https://ispass.org/ispass2026/",
           "tz": "Etc/GMT+5",
-          "date": "April 26-28, 2026",
+          "date": "April 27-28, 2026",
           "place": "Seoul, South Korea",
           "timeline": [
             {
@@ -6642,6 +6798,22 @@
       "f": "计算机体系结构/并行与分布计算/存储系统",
       "d": "https://dblp.org/db/conf/ispd/",
       "years": [
+        {
+          "y": 2026,
+          "link": "https://web.archive.org/web/20260225192034/https://ispd.cc/ispd2026/index.php",
+          "tz": "Etc/GMT+12",
+          "date": "March 16-18, 2026",
+          "place": "Bonn, Germany",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2025-09-21 23:59:00"
+            },
+            {
+              "t": "2025-09-28 23:59:00"
+            }
+          ]
+        },
         {
           "y": 2027,
           "link": "https://ispd.cc/ispd2027/",
@@ -6731,7 +6903,7 @@
           "y": 2026,
           "link": "https://conf.researchr.org/home/issta-2026",
           "tz": "Etc/GMT+12",
-          "date": "October 3-9, 2026",
+          "date": "October 7-9, 2026",
           "place": "Oakland, California, United States",
           "timeline": [
             {
@@ -6768,15 +6940,24 @@
           "y": 2026,
           "link": "https://iswc2026.semanticweb.org/",
           "tz": "Etc/GMT+12",
-          "date": "October 25-29, 2026",
+          "date": "October 27-29, 2026",
           "place": "Bari, Italy",
           "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-04-11 23:59:00"
+            },
+            {
+              "t": "2026-05-07 23:59:00",
+              "c": "ESWC transfer"
+            },
             {
               "k": "abstract",
               "t": "2026-05-02 23:59:59"
             },
             {
-              "t": "2026-05-07 23:59:59"
+              "t": "2026-05-07 23:59:59",
+              "c": "Regular route"
             }
           ]
         }
@@ -6884,7 +7065,7 @@
           "y": 2026,
           "link": "https://iwqos2026.ieee-iwqos.org/",
           "tz": "Etc/GMT+12",
-          "date": "29 June - 2 July, 2026",
+          "date": "June 30 - July 2, 2026",
           "place": "Istanbul, Türkiye",
           "timeline": [
             {
@@ -6959,12 +7140,11 @@
           "y": 2026,
           "link": "https://ksem2026.rosc.org.cn/",
           "tz": "Etc/GMT+12",
-          "date": "July 17-19, 2026",
+          "date": "July 17-18, 2026",
           "place": "Beijing, China",
           "timeline": [
             {
-              "t": "2026-02-28 23:59:00",
-              "c": "Regular papers; cutoff clock and timezone unpublished. 23:59:00 uses"
+              "t": "2026-02-28 23:59:00"
             }
           ]
         }
@@ -6985,7 +7165,12 @@
           "place": "Coimbra, Portugal",
           "timeline": [
             {
-              "t": "2026-05-04 23:59:59"
+              "k": "abstract",
+              "t": "2026-05-04 23:59:00"
+            },
+            {
+              "t": "2026-05-04 23:59:59",
+              "c": "Registration / full paper"
             }
           ]
         }
@@ -7010,8 +7195,7 @@
               "t": "2026-03-13 23:59:59"
             },
             {
-              "t": "2026-03-20 23:59:59",
-              "c": "Extended deadlines"
+              "t": "2026-03-20 23:59:59"
             }
           ]
         }
@@ -7199,8 +7383,7 @@
           "place": "VinUniversity, Hanoi, Vietnam",
           "timeline": [
             {
-              "t": "2026-08-14 23:59:59",
-              "c": "Regular Paper"
+              "t": "2026-08-14 23:59:59"
             }
           ]
         }
@@ -7303,7 +7486,7 @@
           "y": 2026,
           "link": "https://sigmobile.org/mobicom/2026/",
           "tz": "Etc/GMT+12",
-          "date": "November, 2026",
+          "date": "October 26-29, 2026",
           "place": "Austin, Texas, USA",
           "timeline": [
             {
@@ -7354,15 +7537,12 @@
           "y": 2026,
           "link": "https://www.sigmobile.org/mobihoc/2026/",
           "tz": "Etc/GMT+12",
-          "date": "November 23-26, 2026",
+          "date": "November 23-25, 2026",
           "place": "Tokyo, Japan",
           "timeline": [
             {
               "k": "abstract",
               "t": "2026-04-13 23:59:59"
-            },
-            {
-              "t": "2026-04-20 23:59:59"
             }
           ]
         }
@@ -7375,6 +7555,18 @@
       "f": "人机交互与普适计算",
       "d": "https://dblp.org/db/conf/mhci/",
       "years": [
+        {
+          "y": 2026,
+          "link": "https://mobilehci.acm.org/2026/",
+          "tz": "Etc/GMT+12",
+          "date": "September 1-3, 2026",
+          "place": "Swansea, Wales, UK",
+          "timeline": [
+            {
+              "t": "2026-01-29 23:59:00"
+            }
+          ]
+        },
         {
           "y": 2027,
           "link": "https://mobilehci.acm.org/2027/",
@@ -7404,7 +7596,7 @@
           "y": 2026,
           "link": "https://www.sigmobile.org/mobisys/2026/",
           "tz": "Etc/GMT+12",
-          "date": "June 21-25, 2026",
+          "date": "June 22-24, 2026",
           "place": "Cambridge, UK",
           "timeline": [
             {
@@ -7553,7 +7745,7 @@
           "y": 2026,
           "link": "https://mswimconf.com/2026/",
           "tz": "Etc/GMT+12",
-          "date": "October 26-30, 2026",
+          "date": "October 27-29, 2026",
           "place": "Paris, France",
           "timeline": [
             {
@@ -7561,8 +7753,7 @@
               "t": "2026-06-14 23:59:00"
             },
             {
-              "t": "2026-06-15 23:59:00",
-              "c": "Regular papers; extended abstract registration and full-paper dates."
+              "t": "2026-06-15 23:59:00"
             }
           ]
         }
@@ -7631,7 +7822,7 @@
           "y": 2026,
           "link": "https://www.ndss-symposium.org/ndss2026/",
           "tz": "Etc/GMT+12",
-          "date": "February 23 - February 27, 2026",
+          "date": "February 24-26, 2026",
           "place": "San Diego, California",
           "timeline": [
             {
@@ -7682,7 +7873,7 @@
           "y": 2026,
           "link": "https://networking.ifip.org/2026/",
           "tz": "Etc/GMT+12",
-          "date": "May 24-27, 2026",
+          "date": "May 25-27, 2026",
           "place": "Lugano, Switzerland",
           "timeline": [
             {
@@ -7778,8 +7969,7 @@
           "place": "Rome, Italy",
           "timeline": [
             {
-              "t": "2025-11-10 23:59:00",
-              "c": "'Regular full technical paper final deadline: November 10, 2025; 23:59:00"
+              "t": "2025-11-10 23:59:00"
             }
           ]
         },
@@ -7905,16 +8095,16 @@
           "y": 2026,
           "link": "https://conf.researchr.org/track/splash-2026/oopsla-2026",
           "tz": "Etc/GMT+12",
-          "date": "October 3-9, 2026",
+          "date": "October 5-7, 2026",
           "place": "Oakland, California, United States",
           "timeline": [
             {
               "t": "2025-10-10 23:59:59",
-              "c": "Submission Deadline Round 1"
+              "c": "Round 1"
             },
             {
               "t": "2026-03-17 23:59:59",
-              "c": "Submission Deadline Round 2"
+              "c": "Round 2"
             }
           ]
         },
@@ -8032,7 +8222,7 @@
           "y": 2026,
           "link": "https://pact2026.github.io/",
           "tz": "Etc/GMT+12",
-          "date": "October 19-22, 2026",
+          "date": "October 20-22, 2026",
           "place": "Chicago, Illinois, USA",
           "timeline": [
             {
@@ -8241,24 +8431,24 @@
           "y": 2026,
           "link": "https://petsymposium.org/cfp26.php",
           "tz": "Etc/GMT+12",
-          "date": "July 20-25, 2026",
+          "date": "July 21-23, 2026",
           "place": "Calgary, Canada",
           "timeline": [
             {
               "t": "2025-05-31 23:59:59",
-              "c": "Issue 1 Paper Submission Deadline"
+              "c": "Issue 1"
             },
             {
               "t": "2025-08-31 23:59:59",
-              "c": "Issue 2 Paper Submission Deadline"
+              "c": "Issue 2"
             },
             {
               "t": "2025-11-30 23:59:59",
-              "c": "Issue 3 Paper Submission Deadline"
+              "c": "Issue 3"
             },
             {
               "t": "2026-02-28 23:59:59",
-              "c": "Issue 4 Paper Submission Deadline"
+              "c": "Issue 4"
             }
           ]
         },
@@ -8358,7 +8548,7 @@
           "y": 2026,
           "link": "https://pldi26.sigplan.org/",
           "tz": "Etc/GMT+12",
-          "date": "June 15-19, 2026",
+          "date": "June 17-19, 2026",
           "place": "Boulder, Colorado, United States",
           "timeline": [
             {
@@ -8391,7 +8581,7 @@
           "y": 2026,
           "link": "https://www.podc.org/podc2026/",
           "tz": "Etc/GMT+12",
-          "date": "July 6-10, 2026",
+          "date": "July 7-9, 2026",
           "place": "Egham, England",
           "timeline": [
             {
@@ -8416,7 +8606,7 @@
           "y": 2026,
           "link": "https://2026.sigmod.org/",
           "tz": "Etc/GMT+12",
-          "date": "May 31 - June 5, 2026",
+          "date": "May 31-June 3, 2026",
           "place": "Bengaluru, India",
           "timeline": [
             {
@@ -8475,12 +8665,11 @@
           "y": 2026,
           "link": "https://popl26.sigplan.org/",
           "tz": "Etc/GMT+12",
-          "date": "January 11-17, 2026",
+          "date": "January 14-16, 2026",
           "place": "Rennes, France",
           "timeline": [
             {
-              "t": "2025-07-10 23:59:59",
-              "c": "Submission Deadline"
+              "t": "2025-07-10 23:59:59"
             }
           ]
         },
@@ -8510,7 +8699,7 @@
           "y": 2026,
           "link": "https://ppopp26.sigplan.org/",
           "tz": "Etc/GMT+12",
-          "date": "Jan 31-Feb 4, 2026",
+          "date": "February 2-4, 2026",
           "place": "Sydney, Australia",
           "timeline": [
             {
@@ -8543,7 +8732,7 @@
           "y": 2026,
           "link": "https://ppsn2026.disi.unitn.it/",
           "tz": "Etc/GMT+12",
-          "date": "August 29-September 2, 2026",
+          "date": "August 31-September 2, 2026",
           "place": "University of Trento, Trento, Italy",
           "timeline": [
             {
@@ -8585,7 +8774,7 @@
           "y": 2026,
           "link": "https://2026.pricai.org/",
           "tz": "Etc/GMT+12",
-          "date": "Nov 16-20, 2026",
+          "date": "November 18-20, 2026",
           "place": "Guangzhou, China",
           "timeline": [
             {
@@ -8635,8 +8824,7 @@
               "t": "2026-04-08 23:59:59"
             },
             {
-              "t": "2026-04-22 23:59:59",
-              "c": "Regular papers (extended)"
+              "t": "2026-04-22 23:59:59"
             }
           ]
         }
@@ -8653,7 +8841,7 @@
           "y": 2026,
           "link": "https://raid2026.org",
           "tz": "Etc/GMT+12",
-          "date": "October 11-14, 2026",
+          "date": "October 12-14, 2026",
           "place": "Lancaster, UK",
           "timeline": [
             {
@@ -8904,7 +9092,7 @@
       "years": [
         {
           "y": 2026,
-          "link": "https://2026.declarativeai.net/events/ruleml-rr",
+          "link": "https://2026.declarativeai.net/ruleml-rr",
           "tz": "Etc/GMT+12",
           "date": "August 24-26, 2026",
           "place": "Vilnius, Lithuania",
@@ -8952,7 +9140,7 @@
           "y": 2026,
           "link": "https://www.ieee-security.org/TC/SP2026/",
           "tz": "Etc/GMT+12",
-          "date": "MAY 18-21, 2026",
+          "date": "May 18-20, 2026",
           "place": "SAN FRANCISCO, CA",
           "timeline": [
             {
@@ -8961,7 +9149,7 @@
             },
             {
               "t": "2025-06-05 23:59:59",
-              "c": "First Paper submission deadline"
+              "c": "Cycle 1"
             },
             {
               "k": "abstract",
@@ -8969,7 +9157,7 @@
             },
             {
               "t": "2025-11-13 23:59:59",
-              "c": "Second Paper submission deadline"
+              "c": "Cycle 2"
             }
           ]
         },
@@ -9042,11 +9230,11 @@
           "timeline": [
             {
               "t": "2025-10-31 23:59:59",
-              "c": "First Cycle"
+              "c": "Cycle 1"
             },
             {
               "t": "2026-03-06 23:59:59",
-              "c": "Second Cycle"
+              "c": "Cycle 2"
             }
           ]
         },
@@ -9106,7 +9294,7 @@
           "y": 2026,
           "link": "https://conf.researchr.org/home/saner-2026",
           "tz": "Etc/GMT+12",
-          "date": "March 17-20, 2026",
+          "date": "March 18-20, 2026",
           "place": "Limassol, Cyprus",
           "timeline": [
             {
@@ -9114,8 +9302,7 @@
               "t": "2025-10-09 23:59:59"
             },
             {
-              "t": "2025-10-16 23:59:59",
-              "c": "Regular research papers; abstract submission is mandatory"
+              "t": "2025-10-16 23:59:59"
             }
           ]
         },
@@ -9236,7 +9423,7 @@
           "y": 2026,
           "link": "https://sc26.supercomputing.org/",
           "tz": "Etc/GMT+12",
-          "date": "November 15-20, 2026",
+          "date": "November 16-20, 2026",
           "place": "McCormick Place, Chicago, Illinois, USA",
           "timeline": [
             {
@@ -9291,8 +9478,7 @@
           "place": "Benevento, Italy",
           "timeline": [
             {
-              "t": "2026-06-11 23:59:59",
-              "c": "co-located with ICSME 2026"
+              "t": "2026-06-11 23:59:59"
             }
           ]
         }
@@ -9382,7 +9568,7 @@
           "link": "https://secon2026.ieee-secon.org/important-dates",
           "tz": "Etc/GMT+12",
           "date": "June 3-5, 2026",
-          "place": "Abu Dhabi, UAE",
+          "place": "Pisa, Italy",
           "timeline": [
             {
               "k": "abstract",
@@ -9466,7 +9652,7 @@
           "timeline": [
             {
               "t": "2026-05-10 23:59:59",
-              "c": "Regular papers; midnight EST"
+              "c": "CFP and proceedings event dates conflict"
             }
           ]
         }
@@ -9483,12 +9669,12 @@
           "y": 2026,
           "link": "https://sensys.acm.org/2026/",
           "tz": "Etc/GMT+12",
-          "date": "May 11-14, 2026",
+          "date": "May 12-14, 2026",
           "place": "Saint-Malo, France",
           "timeline": [
             {
               "k": "abstract",
-              "t": "2025-06-24 23:59:00"
+              "t": "2025-07-01 23:59:00"
             },
             {
               "t": "2025-07-01 23:59:00",
@@ -9577,7 +9763,7 @@
             },
             {
               "t": "2026-02-04 23:59:59",
-              "c": "First round"
+              "c": "First round: recommended abstract / full paper"
             },
             {
               "k": "abstract",
@@ -9585,7 +9771,7 @@
             },
             {
               "t": "2026-04-15 23:59:59",
-              "c": "Second round"
+              "c": "Second round: recommended abstract / full paper"
             }
           ]
         }
@@ -9602,7 +9788,7 @@
           "y": 2026,
           "link": "https://conferences.sigcomm.org/sigcomm/2026/",
           "tz": "Etc/GMT+12",
-          "date": "August 17 - 21, 2026",
+          "date": "August 18-21, 2026",
           "place": "Denver, Colorado, USA",
           "timeline": [
             {
@@ -9668,7 +9854,7 @@
           "y": 2026,
           "link": "https://sigir2026.org/en-AU",
           "tz": "Etc/GMT+12",
-          "date": "July 20-24, 2026",
+          "date": "July 21-23, 2026",
           "place": "Melbourne, Australia",
           "timeline": [
             {
@@ -9709,7 +9895,7 @@
           "y": 2026,
           "link": "https://kdd2026.kdd.org/",
           "tz": "Etc/GMT+12",
-          "date": "August 9-13, 2026",
+          "date": "August 10-13, 2026",
           "place": "Jeju, Korea",
           "timeline": [
             {
@@ -9718,7 +9904,7 @@
             },
             {
               "t": "2025-07-31 23:59:59",
-              "c": "1st round of 2 total rounds"
+              "c": "first round"
             },
             {
               "k": "abstract",
@@ -9726,7 +9912,7 @@
             },
             {
               "t": "2026-02-08 23:59:59",
-              "c": "2nd round of 2 total rounds"
+              "c": "second round"
             }
           ]
         },
@@ -9760,7 +9946,7 @@
           "y": 2026,
           "link": "https://www.sigmetrics.org/sigmetrics2026/",
           "tz": "Etc/GMT+12",
-          "date": "June 8-12, 2026",
+          "date": "June 9-11, 2026",
           "place": "Ann Arbor, Michigan, USA",
           "timeline": [
             {
@@ -9926,7 +10112,7 @@
           "y": 2026,
           "link": "https://sigops.org/s/conferences/atc/2026/index.html",
           "tz": "UTC",
-          "date": "November 15-18, 2026",
+          "date": "November 16-18, 2026",
           "place": "Hyatt Hotel, Shatin, Hong Kong, China",
           "timeline": [
             {
@@ -9955,8 +10141,7 @@
               "t": "2026-05-29 23:59:59"
             },
             {
-              "t": "2026-06-05 23:59:59",
-              "c": "Extended Research Track deadlines"
+              "t": "2026-06-05 23:59:59"
             }
           ]
         }
@@ -9977,7 +10162,12 @@
           "place": "Palermo, Sicily, Italy",
           "timeline": [
             {
-              "t": "2026-06-24 23:59:59"
+              "k": "abstract",
+              "t": "2026-06-24 23:59:00"
+            },
+            {
+              "t": "2026-07-01 23:59:00",
+              "c": "Abstract registration / full paper"
             }
           ]
         }
@@ -10157,7 +10347,7 @@
           "y": 2026,
           "link": "https://soups.page/",
           "tz": "Etc/GMT+12",
-          "date": "August 23-26, 2026",
+          "date": "August 24-26, 2026",
           "place": "Hannover, Germany",
           "timeline": [
             {
@@ -10165,8 +10355,7 @@
               "t": "2026-02-12 23:59:59"
             },
             {
-              "t": "2026-02-19 23:59:59",
-              "c": "Mandatory paper registration with title and abstract"
+              "t": "2026-02-19 23:59:59"
             }
           ]
         }
@@ -10181,10 +10370,10 @@
       "years": [
         {
           "y": 2026,
-          "link": "https://spaa.acm.org/",
+          "link": "https://spaa.acm.org/spaa-2026/",
           "tz": "Etc/GMT+12",
-          "date": "July 6 - July 10, 2026",
-          "place": "London, UK",
+          "date": "July 7-9, 2026",
+          "place": "Egham, England",
           "timeline": [
             {
               "k": "abstract",
@@ -10264,9 +10453,6 @@
             {
               "k": "abstract",
               "t": "2026-05-01 23:59:59"
-            },
-            {
-              "t": "2026-05-08 23:59:59"
             }
           ]
         }
@@ -10287,8 +10473,7 @@
           "place": "Sydney, Australia",
           "timeline": [
             {
-              "t": "2026-03-22 23:59:59",
-              "c": "Extended and firm paper submission deadline"
+              "t": "2026-03-22 23:59:59"
             }
           ]
         }
@@ -10342,8 +10527,7 @@
           "place": "Virtual",
           "timeline": [
             {
-              "t": "2026-05-25 23:59:59",
-              "c": "Regular full papers"
+              "t": "2026-05-25 23:59:59"
             }
           ]
         }
@@ -10368,8 +10552,7 @@
               "t": "2026-03-01 23:59:59"
             },
             {
-              "t": "2026-03-07 23:59:59",
-              "c": "Extended deadlines"
+              "t": "2026-03-07 23:59:59"
             }
           ]
         }
@@ -10407,8 +10590,8 @@
           "y": 2026,
           "link": "https://www.auai.org/uai2026/",
           "tz": "Etc/GMT+12",
-          "date": "August 17-21, 2026",
-          "place": "Amsterdam, Netherlands",
+          "date": "August 18-20, 2026",
+          "place": "Amsterdam, Netherlands (Hybrid)",
           "timeline": [
             {
               "t": "2026-02-25 23:59:59"
@@ -10438,10 +10621,6 @@
             {
               "t": "2026-05-01 23:59:59",
               "c": "second round"
-            },
-            {
-              "t": "2026-11-01 23:59:59",
-              "c": "fourth round"
             }
           ]
         }
@@ -10769,8 +10948,8 @@
           "y": 2026,
           "link": "https://wacv.thecvf.com/Conferences/2026",
           "tz": "Etc/GMT+12",
-          "date": "Mar 6 - 10, 2026",
-          "place": "Tucson, Arizona, USA",
+          "date": "March 8-10, 2026",
+          "place": "Tucson, Arizona, USA (Hybrid)",
           "timeline": [
             {
               "k": "abstract",
@@ -10955,8 +11134,7 @@
               "t": "2026-05-18 23:59:59"
             },
             {
-              "t": "2026-05-18 23:59:59",
-              "c": "Regular papers; final abstract and paper cutoffs from the official"
+              "t": "2026-05-18 23:59:59"
             }
           ]
         }
@@ -10995,16 +11173,16 @@
           "y": 2026,
           "link": "https://wisec26.events.cispa.de/",
           "tz": "Etc/GMT+12",
-          "date": "June 30 - July 3, 2026",
+          "date": "June 30 - July 2, 2026",
           "place": "Saarbrücken, Germany",
           "timeline": [
             {
               "t": "2025-11-18 23:59:59",
-              "c": "First Cycle deadline"
+              "c": "Round 1"
             },
             {
               "t": "2026-03-03 23:59:59",
-              "c": "Second Cycle deadline"
+              "c": "Round 2"
             }
           ]
         }
@@ -11021,7 +11199,7 @@
           "y": 2026,
           "link": "https://www.cs.unibo.it/wowmom2026/",
           "tz": "Etc/GMT+5",
-          "date": "June 16-19, 2026",
+          "date": "June 17-19, 2026",
           "place": "Bologna, Italy",
           "timeline": [
             {
@@ -11058,7 +11236,7 @@
           "y": 2026,
           "link": "https://wsdm-conference.org/2026/",
           "tz": "Etc/GMT+12",
-          "date": "February 22 - 26, 2026",
+          "date": "February 23-25, 2026",
           "place": "Boise, Idaho, USA",
           "timeline": [
             {
@@ -11100,7 +11278,7 @@
           "y": 2026,
           "link": "https://www2026.thewebconf.org/",
           "tz": "Etc/GMT+12",
-          "date": "April 13 - 17, 2026",
+          "date": "July 1-3, 2026",
           "place": "Dubaï, UAE",
           "timeline": [
             {
