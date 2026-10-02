@@ -536,12 +536,11 @@
           "y": 2026,
           "link": "https://www.apbc2026.com/home",
           "tz": "Etc/GMT+12",
-          "date": "October 21-24, 2026",
+          "date": "October 22-24, 2026",
           "place": "Hsinchu, Taiwan， China",
           "timeline": [
             {
-              "t": "2026-07-17 23:59:00",
-              "c": "Regular full papers; extended submission deadline in the organizer"
+              "t": "2026-07-17 23:59:00"
             }
           ]
         }
@@ -1130,6 +1129,22 @@
               "t": "2025-11-28 23:59:59"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://deal.us.es/caise27/",
+          "tz": "Etc/GMT+12",
+          "date": "June 7-11, 2027",
+          "place": "Seville, Spain",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-11-04 23:59:00"
+            },
+            {
+              "t": "2026-11-15 23:59:00"
+            }
+          ]
         }
       ]
     },
@@ -1708,8 +1723,8 @@
           "y": 2026,
           "link": "https://cognitivesciencesociety.org/cogsci-2026/",
           "tz": "Etc/GMT+12",
-          "date": "July 22-25, 2026",
-          "place": "Rio de Janeiro, Brazil",
+          "date": "July 23-25, 2026",
+          "place": "Rio de Janeiro, Brazil (Hybrid)",
           "timeline": [
             {
               "t": "2026-02-02 23:59:59"
@@ -2479,7 +2494,7 @@
           "place": "Snowbird, Utah, United States",
           "timeline": [
             {
-              "t": "2026-10-02 23:59:59"
+              "t": "2026-10-09 23:59:59"
             }
           ]
         }
@@ -2840,10 +2855,10 @@
           "timeline": [
             {
               "k": "abstract",
-              "t": "2026-09-21 23:59:59"
+              "t": "2026-09-22 11:59:59"
             },
             {
-              "t": "2026-10-05 23:59:59"
+              "t": "2026-10-06 11:59:59"
             }
           ]
         }
@@ -3395,10 +3410,10 @@
           "timeline": [
             {
               "k": "abstract",
-              "t": "2026-09-26 09:59:00"
+              "t": "2026-09-26 11:59:00"
             },
             {
-              "t": "2026-10-01 23:59:00"
+              "t": "2026-10-02 11:59:00"
             }
           ]
         }
@@ -4166,6 +4181,18 @@
               "c": "Round 2"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://conferences.graphicsinterface.org/2027",
+          "tz": "Etc/GMT+12",
+          "date": "June 15-18, 2027",
+          "place": "Winnipeg, Canada",
+          "timeline": [
+            {
+              "t": "2027-02-05 23:59:00"
+            }
+          ]
         }
       ]
     },
@@ -4390,6 +4417,27 @@
       ]
     },
     {
+      "a": "HotOS",
+      "n": "USENIX Workshop on Hot Topics in Operating Systems",
+      "l": "B",
+      "f": "软件工程/系统软件/程序设计语言",
+      "d": "https://dblp.org/db/conf/hotos/",
+      "years": [
+        {
+          "y": 2027,
+          "link": "https://sigops.org/s/conferences/hotos/2027/",
+          "tz": "Etc/GMT+12",
+          "date": "May 24-26, 2027",
+          "place": "Burghausen, Bavaria, Germany",
+          "timeline": [
+            {
+              "t": "2027-02-01 23:59:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "a": "HotStorage",
       "n": "ACM Workshop on Hot Topics in Storage and File Systems",
       "l": "C",
@@ -4570,7 +4618,7 @@
           "y": 2026,
           "link": "https://icaif2026.org/index.html",
           "tz": "Etc/GMT+12",
-          "date": "November 14-17, 2026",
+          "date": "November 16-17, 2026",
           "place": "Milan, Italy",
           "timeline": [
             {
@@ -5166,10 +5214,10 @@
           "link": "http://www.ic-icc.cn/2026/",
           "tz": "Etc/GMT-8",
           "date": "July 22-26, 2026",
-          "place": "Toronto, Canada",
+          "place": "Toronto, Canada (Hybrid)",
           "timeline": [
             {
-              "t": "2026-04-04 11:59:59"
+              "t": "2026-04-04 12:00:00"
             }
           ]
         }
@@ -5331,6 +5379,28 @@
             {
               "t": "2026-01-29 11:59:59",
               "c": "Paper Submissions Open on OpenReview Jan 08 2026 12:00AM UTC-0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "a": "ICMLA",
+      "n": "International Conference on Machine Learning and Applications",
+      "l": "",
+      "f": "人工智能",
+      "d": "https://dblp.org/db/conf/icmla/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "https://www.icmla-conference.org/icmla26/",
+          "tz": "America/Los_Angeles",
+          "date": "October 5-7, 2026",
+          "place": "Oakland Center, Rochester, Michigan, USA",
+          "timeline": [
+            {
+              "t": "2026-05-31 23:59:00",
+              "c": "Main Conference Papers DDL."
             }
           ]
         }
@@ -5586,6 +5656,22 @@
             {
               "t": "2026-02-09 23:59:59",
               "c": "Cycle 2"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://ics-conference.org/index.html",
+          "tz": "Etc/GMT+12",
+          "date": "TBD",
+          "place": "Atlanta, Georgia, USA",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2026-12-01 23:59:00"
+            },
+            {
+              "t": "2026-12-07 23:59:00"
             }
           ]
         }
@@ -6550,6 +6636,19 @@
               "t": "2026-03-02 23:59:59"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://2027.ieee-iros.org/",
+          "tz": "Etc/GMT+12",
+          "date": "September 26 - October 1, 2027",
+          "place": "Florence, Italy",
+          "timeline": [
+            {
+              "t": "2027-03-01 23:59:00",
+              "c": "'Paper submission deadline: March 1, 2027; exact cutoff time and timezone"
+            }
+          ]
         }
       ]
     },
@@ -6589,8 +6688,7 @@
           "place": "Macau, China",
           "timeline": [
             {
-              "t": "2026-03-22 23:59:59",
-              "c": "Extended submission deadline"
+              "t": "2026-03-22 23:59:59"
             }
           ]
         }
@@ -8045,6 +8143,18 @@
               "c": "Published registration and full cutoff; portal full close later"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://nossdav.org/",
+          "tz": "Etc/GMT+12",
+          "date": "TBD",
+          "place": "Ghent, Belgium",
+          "timeline": [
+            {
+              "t": "2027-01-11 23:59:00"
+            }
+          ]
         }
       ]
     },
@@ -8801,7 +8911,7 @@
           "y": 2026,
           "link": "https://www.prcv.cn/web/#/home",
           "tz": "Etc/GMT+12",
-          "date": "Aug 22-25, 2026",
+          "date": "August 23-24, 2026",
           "place": "Harbin, China",
           "timeline": [
             {
@@ -9312,6 +9422,23 @@
       "f": "交叉/综合/新兴",
       "d": "https://dblp.org/db/conf/sai/",
       "years": [
+        {
+          "y": 2026,
+          "link": "https://saiconference.com/Conferences/Computing2026",
+          "tz": "Etc/GMT+12",
+          "date": "July 9-10, 2026",
+          "place": "London, United Kingdom (Hybrid)",
+          "timeline": [
+            {
+              "t": "2025-08-01 23:59:00",
+              "c": "Round 1"
+            },
+            {
+              "t": "2025-09-01 23:59:00",
+              "c": "Round 2"
+            }
+          ]
+        },
         {
           "y": 2027,
           "link": "https://saiconference.com/Computing",
@@ -9860,8 +9987,8 @@
           "y": 2026,
           "link": "https://sigcse2026.sigcse.org/",
           "tz": "Etc/GMT+12",
-          "date": "February 18-21, 2026",
-          "place": "St. Louis, Missouri, USA",
+          "date": "February 19-21, 2026",
+          "place": "St. Louis, Missouri, USA (Hybrid)",
           "timeline": [
             {
               "k": "abstract",
@@ -10261,6 +10388,23 @@
             },
             {
               "t": "2026-03-30 23:59:59",
+              "c": "Abstract submission is a soft deadline"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://smiconf.github.io/2027/",
+          "tz": "UTC",
+          "date": "June 21-25, 2027",
+          "place": "Singapore",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2027-03-01 23:59:00"
+            },
+            {
+              "t": "2027-03-08 23:59:00",
               "c": "Abstract submission is a soft deadline"
             }
           ]
