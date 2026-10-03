@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-10-02",
+  "fetchedAt": "2026-10-03",
   "source": "ccfddl/ccf-deadlines (allconf.yml)",
   "conferences": [
     {
@@ -310,6 +310,27 @@
             {
               "t": "2026-05-12 23:59:00",
               "c": "Registration / full paper"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "a": "ACM TURC",
+      "n": "ACM Turing Award Celebration Conference - China",
+      "l": "",
+      "f": "交叉/综合/新兴",
+      "d": "https://dblp.org/db/conf/acmturc/",
+      "years": [
+        {
+          "y": 2026,
+          "link": "https://www.acmturc.com/2026/en/",
+          "tz": "Etc/GMT+12",
+          "date": "July 11-12, 2026",
+          "place": "Hangzhou, China",
+          "timeline": [
+            {
+              "t": "2026-06-10 23:59:00"
             }
           ]
         }
