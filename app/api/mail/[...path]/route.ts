@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** webmaild 只绑回环、无认证（MAIL-AGENT.md 4.6：信任边界在本机），守卫在这一层 */
-const WEBMAILD_URL = process.env.WEBMAILD_URL ?? "http://127.0.0.1:9710";
+const WEBMAIL_URL = process.env.WEBMAIL_URL ?? "http://127.0.0.1:9710";
 
 async function proxy(
   req: NextRequest,
@@ -16,7 +16,7 @@ async function proxy(
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const { path } = await params;
-  const target = `${WEBMAILD_URL}/${path.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
+  const target = `${WEBMAIL_URL}/${path.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
 
   let upstream: Response;
   try {

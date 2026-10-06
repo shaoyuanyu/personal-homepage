@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { MailOwnAddress } from "@/lib/mail/types";
 
-/** 两套注册表条目共有的字段（webmail 是 displayName，maild 也是 displayName） */
+/** 两套注册表条目共有的字段（webmail 是 displayName，mailagentd 也是 displayName） */
 interface RawAddress {
   id?: string;
   displayName?: string;
@@ -13,7 +13,7 @@ interface RawAddress {
 }
 
 /**
- * 归一化：webmaild 的 `/accounts` 返回裸数组，maild 的 `/agent/accounts` 返回
+ * 归一化：webmaild 的 `/accounts` 返回裸数组，mailagentd 的 `/agent/accounts` 返回
  * `{ items }`——两种形状都收；缺地址或 `enabled: false` 的丢掉。
  */
 function normalize(data: unknown, kind: MailOwnAddress["kind"]): MailOwnAddress[] {
@@ -36,7 +36,7 @@ function normalize(data: unknown, kind: MailOwnAddress["kind"]): MailOwnAddress[
  *
  * - **去重按地址小写**：同一地址在两套注册表里都出现时保留 webmail 那条（能发信），
  *   顺序为「webmail 账号（注册表顺序）→ agent」。
- * - ⚠ agent 那条走 `/api/mail/agent/accounts`（maild 的只读视图）。**maild 没起时
+ * - ⚠ agent 那条走 `/api/mail/agent/accounts`（mailagentd 的只读视图）。**mailagentd 没起时
  *   静默降级成「只有 webmail 账号」**——不报错、不阻塞，与顶部栏未读徽点同一处理方式。
  */
 export function useOwnAddresses(): {

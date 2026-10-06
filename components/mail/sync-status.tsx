@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  *
  * 后台批处理最怕安静失效——专用密码过期、服务商改 IMAP 策略，表现都是
  * 「没报错但也收不到信」。这里合并两条链路的健康数据：
- *   - maild    `GET /api/mail/agent/health`：IDLE 抓取链（上次成功 / 连续失败 / 连接状态）
+ *   - mailagentd `GET /api/mail/agent/health`：IDLE 抓取链（上次成功 / 连续失败 / 连接状态）
  *   - webmaild `GET /api/mail/health`：合并视图同步链（lastSync / lastError / lastNewMail）
  *
  * 呈现（2026-10-04 定稿，先后两版被用户打回：页顶独立横条太突兀、
@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
  * 两处 DOM 位置不同但必须共享同一份轮询状态（各 poll 一份会双倍请求且互相打架）。
  */
 
-interface MaildHealth {
+interface MailagentdHealth {
   ok: boolean;
   threshold: number;
   accounts: {
@@ -59,7 +59,7 @@ interface WebmailHealth {
 const POLL_MS = 60_000;
 /**
  * 陈旧阈值：距上次成功抓取超过该时长视为异常。
- * maild 兜底轮询 3 分钟一轮、webmaild 60 秒一轮，15 分钟足够宽松（只抓真卡死）。
+ * mailagentd 兜底轮询 3 分钟一轮、webmaild 60 秒一轮，15 分钟足够宽松（只抓真卡死）。
  */
 const STALE_MS = 15 * 60 * 1000;
 
@@ -103,27 +103,27 @@ export function useSyncStatus(): { status: SyncStatus; rel: (iso: string) => str
     const isStale = (iso: string | null): boolean =>
       !iso || Date.now() - new Date(iso).getTime() > STALE_MS;
 
-    const [maildRes, webmailRes] = await Promise.allSettled([
+    const [mailagentdRes, webmailRes] = await Promise.allSettled([
       fetch("/api/mail/agent/health", { cache: "no-store" }),
       fetch("/api/mail/health", { cache: "no-store" }),
     ]);
-    const maildUp = maildRes.status === "fulfilled" && maildRes.value.ok;
+    const mailagentdUp = mailagentdRes.status === "fulfilled" && mailagentdRes.value.ok;
     const webmailUp = webmailRes.status === "fulfilled" && webmailRes.value.ok;
 
-    if (!maildUp && !webmailUp) {
+    if (!mailagentdUp && !webmailUp) {
       setStatus({ phase: "alert", problems: [{ key: "down", text: t("unreachable") }] });
       return;
     }
-    if (!maildUp) problems.push({ key: "agent-down", text: t("agentDown") });
+    if (!mailagentdUp) problems.push({ key: "agent-down", text: t("agentDown") });
     if (!webmailUp) problems.push({ key: "webmail-down", text: t("webmailDown") });
 
-    // ⚠ 重复写完整条件而非用 maildUp：TS 无法从独立 boolean 反推 PromiseSettledResult 的收窄
-    if (maildRes.status === "fulfilled" && maildRes.value.ok) {
-      const h = (await maildRes.value.json()) as MaildHealth;
+    // ⚠ 重复写完整条件而非用 mailagentdUp：TS 无法从独立 boolean 反推 PromiseSettledResult 的收窄
+    if (mailagentdRes.status === "fulfilled" && mailagentdRes.value.ok) {
+      const h = (await mailagentdRes.value.json()) as MailagentdHealth;
       for (const a of h.accounts) {
         if (a.alert) {
           problems.push({
-            key: `maild-${a.id}`,
+            key: `mailagentd-${a.id}`,
             text: a.lastOk
               ? t("fetchFailures", { name: a.displayName, count: a.failures }) +
                 ` · ${t("lastOkAt", { time: rel(a.lastOk) })}`
@@ -132,7 +132,7 @@ export function useSyncStatus(): { status: SyncStatus; rel: (iso: string) => str
           });
         } else if (isStale(a.lastOk)) {
           problems.push({
-            key: `maild-stale-${a.id}`,
+            key: `mailagentd-stale-${a.id}`,
             text: a.lastOk
               ? t("stale", { name: a.displayName, time: rel(a.lastOk) })
               : t("stale", { name: a.displayName, time: t("lastOkNever") }),

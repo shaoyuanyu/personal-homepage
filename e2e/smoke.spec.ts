@@ -3076,7 +3076,7 @@ function stubMailApi(
     healthStore?: { lastNewMail: string };
   },
   // 状态条（5.5）的健康端点覆盖：默认全部健康；传 {status, body} 模拟告警/不可达
-  health?: { maild?: { status: number; body: unknown }; webmail?: { status: number; body: unknown } },
+  health?: { mailagentd?: { status: number; body: unknown }; webmail?: { status: number; body: unknown } },
 ) {
   // 通讯录内存桩：POST/PATCH/DELETE 真实改这个数组，GET 反映最新状态。
   // ⚠ 预置一条「自己地址」的联系人：复现「账号重复」场景——它必须被界面过滤掉
@@ -3216,14 +3216,14 @@ function stubMailApi(
     }
     if (path === "/agent/health") {
       const now = new Date().toISOString();
-      const body = health?.maild?.body ?? {
+      const body = health?.mailagentd?.body ?? {
         ok: true,
         threshold: 3,
         accounts: [
           { id: "agent", displayName: "Agent 信箱", email: "agent@mail.example.cn", lastOk: now, failures: 0, lastError: null, connected: true, alert: false },
         ],
       };
-      return route.fulfill({ status: health?.maild?.status ?? 200, contentType: "application/json", body: JSON.stringify(body) });
+      return route.fulfill({ status: health?.mailagentd?.status ?? 200, contentType: "application/json", body: JSON.stringify(body) });
     }
     if (path === "/messages") {
       const account = url.searchParams.get("account");
@@ -3285,7 +3285,7 @@ function stubMailApi(
       }
       return json({ current: "mid:w01@test.local", items: [mailItem({})] });
     }
-    // maild 的只读视图：agent 信箱（通讯录「我的账号」用，4.10）
+    // mailagentd 的只读视图：agent 信箱（通讯录「我的账号」用，4.10）
     if (path === "/agent/accounts") {
       return json({
         items: [
@@ -4510,7 +4510,7 @@ test.describe("站内邮件（/mail）", () => {
     test("同步状态指示：抓取连续失败与同步错误进入告警态（5.5）", async ({ page }) => {
       const calls = { flags: [], send: [], delete: [] };
       await stubMailApi(page, calls, {
-        maild: {
+        mailagentd: {
           status: 200,
           body: {
             ok: false,
@@ -4544,7 +4544,7 @@ test.describe("站内邮件（/mail）", () => {
       await loginWithCode(page, code);
 
       await gotoReady(page, "/mail");
-      // 告警显示在底栏右侧的状态指示里：maild 连续失败达阈值（且从未成功）
+      // 告警显示在底栏右侧的状态指示里：mailagentd 连续失败达阈值（且从未成功）
       // + webmaild acc1 同步报错 → 两条告警；acc2 正常不计。
       // 显示第一条（最严重）+ 「+1」，完整列表在 title（2026-10-04 用户指定：
       // 底栏是状态唯一显示位置，不再有独立的展开告警条）
@@ -4565,7 +4565,7 @@ test.describe("站内邮件（/mail）", () => {
     test("同步状态指示：两个后台服务都不可达时显示总告警（5.5）", async ({ page }) => {
       const calls = { flags: [], send: [], delete: [] };
       await stubMailApi(page, calls, {
-        maild: { status: 500, body: { error: "down" } },
+        mailagentd: { status: 500, body: { error: "down" } },
         webmail: { status: 500, body: { error: "down" } },
       });
       const code = new TOTP({ secret: totpSecret! }).generate();
@@ -4728,7 +4728,7 @@ test.describe("站内邮件（/mail）", () => {
   });
 });
 
-// ---- /mail/agent 只读入口打桩（MAIL-AGENT.md 第八节第 5 步；数据形状对应 maild /agent/* 端点）----
+// ---- /mail/agent 只读入口打桩（MAIL-AGENT.md 第八节第 5 步；数据形状对应 mailagentd /agent/* 端点）----
 
 const AGENT_TIMELINE = [
   {

@@ -35,7 +35,7 @@ import { toast } from "@/components/ui/toast";
  * 不渲染 HTML 邮件、不加载任何远程内容（4.4）：只展示头部原文与纯文本。
  */
 
-// ---------- 类型（与 maild /agent/* 端点对应） ----------
+// ---------- 类型（与 mailagentd /agent/* 端点对应） ----------
 
 interface TimelineItem {
   messageId: string;

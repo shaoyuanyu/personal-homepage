@@ -7,17 +7,17 @@ export const dynamic = "force-dynamic";
 
 /**
  * `/mail/agent` 只读入口的数据通路（MAIL-AGENT.md 4.5 / 第八节第 5 步）：
- * 转发到 maild 的 `/agent/*` 只读视图（绑回环、无认证），守卫在这一层。
+ * 转发到 mailagentd 的 `/agent/*` 只读视图（绑回环、无认证），守卫在这一层。
  * 注意静态段 `agent` 优先于兄弟 `[...path]` 代理（后者去 webmaild）。
  */
-const MAILD_URL = process.env.MAILD_URL ?? "http://127.0.0.1:9711";
+const MAIL_AGENT_URL = process.env.MAIL_AGENT_URL ?? "http://127.0.0.1:9711";
 
 async function proxy(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   if (!(await isOwner())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const { path } = await params;
-  const target = `${MAILD_URL}/agent/${path.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
+  const target = `${MAIL_AGENT_URL}/agent/${path.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
 
   let upstream: Response;
   try {
@@ -30,7 +30,7 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
       cache: "no-store",
     });
   } catch {
-    return NextResponse.json({ error: "maild_unreachable" }, { status: 502 });
+    return NextResponse.json({ error: "mailagentd_unreachable" }, { status: 502 });
   }
 
   const headers = new Headers();

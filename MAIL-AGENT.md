@@ -45,7 +45,7 @@
    │                        │
    │ 只读                    │ 读写（正常 webmail）
    ↓                        ↓
-maild（agent 侧）        webmaild（前端侧）
+mailagentd（agent 侧）     webmaild（前端侧）
   ├ 增量抓取（IDLE 唤醒）  ├ 正常收发
   ├ 原始邮件索引 + FTS5     ├ 发信 + APPEND 到该账号「已发送」
   ├ 原文 .eml 长期保留      └ agent@：只读，PEEK，不产生任何写入
@@ -58,7 +58,7 @@ maild（agent 侧）        webmaild（前端侧）
    两边共用：Next.js /mail（shadcn/ui）+ requireOwner
 ```
 
-**maild 是唯一向 agent 暴露邮件能力的地方，也是唯一持有 agent 侧凭据的进程。**
+**mailagentd 是唯一向 agent 暴露邮件能力的地方，也是唯一持有 agent 侧凭据的进程。**
 
 - 抓取与索引、原文留存、agent 产物表、受限工具面，全在它里面。工具面不另起一个服务——凭据只该有一个落点。
 - agent worker 不持有任何邮件凭据，只会调工具面那几个函数。
@@ -140,8 +140,8 @@ agent 对外部数据源与 `me@` 一律只读，落实为：
   - 为什么可信：域内投递要求发送方先通过 SMTP 认证（密码）；外部伪造 `me@` 则会在 MX 门口被本域 SPF `-all` 硬拒。**伪造只能发生在阿里云入口之外，而入口检查是阿里云的本职**——实测确认（2026-10-02）。
   - 为什么不再要求 SPF+DKIM：阿里云域内投递**不签 DKIM、不盖 `Authentication-Results`**，首跳 Received 是 `127.0.0.1` 内部 hop → SPF 恒 temperror。域内信在下游**结构性不可验**，双条件会把域内指令全部饿死。
   - 安全性边界：判据依赖 MTA prepend 语义——伪造者写在信里的假 Received 永远压在阿里云真章**下面**，只读顶层章即免疫。
-- **外部来信**：必须**同时**满足 ① `From` 在白名单内；② **SPF 与 DKIM 校验双双通过**（maild 自行校验，不依赖服务商已做的判断）。
-  - ⚠️ 阿里云不盖 `Return-Path`、外部入站章的 IP/envelope 藏在括号注释里（非 mailauth 认识的标准格式）——maild 须从顶层 Received 提取 `mailfrom:` / `ip:` 注入 mailauth，否则 SPF 退化为 temperror / 误查中继主机名（2026-10-02 真机实测修复）。
+- **外部来信**：必须**同时**满足 ① `From` 在白名单内；② **SPF 与 DKIM 校验双双通过**（mailagentd 自行校验，不依赖服务商已做的判断）。
+  - ⚠️ 阿里云不盖 `Return-Path`、外部入站章的 IP/envelope 藏在括号注释里（非 mailauth 认识的标准格式）——mailagentd 须从顶层 Received 提取 `mailfrom:` / `ip:` 注入 mailauth，否则 SPF 退化为 temperror / 误查中继主机名（2026-10-02 真机实测修复）。
 - 两路都不满足的来信一律按普通邮件处理——正常入库、正常判定，但不触发任何指令行为。
 - 每封指令信的校验结果记入台账：通道（域内/外部）、SPF / DKIM 结果、是否进入指令路径、指令内容摘要。
 - 指令回执：指令执行完毕后，agent 向 `me@` 回执结果（成功 / 失败 + 摘要）。不单独回执「已收到」——回执的价值在执行结果，收到与否从 `agent@` 只读入口的时间线即可看到。
@@ -154,7 +154,7 @@ agent 对外部数据源与 `me@` 一律只读，落实为：
 3.9 把「以 `agent@` 名义发出邮件」列为注入后的可能后果之一，它是三类后果里唯一会波及第三方的：被注入的 agent 向任意外部地址发垃圾邮件，代价是阿里云封号、域名进黑名单。因此 `send_as_agent` 带一道闸门：
 
 - 收件人默认白名单：你的三个地址。白名单内的发送直接发出。
-- 白名单外的发送进入**待确认队列**：邮件本体先写好但不发出，在 `/mail` 的 agent 页签里展示，你点确认后才发出；也可以**丢弃**（队列里只进不出会堆垃圾）。确认与丢弃走 maild 的 HTTP 端点（`/pending-sends/:id/confirm|discard`），**不 exposed 成 MCP 工具**——agent 不能自己给自己的外发开闸。
+- 白名单外的发送进入**待确认队列**：邮件本体先写好但不发出，在 `/mail` 的 agent 页签里展示，你点确认后才发出；也可以**丢弃**（队列里只进不出会堆垃圾）。确认与丢弃走 mailagentd 的 HTTP 端点（`/pending-sends/:id/confirm|discard`），**不 exposed 成 MCP 工具**——agent 不能自己给自己的外发开闸。
 - 待确认队列的通知：页面被动展示为主；若队列有待确认项，agent 在当日的汇报里附一句提醒，不单独发提醒信。
 - 闸门在工具层实现，与 5.3 的台账同一位置——agent 无法绕过。
 
@@ -275,7 +275,7 @@ API 形状（均 JSON，下划线端点为站内代理的转发对象）：
 | `POST /move`、`POST /delete` | 移动与删除 |
 | `POST /sync` | 立即增量同步 |
 
-**maild 的只读视图**（4.5：前端只读 agent 的产物，不直连它的库）经站点代理 `/api/mail/agent/*` → maild `127.0.0.1:9711`（路由上静态段 `agent` 优先于兄弟 `[...path]`）。现有：`/agent/timeline`、`/agent/ledger`、`/agent/pending-sends`（含 `POST /:id/confirm|discard`）、`/agent/judgments`、`/agent/reasoning`、**`/agent/accounts`**（站主自己的地址列表；**只出 `id/displayName/email/isAgent/enabled`**，主机与凭据不出门 —— 4.10 的「我的账号」用它）。
+**mailagentd 的只读视图**（4.5：前端只读 agent 的产物，不直连它的库）经站点代理 `/api/mail/agent/*` → mailagentd `127.0.0.1:9711`（路由上静态段 `agent` 优先于兄弟 `[...path]`）。现有：`/agent/timeline`、`/agent/ledger`、`/agent/pending-sends`（含 `POST /:id/confirm|discard`）、`/agent/judgments`、`/agent/reasoning`、**`/agent/accounts`**（站主自己的地址列表；**只出 `id/displayName/email/isAgent/enabled`**，主机与凭据不出门 —— 4.10 的「我的账号」用它）。
 
 ### 4.7 会话（thread）组装
 
@@ -346,10 +346,10 @@ API 形状（均 JSON，下划线端点为站内代理的转发对象）：
 - **存储**：共享 `mail.db` 的 `contacts` 表（`id/name/email/note/created_at/updated_at`，`email COLLATE NOCASE` 唯一索引）。**只有手动保存一种写入**——不做分组、不做 vCard（暂无需求）。
 - **自动收录不落表**：「未加入通讯录」区由 webmaild 对 `messages` 表现算（`from_addr` + `json_each(to_json/cc_json)` 聚合：次数、最近通信时间、显示名），排除自己各账号与已保存联系人。不写库 → 永远与邮件数据一致，无回填/双写问题。
 - **API**（webmaild，主站代理层 `isOwner` 守卫；代理已放行 PATCH/DELETE）：`GET/POST /contacts`、`PATCH/DELETE /contacts/:id`、`GET /contacts/known`、`GET /contacts/suggest`（已保存联系人在前、收录在后，供写信补全）。
-- **「我的账号」区（4.10，2026-10 加）**：通讯录页最上方多一个**只读**区块，列出站主自己的全部收发地址——webmail 账号（`GET /accounts`）+ **agent 信箱**（maild 的只读视图 `GET /agent/accounts`，经站点代理 `/api/mail/agent/accounts`）。每行只有「写信」入口，**不可编辑/删除**（它们来自各自的账号注册表，不是通讯录里的人）。
+- **「我的账号」区（4.10，2026-10 加）**：通讯录页最上方多一个**只读**区块，列出站主自己的全部收发地址——webmail 账号（`GET /accounts`）+ **agent 信箱**（mailagentd 的只读视图 `GET /agent/accounts`，经站点代理 `/api/mail/agent/accounts`）。每行只有「写信」入口，**不可编辑/删除**（它们来自各自的账号注册表，不是通讯录里的人）。
   - 数据源统一在客户端 hook `lib/mail/use-own-addresses.ts`（`useOwnAddresses()` → `{ready, own, emails}`）：两套注册表合并、**按地址小写去重（webmail 优先——那条能发信）**、顺序「webmail 账号 → agent」。
-  - ⚠ **agent 那条会随 maild 不可用而静默消失**（fetch 失败就只留 webmail 账号），不报错、不阻塞——与顶部未读徽点同一处理方式。
-  - ⚠ **maild 侧只出 `id/displayName/email/isAgent/enabled`**：IMAP/SMTP 主机、端口、文件夹、凭据一律不出门。
+  - ⚠ **agent 那条会随 mailagentd 不可用而静默消失**（fetch 失败就只留 webmail 账号），不报错、不阻塞——与顶部未读徽点同一处理方式。
+  - ⚠ **mailagentd 侧只出 `id/displayName/email/isAgent/enabled`**：IMAP/SMTP 主机、端口、文件夹、凭据一律不出门。
   - 写信页的收件人/抄送补全把它排在最前（`RecipientInput` 的 `own` prop，**本地过滤不走接口**），标「我的」，且同地址不再重复出现在联系人/自动收录里。回复全部也靠这份名单剔掉自己（见 4.9）。
 - **自己的地址不属于「联系人」（2026-10-03 用户反馈「账号重复不清楚」后落地）**：
   - 联系人列表与「未加入通讯录」都把 `useOwnAddresses().emails` 里的地址**过滤掉**（只出现在「我的账号」区）；`ready` 之前不过滤（数据本来也在加载中），避免闪动。
@@ -507,10 +507,10 @@ create_event
 
 工具面的实现形态（第 3 步定）：
 
-- **工具面进程内嵌在 maild**，传输用 MCP 的 streamable HTTP，绑 `127.0.0.1:9711`、不做认证（与 webmaild 同一信任边界）。同一 HTTP 服务上另挂几个**非 MCP 的 JSON 端点**：`/ledger`、`/pending-sends`、`/pending-sends/:id/confirm|discard`、`/health`——这是给前端 / 人工用的只读视图与确认动作，**确认不 exposed 成 MCP 工具**（agent 不能自己给自己的外发开闸）。
+- **工具面进程内嵌在 mailagentd**，传输用 MCP 的 streamable HTTP，绑 `127.0.0.1:9711`（`MAIL_AGENT_HOST` 可调，容器/私有网络部署时改 `0.0.0.0`）、不做认证（与 webmaild 同一信任边界）。同一 HTTP 服务上另挂几个**非 MCP 的 JSON 端点**：`/ledger`、`/pending-sends`、`/pending-sends/:id/confirm|discard`、`/health`——这是给前端 / 人工用的只读视图与确认动作，**确认不 exposed 成 MCP 工具**（agent 不能自己给自己的外发开闸）。
 - **台账与待确认队列存独立的 `agent.db`**（与 `mail.db` 同目录）。`mail.db` 仍是纯原始邮件索引；5.2 的 `judgment` / `reasoning` 届时也进 `agent.db`——工具层产物与模型产物同属「非原始邮件」一侧。
 - **写操作的 IMAP 连接策略**：工具面不碰抓取器的 IDLE 连接（IDLE 中的连接无法插入命令，打断 IDLE 又伤实时性）；`set_flags` 与 `APPEND` 各开**短时第二条连接**，按账号互斥串行、用完即断。这是对红线 10 的补充说明：它防的是「并行抓取的常驻多连接」，工具面写操作低频秒级，与抓取器同账号最多瞬时两条。
-- `send_as_agent` v1 只发纯文本正文（回执与汇报够用），不支持附件；Message-ID 由 maild 生成写进 MIME，SMTP 与 `APPEND` 同一份字节（红线 6）。
+- `send_as_agent` v1 只发纯文本正文（回执与汇报够用），不支持附件；Message-ID 由 mailagentd 生成写进 MIME，SMTP 与 `APPEND` 同一份字节（红线 6）。
 
 **「不能删除邮件」靠的是没有这个函数，不是靠提示词**——提示词层面的约束，在能执行任意代码的前提下等于没有。
 
@@ -533,7 +533,7 @@ create_event
 到那时：
 
 - harness 通过**同一个 MCP 工具面**接上邮件能力。
-- 处理流程仍由 maild 侧的 loop 自主跑，harness 只调用能力，**不接管触发**。
+- 处理流程仍由 mailagentd 侧的 loop 自主跑，harness 只调用能力，**不接管触发**。
 - **同一批邮件凭据只能有一个出口。** 新 agent 不要另发一份凭据，让它走同一个工具面——边界从一处变两处，等于没有边界。
 
 ---
@@ -550,7 +550,7 @@ create_event
 | 存储 | SQLite（`better-sqlite3`）+ FTS5（trigram 分词） | 元数据 + 全文（中文模糊搜索）+ 线程 |
 | 原文 | 磁盘 `.eml` | 给「引用原文」与排查用 |
 | HTML 邮件渲染 | `sanitize-html` | |
-| 工具面 | MCP（由 maild 提供） | 任何 harness 都能接 |
+| 工具面 | MCP（由 mailagentd 提供） | 任何 harness 都能接 |
 | agent worker 池 | 薄自写（TS + Vercel AI SDK） | 与站点同一语言，直接读 SQLite |
 
 全文索引用 FTS5 的 **trigram 分词器**：中文按字切组，原生支持子串模糊搜索——输入任意连续片段都能命中（如「试通知」命中「面试通知」）。查询 3 个字符以上走索引；1~2 个字符的查询走 `LIKE` 兜底（低频，邮件量级下可接受）。验收条件：实测 better-sqlite3 预编译二进制可用 trigram（能建 `tokenize='trigram'` 的虚拟表并查询）；不可用则改为自行构建 SQLite。索引体积约为文本的 2~3 倍，计入容量预估（见第十节）。
@@ -631,9 +631,11 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 - [ ] 从 VPS 用每个账号实测一次 IMAP 登录（agent@ 本机已实测，VPS 侧随部署验证）
 - [x] 阿里 IMAP 能力实测（2026-09-30，`agent@mail.shaoyuanyu.cn`）：**IDLE ✓**（5.1 事件驱动成立）；**`THREAD` ✗**（会话组装走 6.1 的本地 References 拼接）；**SPECIAL-USE ✗**（`\Sent` 走常见名回退——实际文件夹名「已发送」，已在回退链内）；**MOVE ✗**（imapflow 自动回退 COPY + `\Deleted` + EXPUNGE；阿里有 UIDPLUS，UID EXPUNGE 只清指定 UID）；文件夹 = INBOX / 已发送 / 草稿 / 垃圾邮件 / 已删除邮件。腾讯待实测
 
-### 1. maild：取信与索引
+### 1. mailagentd：取信与索引
 
 **已完成（2026-09-25，`mail/` 独立包，14 条测试全过，详见 `mail/README.md`）**
+
+> **2026-10-06 更名**：`maild` → `mailagentd`（镜像名 `mail-agent`）；环境变量统一为 `MAIL_AGENT_*`（原 `MAILD_*` / `MAIL_*` 混用）；监听地址可配（`MAIL_AGENT_HOST`，缺省 `127.0.0.1`；webmaild 同理有 `WEBMAIL_HOST`）。
 
 - 只追加抓取器 + 标记回读（见 3.5）；IDLE 唤醒 + 断线重连补抓 + 兜底轮询（见 5.1）
 - 原始邮件索引、原文 `.eml` 留存；trigram 分词实测验收（见 6.1）
@@ -647,7 +649,7 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 - 三家账号的读写、发信、`APPEND` 到各自的「已发送」（`\Sent` 文件夹要探测，探测不到按 4.6 的回退链处理）
 - 标记写回对该 Message-ID 的所有副本一起 `STORE`（红线 8）；删除 / 移动优先 `MOVE` 扩展
 - **追加（2026-10）**：会话组装（4.7）、顶部导航未读徽标（4.8）、交互与视觉约定（4.9）、通讯录（4.10）、账号管理（4.11）。webmail 包集成测试增至 32 条；`/mail` 相关 E2E 15 条（含账号管理），全部拼进 `e2e/smoke.spec.ts` 常驻回归。
-- **追加（2026-10-04）**：远程图片白名单配置入口（4.4，账号管理弹窗内维护，webmaild `GET/PUT /remote-image-domains` 即时生效）与同步健康状态指示（5.5，maild `health.ts` 每账号上次成功/连续失败/连接状态 + `/agent/health` 端点 + webmaild `/health` + 底部状态栏呈现，告警阈值默认连续 3 次、陈旧阈值 15 分钟）。⚠ 先后两版被打回：页顶独立横条太突兀、工具栏账号行右侧在账号多时挤 chips；定稿为**贯通底部状态栏**（2026-10-04 用户定稿：只在左半区时分隔线在中缝断掉，贯通后与面板边框围成完整客户端外框）——挂在 `MailShell` 面板边框内、两栏网格之下，`border-t` 贯通；三个区：**左 = 列表统计**（已加载/未读，与列表上下对应，用户指定）、**中 = 账号一览 chips**（色点 + 名称 + 未读数，点击即按该账号筛选、当前筛选高亮；账号 ≤1 或 <40rem 时不显示）、**右 = 同步状态指示**（圆点 + 上次收到新邮件时间；**异常时直接显示第一条告警的完整文案**）。⚠ **告警显示位置两次改稿、最终只在底栏（2026-10-04 用户定稿，勿再挪动）**：最初贴底栏上方展开告警行 → 用户反馈「看不见」→ 移到面板顶部一条 → 用户否决「底栏已是状态条，何必再开一条顶部的」→ 定稿为**把「同步异常」短标签直接换成语义文案**（如「邮件后台服务不可达，新邮件抓取已暂停」），多条时第一条 + 「+N」、完整列表在 `title`（hover 可见）；`mail-sync-alerts` 组件已删除，E2E 断言「没有独立的告警条」。⚠ 显示的时间是「抓进新邮件」的时刻（webmaild `lastNewMail`：本轮 `fetched > 0` 才刷新，安静期不变）——**不是** `lastSync`/`lastOk` 同步心跳（60s/3min 一轮恒新鲜，显示它永远「刚刚」、信息量为零，2026-10-04 用户反馈后改）；心跳只用于陈旧/失败判定。数据流：同步健康由 **MailShell** 调 `useSyncStatus()` 一次后下传底栏（status/rel props；两处各调会变成双份定时器 + 双份请求）；列表统计/账号/当前筛选归 MailClient 所有，经 `usePublishMailBar()` 双 context（setter 稳定 / state 只被底栏订阅）发布到 `components/mail/mail-statusbar.tsx`。窄屏详情视图底栏整体隐藏。mail 包测试增至 104 条（含 health 7 条），webmail 包 36 条，`/mail` E2E 增至 19 条（新增白名单增删与失败提示、状态指示正常/告警/不可达三态、贯通几何与账号 chips 交互，均做过反向验证）。
+- **追加（2026-10-04）**：远程图片白名单配置入口（4.4，账号管理弹窗内维护，webmaild `GET/PUT /remote-image-domains` 即时生效）与同步健康状态指示（5.5，mailagentd `health.ts` 每账号上次成功/连续失败/连接状态 + `/agent/health` 端点 + webmaild `/health` + 底部状态栏呈现，告警阈值默认连续 3 次、陈旧阈值 15 分钟）。⚠ 先后两版被打回：页顶独立横条太突兀、工具栏账号行右侧在账号多时挤 chips；定稿为**贯通底部状态栏**（2026-10-04 用户定稿：只在左半区时分隔线在中缝断掉，贯通后与面板边框围成完整客户端外框）——挂在 `MailShell` 面板边框内、两栏网格之下，`border-t` 贯通；三个区：**左 = 列表统计**（已加载/未读，与列表上下对应，用户指定）、**中 = 账号一览 chips**（色点 + 名称 + 未读数，点击即按该账号筛选、当前筛选高亮；账号 ≤1 或 <40rem 时不显示）、**右 = 同步状态指示**（圆点 + 上次收到新邮件时间；**异常时直接显示第一条告警的完整文案**）。⚠ **告警显示位置两次改稿、最终只在底栏（2026-10-04 用户定稿，勿再挪动）**：最初贴底栏上方展开告警行 → 用户反馈「看不见」→ 移到面板顶部一条 → 用户否决「底栏已是状态条，何必再开一条顶部的」→ 定稿为**把「同步异常」短标签直接换成语义文案**（如「邮件后台服务不可达，新邮件抓取已暂停」），多条时第一条 + 「+N」、完整列表在 `title`（hover 可见）；`mail-sync-alerts` 组件已删除，E2E 断言「没有独立的告警条」。⚠ 显示的时间是「抓进新邮件」的时刻（webmaild `lastNewMail`：本轮 `fetched > 0` 才刷新，安静期不变）——**不是** `lastSync`/`lastOk` 同步心跳（60s/3min 一轮恒新鲜，显示它永远「刚刚」、信息量为零，2026-10-04 用户反馈后改）；心跳只用于陈旧/失败判定。数据流：同步健康由 **MailShell** 调 `useSyncStatus()` 一次后下传底栏（status/rel props；两处各调会变成双份定时器 + 双份请求）；列表统计/账号/当前筛选归 MailClient 所有，经 `usePublishMailBar()` 双 context（setter 稳定 / state 只被底栏订阅）发布到 `components/mail/mail-statusbar.tsx`。窄屏详情视图底栏整体隐藏。mail 包测试增至 104 条（含 health 7 条），webmail 包 36 条，`/mail` E2E 增至 19 条（新增白名单增删与失败提示、状态指示正常/告警/不可达三态、贯通几何与账号 chips 交互，均做过反向验证）。
 - **追加（2026-10-05）**：/mail 工具栏与账号筛选定稿（4.9）——两行结构（行 1 = 账号单选下拉 + 搜索收起/展开 + 刷新 + 写邮件；行 2 = 视图 Tabs + 未读/星标开关）；账号从「底栏多选 chips」收敛为「行 1 单选下拉」（`components/mail/account-menu.tsx`，普通菜单项 + 自绘勾选），底栏账号区改为**只读指示**（选「全部账号」时列出合并的账号，不承担筛选）。一并落地：搜索两段式（**300ms 防抖只作用于搜索词**，切 tab/开关不再白等）、列表加载体验（骨架仅首载 / 重载保留旧列表淡化 60% / 过期响应丢弃）、底栏统计 `invisible` 占位防抖动、空态文案带筛选条件（`暂无「未读」邮件` / `「发件」中暂无「星标」邮件`，组合键必须显式列出——`join("And")` 会拼出大小写不符的键、next-intl 会把 key 路径原样吐在页面上）。⚠ 两条实测教训写入 4.9：① **工具行宽 = 左栏 384px**（不是整页宽，曾全盘错算），账号名约 24 字符封顶，完整地址靠菜单（≤32rem）与底栏指示；② **`DropdownMenuRadioItem` 选择后触发器下一次点击被 Base UI 吞掉**（真实 Chromium 复现），菜单项一律用普通 `DropdownMenuItem`。服务端 `account` 参数保留逗号多值并集（前端只发单值，webmail 包 38 条含该单测）。`/mail` 相关 E2E 25 条全绿（全量 105 通过 / 2 跳过 / 0 失败）。
 - 集成测试沿用 Dovecot 容器；SMTP 用内存接收端断言「SMTP 发出与 `APPEND` 留底是同一份字节」
 - 聚合视图：默认合并、保留账号视角 + 账号筛选（见 4.2）
@@ -669,7 +671,7 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 
 **实现细则（2026-09-29 定）：**
 
-- **worker 池在 maild 进程内，但工具调用一律经 MCP client 走 HTTP 自连**（`@ai-sdk/mcp` 的 `createMCPClient` 连 `127.0.0.1:9711/mcp`）：worker 模块不 import 任何凭据/写操作模块（`test/audit.test.ts` 扫 import 清单锁定），将来拆独立容器时零代码改动。
+- **worker 池在 mailagentd 进程内，但工具调用一律经 MCP client 走 HTTP 自连**（`@ai-sdk/mcp` 的 `createMCPClient` 连 `127.0.0.1:9711/mcp`）：worker 模块不 import 任何凭据/写操作模块（`test/audit.test.ts` 扫 import 清单锁定），将来拆独立容器时零代码改动。
 - **任务队列 = `agent.db` 的 `tasks` 表**：`id, kind(judge|command|report), message_id, payload_json, priority, status(pending|running|done|failed), attempts, run_after, created_at, started_at, finished_at, error`。原子领取用 `UPDATE ... WHERE id = (SELECT id FROM tasks WHERE status='pending' AND run_after<=now ORDER BY priority DESC, id LIMIT 1) RETURNING`（better-sqlite3 同步 API，单进程内天然串行，不会重复取）。失败 `attempts+1` 指数退避 `run_after`，3 次后标 `failed`（5.5 的告警面）。
 - **触发接线**：抓取器 IDLE 唤醒/轮询入库新邮件后投 `judge` 任务；指令认证通过（3.6）的改投 `command`（更高优先级）。
 - **指令认证按通道分两路（3.6，2026-10 修订）**：先按顶层 `Received` 形状区分域内直投（`by smtp.aliyun-inc.com`，信任，白名单即指令）与外部来信（`by mx*.aliyun-inc.com`，白名单 + SPF/DKIM 双过）。外部路径用 mailauth 自验（不依赖服务商的 `Authentication-Results`）：阿里云不盖 `Return-Path` 且 Received 注释格式非标准，须由 `extractSenderFromTopReceived` 提取 `mailfrom:`/`ip:` 显式注入 `authenticate()`，DKIM 直接验签。`resolver` 参数可注入 DNS 解析器——测试注入假 resolver，生产用系统 DNS。
@@ -689,7 +691,7 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 
 **实现细则（2026-09-30 定）：**
 
-- **数据通路**：站点 `app/api/mail/agent/[...path]`（`isOwner` 守卫；静态段 `agent` 优先于既有 `[...path]` 代理）→ maild 同一 HTTP 服务（`127.0.0.1:9711`）的 `/agent/*` **只读端点**（4.5：前端读 agent 导出的只读视图，不直连 agent 的库）。只读端点挂在 `mcp.ts` 的 HTTP 服务上、查询逻辑独立成 `agentview.ts`（查询 mail.db + agent.db，无写路径）。
+- **数据通路**：站点 `app/api/mail/agent/[...path]`（`isOwner` 守卫；静态段 `agent` 优先于既有 `[...path]` 代理）→ mailagentd 同一 HTTP 服务（`127.0.0.1:9711`）的 `/agent/*` **只读端点**（4.5：前端读 agent 导出的只读视图，不直连 agent 的库）。只读端点挂在 `mcp.ts` 的 HTTP 服务上、查询逻辑独立成 `agentview.ts`（查询 mail.db + agent.db，无写路径）。
 - **端点**（一律 GET）：`/agent/timeline`（agent 账号全部副本合并时间线，方向 = from 是否 agent 地址，`(date, message_id)` 游标分页）；`/agent/message/<key>`（完整头部按原始顺序 + MIME 结构树 + 附件列表 + text 正文 + copies + judgment 摘要 + reasoning 计数——**推理本体不在内**，5.2）；`/agent/message/<key>/eml`（原件下载）；`/agent/message/<key>/rfc822/<part>`（就地展开 `message/rfc822` 附件，返回同构的头部 + 结构 + 正文）；`/agent/judgments`（判定列表，关联 subject/from/date）；`/agent/reasoning?message=<key>`（该消息全部推理行，**只在展开单封信时才拉**）。工具调用台账与待确认队列复用既有 `/ledger` `/pending-sends`（确认/丢弃仍只走 POST，是人操作）。
 - **展示原则（4.3/4.4 落地）**：正文展示 `text/plain` 原文；HTML 邮件只展示 strip 后的纯文本，结构树里标注 html part——**不渲染 HTML、不加载任何远程内容**（「展示原始邮件，不是渲染结果」）。页面上没有任何写操作入口（无回复/无标记/无 compose），唯二的 POST 是待确认队列的确认/丢弃（人操作）。
 - **页面**：`/mail/agent`（`requireOwner`），两个页签——**时间线**（行 = 方向徽章 + 主题 + 对方 + 时间；点开详情：完整头部 / MIME 结构 / 附件 / rfc822 就地展开 / .eml 下载 / 正文）与**台账**（判定列表可展开拉推理行、工具调用台账、待确认队列）。`/mail` 主页放专门入口链接；`agent@` 不进合并视图与账号筛选（webmaild 的注册表本就没有它，天然成立）。
@@ -731,7 +733,7 @@ IMAP 的规矩是：用不带 PEEK 的取法读正文，服务端会**顺手把�
 | worker 池进程内并行 | 多容器多实例 | 模型调用是 IO 密集，进程内并发足够；多实例只增加部署复杂度 |
 | webmaild 独立进程 + localhost HTTP | 写进 Next.js route handler | 红线 9：route handler 模块状态每请求作废，连接与索引必须放独立进程；写操作也因此留在 `webmail/` 包内（3.8） |
 | webmaild 复用 `mail/src` 的读取模块 | 抽第三个公共包 | `mail/` 本就是纯读取代码的家，import 方向 webmail→mail 让审查项保持字面成立；多一个包只多一份构建配置 |
-| 工具面 = MCP over streamable HTTP（`127.0.0.1:9711`） | stdio / 另起独立工具进程 | 凭据只该有一个落点（maild 进程内嵌）；HTTP 传输让未来的独立容器 worker 与 harness 都能接；stdio 只覆盖同机子进程一种形态 |
+| 工具面 = MCP over streamable HTTP（`127.0.0.1:9711`） | stdio / 另起独立工具进程 | 凭据只该有一个落点（mailagentd 进程内嵌）；HTTP 传输让未来的独立容器 worker 与 harness 都能接；stdio 只覆盖同机子进程一种形态 |
 | 台账与待确认队列存 `agent.db`（独立于 `mail.db`） | 塞进 `mail.db` 新表 | `mail.db` 保持纯原始邮件索引；工具层产物与模型产物（5.2）同属「非原始邮件」一侧，一个库装齐 |
 | 工具面写操作开短时第二条连接（账号互斥） | 复用/打断抓取器的 IDLE 连接 | IDLE 中的连接无法插入命令；写操作低频秒级，瞬时双连可接受（红线 10 防的是常驻并行抓取） |
 | worker 工具调用经 MCP client 走 HTTP 自连 | 同进程直接函数调用 | 「不持有凭据」要机器可审（audit 锁 import 清单）；将来拆容器零代码改动；一跳本机 HTTP 代价可忽略 |

@@ -72,7 +72,7 @@ export interface SendAttachmentInput {
  * 「我的账号」：站主自己的收发地址（4.10 通讯录 / 写信自动补全共用）。
  *
  * - `account` = webmail 注册表里的账号（能站内发信）
- * - `agent` = agent@ 信箱，只能从 maild 的只读视图拿到（站内不以它发信，4.3）
+ * - `agent` = agent@ 信箱，只能从 mailagentd 的只读视图拿到（站内不以它发信，4.3）
  */
 export interface MailOwnAddress {
   id: string;
