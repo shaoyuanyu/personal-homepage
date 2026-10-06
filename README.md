@@ -105,35 +105,41 @@ pnpm start        # 生产运行
 4. 配置 GitHub Actions secrets 实现自动部署：
    - `VPS_HOST` / `VPS_USER` / `VPS_SSH_KEY`
 
-推送 `main` 分支 → CI 门禁（lint + typecheck + build）→ 自动构建镜像并部署。
+推送 `main` 分支 → CI 门禁（lint + typecheck + build）→ 镜像构建（阿里云 ACR）→
+自动部署 + 生产冒烟。
 
-### 镜像仓库可切换（GHCR ↔ 境内仓库）
+### 镜像构建（阿里云 ACR）与版本回退
 
-VPS 在境内，拉 GHCR 的 blob CDN（`pkg-containers.githubusercontent.com`）会**卡死**：
-实测 `Deploy to VPS` 这一步耗时 **0.2 min（镜像没变）～ 20.6 min（镜像变了）**、
-中位约 7.7 min，并造成过两次 17~23 分钟的部署失败（撞满 `timeout 600` × 重试）。
-而镜像本体并不大（web 84.7 MB / webmail 106.4 MB，压缩层），**瓶颈是链路而非带宽**。
+**构建与推送全部由 ACR 完成**，GHA 只做编排。此前的「GHA 构建 + 推镜像」模式已废弃：
+GHA runner 在海外，推 ACR 走公网跨境上行实测 <60KB/s（191MB 压缩层 30+ 分钟推不完）；
+换 ACR 侧构建后，跨境流量只剩源码（~11MB）。
 
-流水线**默认仍走 GHCR**；切到境内仓库只改仓库配置，**不用改代码**：
+流程：`main` 推送 → Deploy 工作流向该 commit 推 `release-v<日期>-<短SHA>` 标签 →
+ACR 两个仓库的构建规则（`tags:release-v$version` → 镜像版本 `$version`）各自动用
+GitHub 源码构建（如 `2026.10.07-d2b3dc7`）→ 工作流轮询 manifest 就绪 → SSH 到 VPS
+按**版本号钉死**拉取并重建容器 → 对生产跑冒烟用例。
 
-1. 在阿里云容器镜像服务 ACR 建**个人版实例** + **命名空间**（如 `ysy`），并创建两个
-   仓库：`personal-homepage` 与 `personal-homepage-webmail`（**webmail 仓库名 =
-   `<主仓库名>-webmail`**，脚本按此规则推导）。仓库公开/私有均可——私有时部署脚本
-   会用下面同一套凭据在 VPS 上登录后拉取（推荐私有）。
+**回退**：Actions → Deploy → Run workflow → `version` 填旧版本号（ACR 控制台各仓库
+「镜像版本」页可查全部历史版本，版本号含 commit 短 SHA、永不覆写）→ 拉取+重建+冒烟
+完整跑一遍。VPS 每次部署后清理每个仓库除最近 5 个版本外的旧镜像。
+
+前置配置：
+
+1. 阿里云 ACR 个人版：命名空间下建两个仓库 `personal-homepage` 与
+   `personal-homepage-webmail`（**webmail 仓库名 = `<主仓库名>-webmail`**，脚本按此
+   规则推导，推荐私有）。两个仓库均在「构建」页**绑定 GitHub 仓库**
+   `shaoyuanyu/personal-homepage`，开启「代码变更自动构建镜像」+「海外机器构建」，
+   各建一条构建规则：标签 `release-v$version`、上下文目录 `/`、镜像版本 `$version`、
+   Dockerfile 分别为 `Dockerfile` 与 `docker/webmail.Dockerfile`。
 2. 仓库 `Settings → Secrets and variables → Actions`：
 
    | 类型 | 名称 | 值 |
    |---|---|---|
-   | Variable | `REGISTRY` | `registry.cn-hangzhou.aliyuncs.com`（以 ACR 控制台的「公网地址」为准，也可能形如 `<实例>.cn-hangzhou.cr.aliyuncs.com`） |
-   | Variable | `IMAGE_NAMESPACE` | 你的 ACR 命名空间，如 `ysy` |
-   | Secret | `REGISTRY_USERNAME` | ACR 用户名（**推送必填**） |
-   | Secret | `REGISTRY_PASSWORD` | ACR 固定密码（**推送必填**；也是 VPS 侧拉取的登录凭据，每次部署自动登录） |
-
-3. 重跑一次 Deploy（push 或 `workflow_dispatch`）。日志会打印当前生效地址
-   `镜像仓库：<REGISTRY>/<IMAGE_NAMESPACE>（personal-homepage + personal-homepage-webmail）`，
-   `Deploy to VPS` 应从分钟级降到秒级。
-
-**切回 GHCR**：删掉这两个 Variable 即可（自动回退 `ghcr.io` + `GITHUB_TOKEN`）。
+   | Variable | `REGISTRY` | ACR 公网地址（如 `<实例>.cn-shanghai.cr.aliyuncs.com`） |
+   | Variable | `IMAGE_NAMESPACE` | ACR 命名空间，如 `shaoyuanyu` |
+   | Secret | `REGISTRY_USERNAME` | ACR 用户名 |
+   | Secret | `REGISTRY_PASSWORD` | ACR 固定密码（GHA 拉 manifest 校验与 VPS 拉取共用） |
+   | Secret（可选） | `AUTOMERGE_TOKEN` | PAT：用于推标签触发 ACR（未配置回退 `GITHUB_TOKEN`） |
 
 ⚠ 部署脚本用 compose **override 文件**传入镜像地址，因此**不需要**同步 VPS 上的
 `docker-compose.yml` 也不会错配（VPS 那份副本可能滞后于 `main`）。但 VPS 那份仍必须
