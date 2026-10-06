@@ -122,11 +122,12 @@ ACR 两个仓库各自触发构建，产出 `2026.10.07-d2b3dc7` 这类**版本�
 版本」页可查全部历史版本，版本号含 commit 短 SHA、永不覆写）→ 拉取+重建+冒烟完整
 跑一遍（两个镜像一起回退）。VPS 每次部署后清理各仓库除最近 5 个版本外的旧镜像。
 
-⚠ **webmail 构建的兜底**：若 ACR 的 webmail 构建规则未生效（web 版本号镜像已产出、
-webmail 宽限期（12 分钟）内仍未产出），工作流会自动改用 **VPS 桥接构建**——把对应
-提交的源码（`git archive`）直传 VPS，在 VPS 上 `docker build` 并推回 ACR（日志会
-明确标注 `=== ACR webmail 构建在宽限期内未产出，启用 VPS 桥接构建（兜底路径） ===`）。
-这是兜底路径，正常情况下不会触发。
+⚠ **webmail 构建的兜底**：两种触发——① **产出内容错误**（ACR 构建规则误用根
+`Dockerfile` 时，`webmail:*` 镜像是 web 应用，Cmd=`node server.js`；工作流校验镜像
+config 的 Cmd 后立即改走桥接）；② web 版本号镜像已产出、webmail 宽限期（12 分钟）
+内仍未产出（规则被停用/缺失）。桥接 = 把对应提交的源码（`git archive`）直传 VPS、
+在 VPS 上 `docker build` 并**覆盖推送**该版本号 tag（日志会明确标注 `=== 启用 VPS
+桥接构建 ===`）。
 
 前置配置：
 
@@ -137,8 +138,10 @@ webmail 宽限期（12 分钟）内仍未产出），工作流会自动改用 **
    - `personal-homepage`：用系统**内置规则**（标签 `release-v$version` → 镜像版本
      `$version`，不可编辑也无需编辑）——原生产出带版本号的镜像；
    - `personal-homepage-webmail`：**自定义规则**——类型 `Tag`、标签
-     `release-v*`、上下文目录 `/`、Dockerfile 文件名 `docker/webmail.Dockerfile`、
-     镜像版本 `$version`（实测该字段接受 `$version`，与 web 侧同为版本号镜像）。
+     `release-v*`、上下文目录 `/`、Dockerfile 文件名 `webmail.Dockerfile`
+     （**仓库根**；⚠ 该字段填 `Dockerfile` 会**静默构建出 web 应用**——工作流有
+     Cmd 内容校验兜底，检测到错误镜像会自动改走 VPS 桥接构建并覆盖该 tag）、
+     镜像版本 `$version`（实测该字段接受 `$version`）。
 2. 仓库 `Settings → Secrets and variables → Actions`：
 
    | 类型 | 名称 | 值 |

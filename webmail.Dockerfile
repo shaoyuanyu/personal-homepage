@@ -6,7 +6,7 @@
 #   2) Node 按「引用方所在目录」向上解析依赖——mail/src/* 的 import 从
 #      mail/node_modules 解析、webmail/src/* 从 webmail/node_modules 解析，
 #      两个依赖树都必须安装（各自 lockfile，--ignore-workspace 独立装）。
-# 用法：docker build -f docker/webmail.Dockerfile -t webmail .
+# 用法：docker build -f webmail.Dockerfile -t webmail .
 
 # ---- 依赖阶段（better-sqlite3 在 alpine 上需源码编译：python3 + make + g++）----
 FROM node:22-alpine AS deps
