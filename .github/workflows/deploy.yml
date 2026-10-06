@@ -21,16 +21,16 @@ concurrency:
 # 构建与推送**全部由阿里云 ACR 完成**（个人版构建服务），GHA 只做编排：
 #   1. main 推送 → 本工作流给该 commit 打 release-v<日期>-<短SHA> 标签并 push；
 #   2. ACR 侧构建（海外构建机拉源码 / Docker Hub，产物经阿里云内部链路上架）：
-#      - web 仓库用**内置规则**（tags:release-v$version → 镜像版本 $version）
-#        原生产出带版本号的镜像；
-#      - webmail 仓库用**自定义规则**（该处不支持 $version 变量，镜像版本
-#        固定 latest）构建，部署也直接用 latest（不重打版本号——webmail 因此
-#        不随版本回退，这是有意的简化）；
-#      GHA 侧不再跑任何 docker build/push；
-#   3. 本工作流轮询镜像就绪（web 按版本号、webmail 按 latest 指纹变化）；
-#   4. VPS 拉取镜像并重建容器（web=版本号 / webmail=latest，均境内秒级）。
-#   VERSION 是 web 的回退锚点：回退 = workflow_dispatch 把 version 填成旧版本号
-#   重跑（旧版本镜像永远留在 ACR 版本列表里，不会被覆写；webmail 不参与回退）。
+#      两个仓库各建一条构建规则 tags:release-v$version → 镜像版本 $version，
+#      各自原生产出带版本号的镜像（webmail 仓库为自定义规则，实测其「镜像版本」
+#      字段同样接受 $version）；GHA 侧不再跑任何 docker build/push；
+#   3. 本工作流轮询两个**版本号镜像**就绪；
+#      ⚠ 兜底：web 就绪后 12 分钟内 webmail 版本号镜像仍未出现 → 自动在 VPS 上
+#      桥接构建 webmail 并推回 ACR（ACR 的 webmail 构建规则失效/未触发时流水线
+#      仍能跑通，正常情况下不会触发；触发时日志会明确标注）；
+#   4. VPS 拉取镜像并重建容器（两个镜像均按版本号钉死，境内秒级）。
+#   回退：workflow_dispatch 把 version 填成旧版本号重跑（两个镜像的旧版本都永远
+#   留在 ACR 版本列表里，不会被覆写）。
 #
 # 为什么不在 GHA 构建：GHA runner 在海外，推 ACR 走公网跨境上行实测 <60KB/s
 #   （84.7 MB 的 web 镜像 30+ 分钟没推完）→ 此路不通。ACR 侧构建时跨境流量只剩
@@ -58,9 +58,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Resolve image registry & version
-        # VERSION = <日期>-<短SHA>（如 2026.10.07-d2b3dc7）：web 镜像的构建 tag 与
-        # 部署/回退锚点（webmail 用 latest，不参与版本回退）。手动触发且填了
-        # version 输入（回退场景）时直接采用该版本，并跳过「打标签 + 等构建」。
+        # VERSION = <日期>-<短SHA>（如 2026.10.07-d2b3dc7）：两个镜像的构建 tag
+        # 与部署/回退锚点。手动触发且填了 version 输入（回退场景）时直接采用该
+        # 版本，并跳过「打标签 + 等构建」。
         env:
           IN_REGISTRY: ${{ vars.REGISTRY }}
           IN_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
@@ -85,7 +85,7 @@ jobs:
             echo "VERSION=$VERSION"
             echo "RELEASE_TAG=release-v$VERSION"
             echo "IMAGE=$REGISTRY/$NAMESPACE/$REPO:$VERSION"
-            echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/$REPO-webmail:latest"
+            echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/$REPO-webmail:$VERSION"
           } >> "$GITHUB_ENV"
 
       - name: Login to ACR
@@ -98,10 +98,6 @@ jobs:
       - name: Create release tag (triggers ACR build)
         if: env.SKIP_BUILD != '1'
         run: |
-          # 记录 webmail:latest 的构建前指纹（等待步骤靠「指纹变化」判断构建完成；
-          # 镜像不存在时为空串哈希，同样可用）。
-          base="$(docker buildx imagetools inspect --raw "$WEBMAIL_IMAGE" 2>/dev/null | sha256sum | cut -d' ' -f1)"
-          echo "WEBMAIL_LATEST_BEFORE=$base" >> "$GITHUB_ENV"
           # 优先 PAT 推标签：GITHUB_TOKEN 推送的事件是否会送达 ACR 的 GitHub App
           # 未经实测，PAT 一定送达；未配置则回退（行为见文件头「依赖」注释）。
           if [ -n "$PUSH_TOKEN" ]; then
@@ -120,28 +116,55 @@ jobs:
       - name: Wait for ACR build
         if: env.SKIP_BUILD != '1'
         run: |
-          # 就绪判据：
-          #   web     —— 版本号镜像出现（内置规则原生产出，$version）；
-          #   webmail —— latest 指纹与构建前不同（自定义规则只能产出 latest）。
-          # 个人版单次构建上限 30 分钟，预算 35 分钟，每 20 秒轮询。
-          deadline=$((SECONDS + 2100))
+          # 就绪判据：两个仓库的**版本号镜像**都出现（两条规则均为
+          # tags:release-v$version → 镜像版本 $version）。
+          # 兜底（桥接）：web 就绪后 webmail 宽限期内仍未产出 → 判定 ACR 的
+          # webmail 构建规则未生效，在 VPS 上构建 webmail 并推回 ACR（国内直连、
+          # 有层缓存；正常情况下不会触发，触发时日志会明确标注）。webmail 构建
+          # 比 web 慢（实测约 +5 分钟，better-sqlite3 编译），宽限期取 12 分钟。
+          # 个人版单次构建上限 30 分钟，预算 55 分钟（含桥接），每 20 秒轮询。
+          deadline=$((SECONDS + 3300))
+          BRIDGE_GRACE=720
+          bridge_done=0
+          web_ready_at=""
           while true; do
             web_ok=0; webmail_ok=0
             docker manifest inspect "$IMAGE" >/dev/null 2>&1 && web_ok=1
-            cur="$(docker buildx imagetools inspect --raw "$WEBMAIL_IMAGE" 2>/dev/null | sha256sum | cut -d' ' -f1)"
-            if [ "$cur" != "$WEBMAIL_LATEST_BEFORE" ]; then
-              webmail_ok=1
-            fi
+            docker manifest inspect "$WEBMAIL_IMAGE" >/dev/null 2>&1 && webmail_ok=1
             if [ "$web_ok" = 1 ] && [ "$webmail_ok" = 1 ]; then
-              echo "两个镜像均已就绪（web=$VERSION，webmail=latest）"
+              echo "两个镜像均已就绪：$VERSION"
               break
             fi
+            if [ "$web_ok" = 1 ] && [ -z "$web_ready_at" ]; then
+              web_ready_at=$SECONDS
+            fi
+            if [ "$web_ok" = 1 ] && [ "$webmail_ok" = 0 ] && [ -n "$web_ready_at" ] \
+               && [ "$((SECONDS - web_ready_at))" -ge "$BRIDGE_GRACE" ] && [ "$bridge_done" = 0 ]; then
+              bridge_done=1
+              echo "=== ACR webmail 构建在宽限期内未产出，启用 VPS 桥接构建（兜底路径） ==="
+              install -d -m 700 ~/.ssh
+              printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/bridge_key
+              chmod 600 ~/.ssh/bridge_key
+              BRIDGE_SSH="ssh -i $HOME/.ssh/bridge_key -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}"
+              cat > /tmp/bridge-remote.sh <<EOS
+          set -e
+          cd /tmp/webmail-bridge
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login "$REGISTRY" -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin
+          docker build -f docker/webmail.Dockerfile -t "$WEBMAIL_IMAGE" .
+          docker push "$WEBMAIL_IMAGE"
+          echo "桥接构建已推送：$WEBMAIL_IMAGE"
+          cd / && rm -rf /tmp/webmail-bridge
+          EOS
+              # 源码（当前 checkout = 本次 tag 的提交）直传 VPS，再远程构建+推送
+              git archive HEAD | $BRIDGE_SSH 'rm -rf /tmp/webmail-bridge && mkdir -p /tmp/webmail-bridge && tar -xf - -C /tmp/webmail-bridge' \
+                && echo "源码已送达 VPS"
+              $BRIDGE_SSH 'bash -s' < /tmp/bridge-remote.sh || echo "!!! 桥接构建失败（详见上方输出）"
+            fi
             if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "!!! 等待 ACR 构建超时（35 分钟）：web=$web_ok webmail=$webmail_ok"
+              echo "!!! 等待超时（55 分钟）：web=$web_ok webmail=$webmail_ok"
               echo "!!! 到 ACR 控制台对应仓库的「构建日志」页排查："
               echo "!!!   $REGISTRY/$NAMESPACE/$REPO 与 $REGISTRY/$NAMESPACE/$REPO-webmail"
-              echo "!!! 若日志显示构建成功（重跑命中全量缓存、产物与上次完全相同时会"
-              echo "!!! 出现指纹未变化）：用 workflow_dispatch 把 version 填成"
+              echo "!!! 若日志显示构建成功：用 workflow_dispatch 把 version 填成"
               echo "!!! ${VERSION} 重跑，会跳过等待直接部署。"
               exit 1
             fi
@@ -155,9 +178,9 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 20m
-          # ACR 为私有仓库，VPS 侧需登录；override 钉住镜像（web=版本号、
-          # webmail=latest）。回退 = workflow_dispatch 把 version 填成旧版本号重跑
-          # 本工作流（拉取+重建+生产冒烟完整走一遍；只回退 web 镜像）。
+          # ACR 为私有仓库，VPS 侧需登录；override 把两个镜像都按版本号钉死。
+          # 回退 = workflow_dispatch 把 version 填成旧版本号重跑本工作流
+          #（拉取+重建+生产冒烟完整走一遍，两个镜像一起回退）。
           script: |
             set -e
             cd ~/personal-homepage
