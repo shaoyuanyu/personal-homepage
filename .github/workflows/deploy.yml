@@ -20,9 +20,13 @@ concurrency:
 
 # 构建与推送**全部由阿里云 ACR 完成**（个人版构建服务），GHA 只做编排：
 #   1. main 推送 → 本工作流给该 commit 打 release-v<日期>-<短SHA> 标签并 push；
-#   2. ACR 两个仓库的构建规则（tags:release-v$version → 镜像版本 $version）检测到
-#      标签 → 各自用 GitHub 源码构建镜像（海外构建机拉源码 / Docker Hub，构建产物
-#      经阿里云内部链路上架），GHA 侧不再跑任何 docker build/push；
+#   2. ACR 侧构建（海外构建机拉源码 / Docker Hub，产物经阿里云内部链路上架）：
+#      - web 仓库用**内置规则**（tags:release-v$version → 镜像版本 $version）
+#        原生产出带版本号的镜像；
+#      - webmail 仓库用**自定义规则**（该处不支持 $version 变量，镜像版本
+#        固定 latest）构建，构建完成后由本工作流在服务端把 latest 重打成
+#        版本号标签（同仓库 manifest 级复制，不传输层数据）；
+#      GHA 侧不再跑任何 docker build/push；
 #   3. 本工作流轮询两个镜像 manifest，就绪后 SSH 到 VPS；
 #   4. VPS 按**版本号钉死**拉取镜像（境内直拉，秒级）并重建容器。
 #   VERSION 同时是回退锚点：回退 = workflow_dispatch 把 version 填成旧版本号重跑
@@ -82,6 +86,7 @@ jobs:
             echo "RELEASE_TAG=release-v$VERSION"
             echo "IMAGE=$REGISTRY/$NAMESPACE/$REPO:$VERSION"
             echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/$REPO-webmail:$VERSION"
+            echo "WEBMAIL_IMAGE_LATEST=$REGISTRY/$NAMESPACE/$REPO-webmail:latest"
           } >> "$GITHUB_ENV"
 
       - name: Login to ACR
@@ -102,6 +107,10 @@ jobs:
             echo "SKIP_BUILD=1" >> "$GITHUB_ENV"
             exit 0
           fi
+          # 记录 webmail:latest 的构建前指纹（等待步骤靠「指纹变化」判断构建完成；
+          # webmail 自定义规则只能产出 latest；镜像不存在时为空串哈希，同样可用）。
+          base="$(docker buildx imagetools inspect --raw "$WEBMAIL_IMAGE_LATEST" 2>/dev/null | sha256sum | cut -d' ' -f1)"
+          echo "WEBMAIL_LATEST_BEFORE=$base" >> "$GITHUB_ENV"
           # 优先 PAT 推标签：GITHUB_TOKEN 推送的事件是否会送达 ACR 的 GitHub App
           # 未经实测，PAT 一定送达；未配置则回退（行为见文件头「依赖」注释）。
           if [ -n "$PUSH_TOKEN" ]; then
@@ -118,19 +127,31 @@ jobs:
       - name: Wait for ACR build
         if: env.SKIP_BUILD != '1'
         run: |
-          # web / webmail 由 ACR 并行构建（各自仓库一条规则）。海外构建机冷启动
-          # （拉源码 + Docker Hub 基础镜像 + 装依赖），预算 30 分钟，每 20 秒轮询。
-          deadline=$((SECONDS + 1800))
+          # 就绪判据：web 与 webmail 的**版本号镜像**都出现。
+          #   web：内置规则原生产出（$version）。
+          #   webmail：自定义规则只产出 latest（不支持 $version），因此 latest
+          #   指纹一变（构建完成）就用 imagetools 在服务端把它重打成版本号标签
+          #   （同仓库 manifest 级复制，不传输层数据）。若自定义规则也填了
+          #   $version 且原生出版本号镜像，此重打分支自然成为无操作。
+          # 个人版单次构建上限 30 分钟，预算 35 分钟，每 20 秒轮询。
+          deadline=$((SECONDS + 2100))
           while true; do
-            missing=""
-            docker manifest inspect "$IMAGE"         >/dev/null 2>&1 || missing="web"
-            docker manifest inspect "$WEBMAIL_IMAGE" >/dev/null 2>&1 || missing="$missing webmail"
-            if [ -z "$missing" ]; then
+            web_ok=0; webmail_ok=0
+            docker manifest inspect "$IMAGE" >/dev/null 2>&1 && web_ok=1
+            docker manifest inspect "$WEBMAIL_IMAGE" >/dev/null 2>&1 && webmail_ok=1
+            if [ "$web_ok" = 1 ] && [ "$webmail_ok" = 1 ]; then
               echo "两个镜像均已就绪：$VERSION"
               break
             fi
+            if [ "$webmail_ok" = 0 ]; then
+              cur="$(docker buildx imagetools inspect --raw "$WEBMAIL_IMAGE_LATEST" 2>/dev/null | sha256sum | cut -d' ' -f1)"
+              if [ "$cur" != "$WEBMAIL_LATEST_BEFORE" ]; then
+                echo "webmail:latest 已有新构建，重打版本号标签：$VERSION"
+                docker buildx imagetools create -t "$WEBMAIL_IMAGE" "$WEBMAIL_IMAGE_LATEST" || true
+              fi
+            fi
             if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "!!! 等待 ACR 构建超时（30 分钟），仍缺失：$missing"
+              echo "!!! 等待 ACR 构建超时（35 分钟）：web=$web_ok webmail=$webmail_ok"
               echo "!!! 到 ACR 控制台对应仓库的「构建日志」页排查："
               echo "!!!   $REGISTRY/$NAMESPACE/$REPO 与 $REGISTRY/$NAMESPACE/$REPO-webmail"
               exit 1

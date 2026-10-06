@@ -128,9 +128,15 @@ GitHub 源码构建（如 `2026.10.07-d2b3dc7`）→ 工作流轮询 manifest �
 1. 阿里云 ACR 个人版：命名空间下建两个仓库 `personal-homepage` 与
    `personal-homepage-webmail`（**webmail 仓库名 = `<主仓库名>-webmail`**，脚本按此
    规则推导，推荐私有）。两个仓库均在「构建」页**绑定 GitHub 仓库**
-   `shaoyuanyu/personal-homepage`，开启「代码变更自动构建镜像」+「海外机器构建」，
-   各建一条构建规则：标签 `release-v$version`、上下文目录 `/`、镜像版本 `$version`、
-   Dockerfile 分别为 `Dockerfile` 与 `docker/webmail.Dockerfile`。
+   `shaoyuanyu/personal-homepage`，开启「代码变更自动构建镜像」+「海外机器构建」：
+   - `personal-homepage`：用系统**内置规则**（标签 `release-v$version` → 镜像版本
+     `$version`，不可编辑也无需编辑）——原生产出带版本号的镜像；
+   - `personal-homepage-webmail`：**添加自定义规则**——类型 `Tag`、标签
+     `release-v*`、上下文目录 `/`、Dockerfile 文件名 `docker/webmail.Dockerfile`、
+     镜像版本 `latest`（自定义规则不支持 `$version` 变量）。工作流会在构建完成后用
+     `docker buildx imagetools` 在服务端把 `latest` 重打成版本号标签（同仓库
+     manifest 级复制，不传输层数据）——若该表单也能填 `$version`，重打逻辑自动
+     变为无操作。
 2. 仓库 `Settings → Secrets and variables → Actions`：
 
    | 类型 | 名称 | 值 |
