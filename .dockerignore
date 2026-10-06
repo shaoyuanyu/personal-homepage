@@ -42,3 +42,9 @@ data
 # ⚠ radicale：htpasswd 用户文件（含密码哈希）与日历集合，仅供 radicale 服务通过
 #   绑定挂载 ./radicale:/data 使用，与 web 镜像无关。
 radicale
+# ⚠ mail / webmail：独立子项目（自带 package.json / tsconfig），前端镜像不需要其源码；
+#   且其 data/ 下是私有数据（webmail/data 真实邮件数据库、mail/data agent 数据库）。
+#   若不排除，它们会进入构建上下文并被 `COPY . .` 拷进 builder 层，且根 tsc 会把
+#   子项目源码纳入 Next 构建的类型检查（依赖未装 → 构建失败，2026-10-06 实测）。
+mail
+webmail
