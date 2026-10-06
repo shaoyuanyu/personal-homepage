@@ -1,4 +1,4 @@
-node_modules
+**/node_modules
 .next
 .velite
 .git
@@ -42,9 +42,20 @@ data
 # ⚠ radicale：htpasswd 用户文件（含密码哈希）与日历集合，仅供 radicale 服务通过
 #   绑定挂载 ./radicale:/data 使用，与 web 镜像无关。
 radicale
-# ⚠ mail / webmail：独立子项目（自带 package.json / tsconfig），前端镜像不需要其源码；
-#   且其 data/ 下是私有数据（webmail/data 真实邮件数据库、mail/data agent 数据库）。
-#   若不排除，它们会进入构建上下文并被 `COPY . .` 拷进 builder 层，且根 tsc 会把
-#   子项目源码纳入 Next 构建的类型检查（依赖未装 → 构建失败，2026-10-06 实测）。
-mail
-webmail
+# ⚠ mail / webmail：独立子项目（自带 package.json / tsconfig / lockfile）。源码
+#   **要进上下文**——webmail 镜像需要它们（webmail 运行时 import mail/ 的共享模块，
+#   两个依赖树也各自需要）；但私有物绝不进：webmail/data 是真实邮件数据库与 600
+#   凭据，mail/data 是 agent 库与凭据，.test-data 是测试容器产物，.env 是潜在密钥。
+#   （2026-10-06：Docker 构建曾因根 tsc 把子项目扫进类型检查而失败，已由
+#   tsconfig.json 的 exclude 修复——与上下文是否包含无关。）
+mail/data
+webmail/data
+mail/.test-data
+webmail/.test-data
+mail/.env*
+webmail/.env*
+
+# ⚠ webmail-data / mail-agent-data：compose 绑定挂载的邮件后端私有数据（凭据 +
+#   邮件库）。本地做镜像构建时若目录存在，绝不能进上下文。
+webmail-data
+mail-agent-data

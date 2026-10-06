@@ -10,6 +10,7 @@ on:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}:latest
+  WEBMAIL_IMAGE: ghcr.io/${{ github.repository_owner }}/webmail:latest
 
 jobs:
   build-and-deploy:
@@ -41,6 +42,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build & push webmail image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/webmail.Dockerfile
+          push: true
+          tags: ${{ env.WEBMAIL_IMAGE }}
+          # 独立 scope：两个镜像共用同一构建上下文，缓存命名空间必须分开
+          cache-from: type=gha,scope=webmail
+          cache-to: type=gha,mode=max,scope=webmail
+
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
         with:
@@ -52,20 +64,22 @@ jobs:
           script: |
             set -e
             cd ~/personal-homepage
-            for i in 1 2 3; do
-              echo "=== 尝试拉取镜像（第 $i 次）==="
-              if timeout 600 docker pull ${{ env.IMAGE }}; then
-                break
-              fi
-              if [ "$i" -lt 3 ]; then
-                echo "!!! 拉取失败，10 秒后重试"
-                sleep 10
-              else
-                echo "!!! 三次拉取均失败，终止部署"
-                exit 1
-              fi
+            for img in "${{ env.IMAGE }}" "${{ env.WEBMAIL_IMAGE }}"; do
+              for i in 1 2 3; do
+                echo "=== 拉取 $img（第 $i 次）==="
+                if timeout 600 docker pull "$img"; then
+                  break
+                fi
+                if [ "$i" -lt 3 ]; then
+                  echo "!!! 拉取失败，10 秒后重试"
+                  sleep 10
+                else
+                  echo "!!! 三次拉取均失败，终止部署"
+                  exit 1
+                fi
+              done
             done
-            docker compose up -d --no-deps web
+            docker compose up -d --no-deps web webmail
             docker image prune -f
 
   smoke-test:
