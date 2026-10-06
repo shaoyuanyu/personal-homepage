@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { ToastProvider, ToastViewport } from "@/components/ui/toast";
+import { MailNewMailWatcher } from "@/components/mail/new-mail-notifier";
 
 /**
  * 应用根部的客户端 Providers（挂在 `app/[locale]/layout.tsx` 内）。
@@ -32,6 +33,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <TooltipProvider>
         <ToastProvider>
           {children}
+          {/* 新邮件全局提醒（2026-10-06）：全站轮询未读，新邮件到达时 toast +
+              广播事件（/mail 大标题的未读角标订阅它）。游客自动不轮询。 */}
+          <MailNewMailWatcher />
           <ToastViewport />
         </ToastProvider>
       </TooltipProvider>

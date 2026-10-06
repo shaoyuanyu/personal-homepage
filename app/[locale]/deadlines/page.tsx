@@ -58,7 +58,7 @@ export default function DeadlinesPage() {
   const fetchedAt = live?.fetchedAt ?? builtinFetchedAt;
 
   return (
-    <div className="w-full mx-auto max-w-5xl px-4 py-12 sm:px-6">
+    <div className="w-full mx-auto max-w-6xl px-4 py-12 sm:px-6">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-3">

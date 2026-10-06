@@ -45,7 +45,7 @@ export function SiteHeader() {
 
   return (
     <header className="site-header sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         {/* Logo：Y-Fork 图标 + 域名（品牌标识，不分语言） */}
         <Link
           href="/"

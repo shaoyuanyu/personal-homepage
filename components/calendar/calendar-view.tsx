@@ -1189,7 +1189,7 @@ function DayAppointmentsList({
           </span>
         )}
       </h2>
-      <Button variant="outline" size="sm" onClick={onClear}>
+      <Button variant="ghost" size="sm" onClick={onClear}>
         {t("showAll")}
       </Button>
     </div>

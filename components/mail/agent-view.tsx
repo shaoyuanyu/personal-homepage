@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ArrowDownLeftIcon,
@@ -12,8 +12,10 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -154,10 +156,26 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** 方向徽章配色避开等级配色色相（红/蓝/绿/琥珀），与账号色点同一套（4.2） */
+/** 时间线分组（4.9）：今天 / 昨天 / 更早（按自然日边界，非 24 小时窗） */
+type DayGroup = "groupToday" | "groupYesterday" | "groupEarlier";
+const DAY_GROUPS: DayGroup[] = ["groupToday", "groupYesterday", "groupEarlier"];
+
+function dayGroupOf(dateIso: string): DayGroup {
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diff = startOfDay(new Date()) - startOfDay(new Date(dateIso));
+  if (diff <= 0) return "groupToday";
+  if (diff <= 86_400_000) return "groupYesterday";
+  return "groupEarlier";
+}
+
+/**
+ * 方向徽章配色 = 站点收发件的唯一配色（2026-10-05 统一，勿各自改色）：
+ * 收件 emerald / 发件 amber —— 与列表、详情页的方向角标和视图 Tabs 下划线同源。
+ * 选色约束：避开未读蓝点（blue）与星标（前景色），同屏不撞色（详见 MAIL-AGENT.md 4.9）。
+ */
 const DIR_CLASS = {
-  in: "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-400/30 dark:bg-cyan-500/15 dark:text-cyan-400",
-  out: "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/30 dark:bg-violet-500/15 dark:text-violet-400",
+  in: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/15 dark:text-emerald-400",
+  out: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/15 dark:text-amber-400",
 } as const;
 
 const VERDICT_CLASS: Record<string, string> = {
@@ -298,6 +316,18 @@ function TimelineTab() {
     [openId]
   );
 
+  // 时间线按「今天 / 昨天 / 更早」分组（4.9）
+  // ⚠ 必须在早返回之前调用（hooks 不能条件化）
+  const groups = useMemo(() => {
+    const buckets: Record<DayGroup, TimelineItem[]> = {
+      groupToday: [],
+      groupYesterday: [],
+      groupEarlier: [],
+    };
+    for (const m of items) buckets[dayGroupOf(m.date)].push(m);
+    return DAY_GROUPS.map((key) => ({ key, rows: buckets[key] })).filter((g) => g.rows.length > 0);
+  }, [items]);
+
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -323,31 +353,40 @@ function TimelineTab() {
 
   return (
     <>
-      <ul className="divide-y divide-border" data-slot="agent-timeline">
-        {items.map((m) => (
-          <li key={m.messageId}>
-            <button
-              type="button"
-              onClick={() => openMessage(m.messageId)}
-              className="flex w-full items-center gap-3 py-3 text-left hover:bg-muted/40 rounded-lg px-2 -mx-2"
-            >
-              <DirBadge dir={m.direction} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">
-                  {m.subject || t("noSubject")}
-                </span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {m.direction === "in" ? m.fromName || m.fromAddr : m.fromAddr}
-                  {m.snippet ? ` · ${m.snippet}` : ""}
-                </span>
-              </span>
-              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                {formatDate(m.date, locale)}
-              </span>
-            </button>
-          </li>
+      <div data-slot="agent-timeline">
+        {groups.map((g) => (
+          <section key={g.key}>
+            <h3 className="px-2 pt-4 pb-1 text-xs font-medium text-muted-foreground first:pt-0">
+              {t(g.key)}
+            </h3>
+            <ul className="divide-y divide-border">
+              {g.rows.map((m) => (
+                <li key={m.messageId}>
+                  <button
+                    type="button"
+                    onClick={() => openMessage(m.messageId)}
+                    className="flex w-full items-center gap-3 py-3 text-left hover:bg-muted/40 rounded-lg px-2 -mx-2"
+                  >
+                    <DirBadge dir={m.direction} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {m.subject || t("noSubject")}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {m.direction === "in" ? m.fromName || m.fromAddr : m.fromAddr}
+                        {m.snippet ? ` · ${m.snippet}` : ""}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                      {formatDate(m.date, locale)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         ))}
-      </ul>
+      </div>
       {next && (
         <div className="mt-4 flex justify-center">
           <Button
@@ -413,7 +452,7 @@ function TimelineTab() {
                 {detail.rfc822.map((r) => (
                   <div key={r.index} className="space-y-2">
                     {rfc822Data[r.index] === undefined && (
-                      <Button variant="outline" size="sm" onClick={() => expandRfc822(r.index)}>
+                      <Button variant="ghost" size="sm" onClick={() => expandRfc822(r.index)}>
                         {t("expandRfc822")}
                         {r.filename ? `（${r.filename}）` : ""}
                       </Button>
@@ -488,8 +527,7 @@ function PendingSection() {
   };
 
   return (
-    <section className="space-y-3" data-slot="agent-pending">
-      <h2 className="text-sm font-medium">{t("pendingTitle")}</h2>
+    <section data-slot="agent-pending">
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("pendingEmpty")}</p>
       ) : (
@@ -575,7 +613,6 @@ function JudgmentsSection() {
   const t = useTranslations("mail.agent");
   const locale = useLocale();
   const [items, setItems] = useState<JudgmentItem[]>([]);
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/mail/agent/judgments?limit=100")
@@ -583,47 +620,40 @@ function JudgmentsSection() {
       .then((d) => setItems((d as { items: JudgmentItem[] }).items));
   }, []);
 
+  if (items.length === 0) {
+    return <p className="text-xs text-muted-foreground">{t("judgmentsEmpty")}</p>;
+  }
+
+  // 推理详情用 Accordion 折叠（4.9），可同时展开多条对照
   return (
-    <section className="space-y-3" data-slot="agent-judgments">
-      <h2 className="text-sm font-medium">{t("judgmentsTitle")}</h2>
-      {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("judgmentsEmpty")}</p>
-      ) : (
-        <ul className="space-y-1">
-          {items.map((j) => (
-            <li key={j.message_id} className="rounded-lg border border-border">
-              <button
-                type="button"
-                onClick={() => setExpanded(expanded === j.message_id ? null : j.message_id)}
-                className="flex w-full flex-wrap items-center gap-2 p-3 text-left"
-                aria-expanded={expanded === j.message_id}
-              >
-                <VerdictBadge verdict={j.verdict} />
-                <span className="min-w-0 flex-1 truncate text-sm">
-                  {j.subject || t("noSubject")}
-                </span>
-                {(JSON.parse(j.labels_json) as string[]).map((l) => (
-                  <Badge key={l} variant="outline" className="text-muted-foreground">
-                    {l}
-                  </Badge>
-                ))}
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {Math.round(j.confidence * 100)}%
-                </span>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {formatDateTime(j.judged_at, locale)}
-                </span>
-              </button>
-              {expanded === j.message_id && (
-                <div className="border-t border-border p-3">
-                  <ReasoningList messageId={j.message_id} />
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <Accordion multiple data-slot="agent-judgments">
+      {items.map((j) => (
+        <AccordionItem key={j.message_id} value={j.message_id}>
+          <AccordionTrigger className="gap-2 hover:no-underline">
+            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <VerdictBadge verdict={j.verdict} />
+              <span className="min-w-0 flex-1 truncate text-left text-sm">
+                {j.subject || t("noSubject")}
+              </span>
+              {(JSON.parse(j.labels_json) as string[]).map((l) => (
+                <Badge key={l} variant="outline" className="text-muted-foreground">
+                  {l}
+                </Badge>
+              ))}
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {Math.round(j.confidence * 100)}%
+              </span>
+              <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                {formatDateTime(j.judged_at, locale)}
+              </span>
+            </span>
+          </AccordionTrigger>
+          <AccordionContent>
+            <ReasoningList messageId={j.message_id} />
+          </AccordionContent>
+        </AccordionItem>
+      ))}
+    </Accordion>
   );
 }
 
@@ -639,8 +669,7 @@ function LedgerSection() {
   }, []);
 
   return (
-    <section className="space-y-3" data-slot="agent-ledger">
-      <h2 className="text-sm font-medium">{t("ledgerTitle")}</h2>
+    <section data-slot="agent-ledger">
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("ledgerEmpty")}</p>
       ) : (
@@ -686,11 +715,34 @@ function LedgerSection() {
 }
 
 function LedgerTab() {
+  const t = useTranslations("mail.agent");
+  // 台账三段 Card 分区（4.9）：待确认 / 判定 / 工具调用
   return (
-    <div className="space-y-8">
-      <PendingSection />
-      <JudgmentsSection />
-      <LedgerSection />
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("pendingTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PendingSection />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("judgmentsTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <JudgmentsSection />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("ledgerTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <LedgerSection />
+        </CardContent>
+      </Card>
     </div>
   );
 }

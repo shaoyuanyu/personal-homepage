@@ -19,3 +19,9 @@ export function decodeMessageId(encoded: string): string {
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new TextDecoder().decode(bytes);
 }
+
+/**
+ * 列表序的 sessionStorage 键（MAIL-AGENT.md 4.9）：列表页每次加载后写入当前
+ * messageId 顺序，详情页读取以提供「上一封 / 下一封」导航（失配则隐藏）。
+ */
+export const MAIL_LIST_ORDER_KEY = "mail:listOrder";

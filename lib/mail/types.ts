@@ -8,6 +8,19 @@ export interface MailAccount {
   color: string;
   folders: string[];
   enabled: boolean;
+  /** 发件人姓名（随邮件发出的 From 显示名；与备注名 displayName 区分，2026-10-06） */
+  senderName?: string;
+  /** 连接字段（账号管理弹窗的编辑表单预填用；webmaild /accounts 返回，无密码） */
+  imapHost?: string;
+  imapPort?: number;
+  imapSecure?: boolean;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  /** 登录用户名（凭据的 username，非密码） */
+  username?: string;
+  /** INBOX 未读数（4.2 / 4.8；webmaild /accounts 返回） */
+  unread?: number;
 }
 
 export interface MailCopyRef {
@@ -22,11 +35,15 @@ export interface MailListItem {
   subject: string;
   fromAddr: string;
   fromName: string;
+  /** 收件人（列表行对发件邮件显示「发给 X」，4.9） */
+  to: MailAddress[];
   snippet: string;
   size: number;
   truncated: boolean;
   seen: boolean;
   flagged: boolean;
+  /** 是否有可下载附件（不含内嵌图，4.2） */
+  hasAttach: boolean;
   copies: MailCopyRef[];
   accounts: string[];
 }
@@ -35,7 +52,6 @@ export interface MailAddress {
   name?: string;
   address?: string;
 }
-
 export interface MailAttachmentMeta {
   index: number;
   filename: string;
@@ -52,16 +68,86 @@ export interface SendAttachmentInput {
   contentBase64: string;
 }
 
+/**
+ * 「我的账号」：站主自己的收发地址（4.10 通讯录 / 写信自动补全共用）。
+ *
+ * - `account` = webmail 注册表里的账号（能站内发信）
+ * - `agent` = agent@ 信箱，只能从 maild 的只读视图拿到（站内不以它发信，4.3）
+ */
+export interface MailOwnAddress {
+  id: string;
+  name: string;
+  email: string;
+  kind: "account" | "agent";
+}
+
 export interface MailDetail extends MailListItem {
-  to: MailAddress[];
   cc: MailAddress[];
   text: string;
   html: string;
   remoteBlocked: number;
   attachments: MailAttachmentMeta[];
+  /** 引用链（库键 mid:<normalized> 形式，4.7）；回复时续链用 */
+  refs?: string[];
+  /** 发件人已存进通讯录时的联系人 id；null = 未保存（「存入通讯录」按钮态） */
+  fromContactId?: string | null;
 }
 
 export interface MailListResponse {
   items: MailListItem[];
   next: string | null;
+}
+
+/** 通讯录：手动维护的联系人（webmaild /contacts） */
+export interface MailContact {
+  id: string;
+  name: string;
+  email: string;
+  note: string;
+  /** 归属账号 id；'' = 本地联系人（不归属任何账号），4.14 */
+  account: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 自动收录的通信对象（不落表，webmaild 从 messages 表现算） */
+export interface MailKnownSender {
+  name: string;
+  email: string;
+  /** 通信次数 */
+  times: number;
+  /** 最近一次通信时间（ISO） */
+  lastSeen: string | null;
+  /** 该地址出现在哪些账号的往来里（4.14 按账号筛选） */
+  accounts: string[];
+}
+
+/** 写信自动补全的返回（/contacts/suggest）：已保存联系人在前，收录在后 */
+export interface MailContactSuggest {
+  contacts: MailContact[];
+  known: MailKnownSender[];
+}
+
+/**
+ * 服务器端草稿（2026-10-06；webmaild /drafts）：写信页自动保存、草稿箱列表消费。
+ *
+ * - `kind` / `kindRef`：找回逻辑——new（全新写信，ref 空）/ reply（回复，ref = 原信
+ *   messageId）/ forward（转发，ref 同）。从同一原信再次进入写信页时恢复对应草稿。
+ * - 地址字段保存**原文串**（不解析成数组，保真优先）；附件不随草稿保存。
+ */
+export interface MailDraft {
+  id: string;
+  kind: "new" | "reply" | "forward";
+  kindRef: string;
+  accountId: string;
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  body: string;
+  readReceipt: boolean;
+  inReplyTo: string;
+  references: string[];
+  createdAt: string;
+  updatedAt: string;
 }

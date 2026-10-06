@@ -7,11 +7,12 @@ import {
   CompassIcon,
   LogInIcon,
   LogOutIcon,
+  MailIcon,
   UserRoundIcon,
 } from "lucide-react";
 
 import { Link, usePathname, useRouter } from "@/lib/i18n/navigation";
-import { OWNER_AUTH_CHANGED_EVENT } from "@/lib/auth/events";
+import { OWNER_AUTH_CHANGED_EVENT, OWNER_CACHE_KEY } from "@/lib/auth/events";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,7 +25,9 @@ import {
  * 顶部导航右侧区块（登录态感知），拆为两个组件：
  * - OwnerNavItem（渲染在 <nav> 内）：「导航」链接（带地图图标 + 左侧分隔
  *   竖线，与功能导航区分隔）——游客/登录布局下内容相同，直接渲染；
- *   「速记」「日历」为主人专属单列入口（owner-only span，仅登录态显示）。
+ *   「速记」「日历」为主人专属单列入口（owner-only span，仅登录态显示）；
+ *   「邮箱」（/mail，带 MailIcon）也是主人专属入口，位于「导航」右边、
+ *   nav 最右端。
  * - OwnerAccountItem（渲染在右侧工具栏，贴深色模式切换左侧）：游客「登录」
  *   按钮（LogInIcon）/ 登录态「我的空间」菜单（UserRoundIcon，仅权限类操作，
  *   如退出登录；后续网站管理/权限管理等放此处）。移动端工具栏隐藏该区，
@@ -42,14 +45,74 @@ import {
  *   html class 驱动，登出时调用共享的 syncOwnerClass。
  */
 
-// 登录态缓存（与 app/layout.tsx 内联 script 共用键名）与 html class 名
-const OWNER_CACHE_KEY = "owner:auth";
+// 登录态缓存的键名在 lib/auth/events（与内联 script 共用，多处消费）；
+// 这里只剩 html class 名
 const OWNER_CLASS = "owner-logged-in";
 
 // 同步 html class（与 CSS 可见性规则联动；OwnerNavItem 后台校验与
 // OwnerAccountItem 登出共用）
 function syncOwnerClass(next: boolean) {
   document.documentElement.classList.toggle(OWNER_CLASS, next);
+}
+
+/** 「邮箱」入口（含未读提示，MAIL-AGENT.md 4.8）：
+ *  各启用账号 INBOX 未读之和；圆点绝对定位不占布局宽度（顶部栏零余量约束）；
+ *  样式为 6px 主色小圆点 + 背景色描边环——实心数字胶囊是一块突兀色块、
+ *  裸数字浮在图标外像屏幕脏点（两版均被否），圆点与 GitHub 通知点同惯例；
+ *  具体数字在 tooltip 与 /mail 页内呈现——title 挂在整个 Link 上（⚠ 勿挂
+ *  在圆点或图标容器上：命中区域太小，悬停「邮箱」文字时触发不到）；
+ *  挂载 + 窗口聚焦 + 登录态变化 + 5 分钟轮询；webmaild 不可达静默无提示；
+ *  零未读不显示。游客布局下不请求（/api/mail/* 对游客本就 401）。 */
+function MailEntry({ className }: { className?: string }) {
+  const t = useTranslations("nav");
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      if (!document.documentElement.classList.contains(OWNER_CLASS)) return;
+      fetch("/api/mail/accounts")
+        .then((r) => (r.ok ? r.json() : []))
+        .then((data: { enabled: boolean; unread?: number }[]) => {
+          if (!cancelled) {
+            setCount(data.filter((a) => a.enabled).reduce((s, a) => s + (a.unread ?? 0), 0));
+          }
+        })
+        .catch(() => {});
+    };
+    load();
+    const timer = setInterval(load, 5 * 60 * 1000);
+    window.addEventListener("focus", load);
+    window.addEventListener(OWNER_AUTH_CHANGED_EVENT, load);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", load);
+      window.removeEventListener(OWNER_AUTH_CHANGED_EVENT, load);
+    };
+  }, []);
+
+  return (
+    <Link
+      href="/mail"
+      data-slot="button"
+      aria-label={t("mail")}
+      title={count > 0 ? t("mailUnread", { count }) : undefined}
+      className={buttonVariants({ variant: "ghost", size: "sm", className })}
+    >
+      <span className="relative inline-flex">
+        <MailIcon data-icon="default" />
+        {count > 0 && (
+          <span
+            aria-hidden="true"
+            data-slot="mail-unread-badge"
+            className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary ring-2 ring-background"
+          />
+        )}
+      </span>
+      {t("mail")}
+    </Link>
+  );
 }
 
 export function OwnerNavItem({ className }: { className?: string }) {
@@ -149,6 +212,14 @@ export function OwnerNavItem({ className }: { className?: string }) {
         <CompassIcon data-icon="default" />
         {t("nav")}
       </Link>
+
+      {/* 「邮箱」：主人专属（owner-only），位于「导航」右边、nav 最右端。
+          带 MailIcon（与导航的 CompassIcon 同为图标标识的特殊入口）；
+          图标右上角是未读圆点（4.8，绝对定位不占宽度），tooltip 计数挂在
+          整个入口链接上（MailEntry 内部） */}
+      <span className={`owner-only ${className ?? ""}`}>
+        <MailEntry className={className} />
+      </span>
     </Fragment>
   );
 }

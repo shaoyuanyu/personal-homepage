@@ -116,12 +116,21 @@ export function PublicationCard({
             </a>
           ))}
           <Dialog open={open} onOpenChange={setOpen}>
+            {/* ⚠ **勿改回 `<Button variant="ghost">`**：同一排的 PDF / DOI / arXiv 是裸
+                `buttonVariants()` 渲染（未经 cn 归并 → 10px 圆角 / 16px 图标），而
+                `<Button>` 内部走 tailwind-merge 会归并成 8px 圆角 / 14px 图标 —— 并排
+                差 2px（与 2026-10「账号入口和旁边不统一」同一根因，见 CLAUDE.md
+                「按钮边框」条）。故这里用同一写法：原生 button + 裸 buttonVariants。 */}
             <DialogTrigger
               render={
-                <Button variant="outline" size="sm">
-                  <ScrollTextIcon data-icon="inline-start" />
+                <button
+                  type="button"
+                  data-slot="button"
+                  className={buttonVariants({ variant: "ghost", size: "sm" })}
+                >
+                  <ScrollTextIcon data-icon="default" />
                   {t("copyBibtex")}
-                </Button>
+                </button>
               }
             />
             <DialogContent className="sm:max-w-2xl">

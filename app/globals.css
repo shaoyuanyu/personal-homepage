@@ -235,6 +235,31 @@
   text-transform: uppercase;
 }
 
+/* ---- 新邮件角标弹跳（/mail 大标题右上角，2026-10-06）----
+   MailUnreadBadge 在收到 `mail:new-mail` 事件时重挂载角标元素，
+   由本动画重播一次「放大回弹」。仅装饰：prefers-reduced-motion 下关闭。 */
+@keyframes mail-unread-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.5);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.mail-unread-pop {
+  animation: mail-unread-pop 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mail-unread-pop {
+    animation: none;
+  }
+}
+
 /* ---- 长正文（全站唯一使用衬线的场景）----
    要求：字号 ≥16px、行高 ≥1.6。衬线的 x-height 比无衬线小，同字号下视觉更小、
    笔画更细，必须靠更大字号 + 更松行距才达到同等可读性（Anthropic 文章正文
@@ -379,7 +404,8 @@ html.theme-dark [data-theme-icon="dark"] {
 /* ---- 顶部栏：桌面导航的紧凑档（≥lg）----
    内联导航断点为 lg（1024，见 site-header.tsx）。英文文案（Publications /
    Scratchpad / Calendar）明显更长：若不收紧，登录态在 1024~1280px 视口下
-   余量很薄（max-w-5xl 容器扣掉 px-6 与滚动条预留后可用 ~961px）。
+   余量很薄（max-w-6xl 容器在 1024px 视口下退化为视口宽度，
+   扣掉 px-6 与滚动条预留后可用 ~961px）。
    故 ≥1024 收紧导航项水平内边距与项间距。
    ⚠ 间距在字号从 15px 回到 14px 后已放宽（gap 2px → 4px）——
      相邻项各 8px 内边距 + 4px 间距 = 20px 视觉间隔；若再收紧会显得「拥塞」。

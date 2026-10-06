@@ -16,7 +16,7 @@ export default function NotFound() {
   const t = useTranslations("notFound");
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col items-center justify-center gap-4 px-4 py-24 text-center sm:px-6">
+    <div className="mx-auto flex max-w-6xl flex-col items-center justify-center gap-4 px-4 py-24 text-center sm:px-6">
       <FileQuestionIcon className="size-12 text-muted-foreground" />
       <h1 className="text-3xl font-bold">404</h1>
       <p className="text-muted-foreground">{t("message")}</p>

@@ -1,6 +1,5 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { requireOwner } from "@/lib/auth/owner";
 import { decodeMessageId } from "@/lib/mail/id";
 import { MessageView } from "@/components/mail/message-view";
 
@@ -17,16 +16,15 @@ export async function generateMetadata({ params }: Props) {
   };
 }
 
-/** 单封邮件详情（主人专属）；id 为 base64url 编码的 messageId（lib/mail/id.ts） */
+/**
+ * 单封邮件（主人专属）；id 为 base64url 编码的 messageId（`lib/mail/id.ts`）。
+ *
+ * 只渲染右栏内容——外壳（页面标题、入口、左栏列表、两栏布局）在
+ * `(mailbox)/layout.tsx` 的 `MailShell` 里，`requireOwner` 也由那儿统一守卫。
+ */
 export default async function MailMessagePage({ params }: Props) {
   const { locale, id } = await params;
   setRequestLocale(locale);
 
-  await requireOwner();
-
-  return (
-    <div className="w-full mx-auto max-w-3xl px-4 py-12 sm:px-6">
-      <MessageView messageId={decodeMessageId(id)} />
-    </div>
-  );
+  return <MessageView messageId={decodeMessageId(id)} />;
 }

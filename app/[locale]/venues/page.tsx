@@ -18,7 +18,7 @@ export default function VenuesPage() {
   const t = useTranslations("venues");
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-12 sm:px-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-12 sm:px-6">
       <div className="mb-8 flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-3xl font-bold">{t("title")}</h1>

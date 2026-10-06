@@ -34,8 +34,19 @@ const ALWAYS = [
   "关键资源",
 ];
 
-/** 功能组：改动命中任一 pattern → 该 describe 需要跑 */
+/** 功能组：改动命中任一 pattern → 该 describe 需要跑（describe 可为字符串或字符串数组） */
 const GROUPS = [
+  {
+    describe: ["站内邮件（/mail）", "agent 邮件入口（/mail/agent）"],
+    paths: [
+      /^components\/mail\//,
+      /^app\/\[locale\]\/mail\//,
+      /^app\/api\/mail\//,
+      /^lib\/mail\//,
+      /^webmail\//,
+      /^mail\//,
+    ],
+  },
   {
     describe: "我的日历（主人专属）",
     paths: [
@@ -181,8 +192,9 @@ function select(base) {
   for (const g of GROUPS) {
     const hit = files.find((f) => g.paths.some((re) => re.test(f)));
     if (hit) {
-      describes.push(g.describe);
-      matched.push(`${g.describe} ← ${hit}`);
+      const names = Array.isArray(g.describe) ? g.describe : [g.describe];
+      describes.push(...names);
+      matched.push(`${names.join(" / ")} ← ${hit}`);
     }
   }
 

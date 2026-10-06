@@ -29,9 +29,10 @@ export default async function LoginPage({ params }: Props) {
   const t = await getTranslations("login");
 
   // shadcn login-01 卡片式：所有内容（标题、描述、表单、提示）集中在卡片内，
-  // 整卡在 header 与 footer 之间垂直居中（main 为 flex 容器，flex-1 撑满剩余高度）
+  // 整卡在 header 与 footer 之间垂直居中（main 为 flex 容器，flex-1 撑满剩余高度）。
+  // 页容器与其它页面同一列（max-w-6xl），卡片在列内居中。
   return (
-    <div className="flex w-full flex-1 flex-col items-center justify-center px-6 py-12">
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center px-4 py-12 sm:px-6">
       <div className="w-full max-w-sm">
         <Card>
           <CardContent className="flex flex-col gap-6">

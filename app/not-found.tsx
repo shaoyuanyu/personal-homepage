@@ -27,7 +27,7 @@ export default async function RootNotFound() {
   const homeHref = locale === routing.defaultLocale ? "/" : `/${locale}`;
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-5xl flex-col items-center justify-center gap-4 px-4 py-24 text-center sm:px-6">
+    <div className="mx-auto flex min-h-svh max-w-6xl flex-col items-center justify-center gap-4 px-4 py-24 text-center sm:px-6">
       <FileQuestionIcon className="size-12 text-muted-foreground" />
       {/* 页面主标题：无衬线（见 app/globals.css 字体策略） */}
       <h1 className="text-3xl font-bold">404</h1>

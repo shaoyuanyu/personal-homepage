@@ -42,3 +42,8 @@ async function proxy(
 
 export const GET = proxy;
 export const POST = proxy;
+// ⚠ PUT 是草稿自动保存（PUT /drafts/:id）与账号修改（PUT /accounts/:id）要用的——
+// 漏导出会得到 405（E2E 全走 stub、拦不到真实代理层，曾因此漏过一轮）
+export const PUT = proxy;
+export const PATCH = proxy;
+export const DELETE = proxy;
