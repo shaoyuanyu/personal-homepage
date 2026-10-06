@@ -135,9 +135,13 @@ jobs:
             if docker manifest inspect "$WEBMAIL_IMAGE" >/dev/null 2>&1; then
               # 内容校验：ACR 的 webmail 构建规则若误用根 Dockerfile，产出的是 web
               # 应用（Cmd = node server.js）——必须改走桥接覆盖该 tag。正确镜像的
-              # 入口是 tsx（webmaild）。拿不到 config 时按就绪处理（保守）。
-              wm_cfg="$(docker buildx imagetools inspect --format '{{json .Image}}' "$WEBMAIL_IMAGE" 2>/dev/null || true)"
-              if printf '%s' "$wm_cfg" | grep -q '"Cmd":\["node","server\.js"\]'; then
+              # 入口是 tsx（webmaild）。
+              # ⚠ buildx 的 json 模板输出是**缩进**的（换行+空格）——必须先压平再
+              # 用 grep -F 定点匹配（曾因单行正则匹配缩进 JSON 而静默失效，错误
+              # 镜像直接上了生产）。拿不到 config 时按就绪处理（保守，会打警告）。
+              wm_cfg="$(docker buildx imagetools inspect --format '{{json .Image}}' "$WEBMAIL_IMAGE" 2>/dev/null | tr -d '[:space:]' || true)"
+              [ -n "$wm_cfg" ] || echo "（警告：webmail 镜像 config 校验不可用，跳过内容检查——若 ACR 规则误配将无法拦截）"
+              if printf '%s' "$wm_cfg" | grep -qF '"Cmd":["node","server.js"]'; then
                 webmail_wrong=1
               else
                 webmail_ok=1
