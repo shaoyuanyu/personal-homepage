@@ -45,12 +45,13 @@ jobs:
           REGISTRY="${IN_REGISTRY:-ghcr.io}"
           NAMESPACE="${IN_NAMESPACE:-${{ github.repository_owner }}}"
           REPO="${{ github.event.repository.name }}"
+          # webmail 镜像的仓库名 = <仓库名>-webmail（ACR 侧需先建好对应仓库）
           {
             echo "REGISTRY=$REGISTRY"
             echo "IMAGE=$REGISTRY/$NAMESPACE/$REPO:latest"
-            echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/webmail:latest"
+            echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/$REPO-webmail:latest"
           } >> "$GITHUB_ENV"
-          echo "镜像仓库：$REGISTRY/$NAMESPACE（$REPO + webmail）"
+          echo "镜像仓库：$REGISTRY/$NAMESPACE（$REPO + $REPO-webmail）"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4

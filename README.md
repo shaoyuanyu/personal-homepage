@@ -116,8 +116,10 @@ VPS 在境内，拉 GHCR 的 blob CDN（`pkg-containers.githubusercontent.com`�
 
 流水线**默认仍走 GHCR**；切到境内仓库只改仓库配置，**不用改代码**：
 
-1. 在阿里云容器镜像服务 ACR 建**个人版实例** + **命名空间**（如 `ysy`），并创建
-   `personal-homepage` / `webmail` 两个仓库。设为**公开**可匿名拉取，VPS 侧免登录。
+1. 在阿里云容器镜像服务 ACR 建**个人版实例** + **命名空间**（如 `ysy`），并创建两个
+   仓库：`personal-homepage` 与 `personal-homepage-webmail`（**webmail 仓库名 =
+   `<主仓库名>-webmail`**，脚本按此规则推导）。仓库公开/私有均可——私有时部署脚本
+   会用下面同一套凭据在 VPS 上登录后拉取（推荐私有）。
 2. 仓库 `Settings → Secrets and variables → Actions`：
 
    | 类型 | 名称 | 值 |
@@ -125,10 +127,10 @@ VPS 在境内，拉 GHCR 的 blob CDN（`pkg-containers.githubusercontent.com`�
    | Variable | `REGISTRY` | `registry.cn-hangzhou.aliyuncs.com`（以 ACR 控制台的「公网地址」为准，也可能形如 `<实例>.cn-hangzhou.cr.aliyuncs.com`） |
    | Variable | `IMAGE_NAMESPACE` | 你的 ACR 命名空间，如 `ysy` |
    | Secret | `REGISTRY_USERNAME` | ACR 用户名（**推送必填**） |
-   | Secret | `REGISTRY_PASSWORD` | ACR 固定密码（**推送必填**；仓库设为公开时，VPS 侧拉取免登录） |
+   | Secret | `REGISTRY_PASSWORD` | ACR 固定密码（**推送必填**；也是 VPS 侧拉取的登录凭据，每次部署自动登录） |
 
 3. 重跑一次 Deploy（push 或 `workflow_dispatch`）。日志会打印当前生效地址
-   `镜像仓库：<REGISTRY>/<IMAGE_NAMESPACE>（personal-homepage + webmail）`，
+   `镜像仓库：<REGISTRY>/<IMAGE_NAMESPACE>（personal-homepage + personal-homepage-webmail）`，
    `Deploy to VPS` 应从分钟级降到秒级。
 
 **切回 GHCR**：删掉这两个 Variable 即可（自动回退 `ghcr.io` + `GITHUB_TOKEN`）。
