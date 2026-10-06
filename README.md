@@ -107,6 +107,38 @@ pnpm start        # 生产运行
 
 推送 `main` 分支 → CI 门禁（lint + typecheck + build）→ 自动构建镜像并部署。
 
+### 镜像仓库可切换（GHCR ↔ 境内仓库）
+
+VPS 在境内，拉 GHCR 的 blob CDN（`pkg-containers.githubusercontent.com`）会**卡死**：
+实测 `Deploy to VPS` 这一步耗时 **0.2 min（镜像没变）～ 20.6 min（镜像变了）**、
+中位约 7.7 min，并造成过两次 17~23 分钟的部署失败（撞满 `timeout 600` × 重试）。
+而镜像本体并不大（web 84.7 MB / webmail 106.4 MB，压缩层），**瓶颈是链路而非带宽**。
+
+流水线**默认仍走 GHCR**；切到境内仓库只改仓库配置，**不用改代码**：
+
+1. 在阿里云容器镜像服务 ACR 建**个人版实例** + **命名空间**（如 `ysy`），并创建
+   `personal-homepage` / `webmail` 两个仓库。设为**公开**可匿名拉取，VPS 侧免登录。
+2. 仓库 `Settings → Secrets and variables → Actions`：
+
+   | 类型 | 名称 | 值 |
+   |---|---|---|
+   | Variable | `REGISTRY` | `registry.cn-hangzhou.aliyuncs.com`（以 ACR 控制台的「公网地址」为准，也可能形如 `<实例>.cn-hangzhou.cr.aliyuncs.com`） |
+   | Variable | `IMAGE_NAMESPACE` | 你的 ACR 命名空间，如 `ysy` |
+   | Secret | `REGISTRY_USERNAME` | ACR 用户名（**推送必填**） |
+   | Secret | `REGISTRY_PASSWORD` | ACR 固定密码（**推送必填**；仓库设为公开时，VPS 侧拉取免登录） |
+
+3. 重跑一次 Deploy（push 或 `workflow_dispatch`）。日志会打印当前生效地址
+   `镜像仓库：<REGISTRY>/<IMAGE_NAMESPACE>（personal-homepage + webmail）`，
+   `Deploy to VPS` 应从分钟级降到秒级。
+
+**切回 GHCR**：删掉这两个 Variable 即可（自动回退 `ghcr.io` + `GITHUB_TOKEN`）。
+
+⚠ 部署脚本用 compose **override 文件**传入镜像地址，因此**不需要**同步 VPS 上的
+`docker-compose.yml` 也不会错配（VPS 那份副本可能滞后于 `main`）。但 VPS 那份仍必须
+**定义过** `web` / `webmail` 两个服务——缺少时部署会明确报错要求先同步，而不是起一个
+空壳容器。手动在 VPS 上 `docker compose up` 时，可用 `WEB_IMAGE` / `WEBMAIL_IMAGE`
+覆盖 `docker-compose.yml` 里的默认地址。
+
 ## 🎨 品牌资产
 
 - `app/icon.svg` — 站点图标（Y-Fork 标记：姓氏首字母 Y + 持续学习的知识分叉），自动作为 favicon，并按明暗主题自适应

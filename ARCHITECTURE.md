@@ -121,7 +121,9 @@ content/*.yaml（手工维护）──▶ lint/typecheck/build ──▶ docker 
 
 - `docker-compose.yml` 管理全部服务，`docker compose up -d` 一键启动
 - 数据卷持久化 Umami 数据库
-- GitHub Actions 推送镜像到 GHCR，服务器拉取更新，**回滚 = 拉取旧镜像**
+- GitHub Actions 推送镜像到镜像仓库，服务器拉取更新，**回滚 = 拉取旧镜像**
+  - 仓库地址可切换（默认 GHCR；境内 VPS 拉 GHCR 的 blob CDN 会卡死，
+    建议切到阿里云 ACR —— 见 README「镜像仓库可切换」）
 
 ## 6. 持续迭代路线
 

@@ -8,9 +8,21 @@ on:
       - "**/*.md"
   workflow_dispatch:
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}:latest
-  WEBMAIL_IMAGE: ghcr.io/${{ github.repository_owner }}/webmail:latest
+# ⚠ 镜像仓库是**可切换**的（默认 GHCR），由仓库 Variables 驱动，切换不需改代码：
+#   本仓库 VPS 在境内，拉 GHCR 的 blob CDN（pkg-containers.githubusercontent.com）
+#   会卡死——实测「Deploy to VPS」这一步 0.2 min（镜像没变）～ 20.6 min（镜像变了），
+#   中位 ~7.7 min，并造成过两次 17~23 min 的部署失败（撞满 timeout 600 × 重试）。
+#   镜像本体并不大（web 84.7 MB / webmail 106.4 MB 压缩层），所以瓶颈是链路而非带宽，
+#   换一个境内可达的仓库（阿里云 ACR / 腾讯 TCR）即可把这一步压到秒级。
+#
+#   Settings → Secrets and variables → Actions：
+#     Variables  REGISTRY        = registry.cn-hangzhou.aliyuncs.com
+#                IMAGE_NAMESPACE = <ACR 命名空间>
+#     Secrets    REGISTRY_USERNAME / REGISTRY_PASSWORD
+#                （**推送侧必填**；VPS 侧拉取只有仓库为私有时才需要登录）
+#
+#   两者留空 → 回退 ghcr.io + GITHUB_TOKEN，行为与改造前完全一致（可安全先合入）。
+#   IMAGE / WEBMAIL_IMAGE 由 "Resolve image registry" 步骤写入 $GITHUB_ENV。
 
 jobs:
   build-and-deploy:
@@ -23,15 +35,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Resolve image registry
+        # 解析镜像仓库（Variables 留空则回退 GHCR），并把 IMAGE / WEBMAIL_IMAGE
+        # 写进 $GITHUB_ENV 供后续步骤（login / build / deploy）使用。
+        env:
+          IN_REGISTRY: ${{ vars.REGISTRY }}
+          IN_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+        run: |
+          REGISTRY="${IN_REGISTRY:-ghcr.io}"
+          NAMESPACE="${IN_NAMESPACE:-${{ github.repository_owner }}}"
+          REPO="${{ github.event.repository.name }}"
+          {
+            echo "REGISTRY=$REGISTRY"
+            echo "IMAGE=$REGISTRY/$NAMESPACE/$REPO:latest"
+            echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/webmail:latest"
+          } >> "$GITHUB_ENV"
+          echo "镜像仓库：$REGISTRY/$NAMESPACE（$REPO + webmail）"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
       - name: Login to GHCR
+        # 仅在用 GHCR 时执行；切到国内仓库走下面的 mirror 登录
+        if: env.REGISTRY == 'ghcr.io'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to mirror registry
+        if: env.REGISTRY != 'ghcr.io'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build & push image
         uses: docker/build-push-action@v7
@@ -60,11 +99,44 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 35m
-          # VPS → GHCR 偶发连接卡死（国内网络），pull 加重试与超时兜底
+          # 拉取镜像：目标仓库由 REGISTRY 决定（默认 GHCR；切到境内仓库后此步为秒级）。
+          # 重试与超时兜底保留——链路仍可能抖动，且 docker 会复用已下载的层，重试不从头开始。
           script: |
             set -e
             cd ~/personal-homepage
-            for img in "${{ env.IMAGE }}" "${{ env.WEBMAIL_IMAGE }}"; do
+
+            REGISTRY="${{ env.REGISTRY }}"
+            WEB_IMAGE="${{ env.IMAGE }}"
+            WEBMAIL_IMAGE="${{ env.WEBMAIL_IMAGE }}"
+
+            # 只有私有仓库才需要登录；公开仓库（GHCR 现状 / ACR 公开命名空间）无需
+            if [ "$REGISTRY" != "ghcr.io" ] && [ -n "${{ secrets.REGISTRY_PASSWORD }}" ]; then
+              echo "${{ secrets.REGISTRY_PASSWORD }}" \
+                | docker login "$REGISTRY" -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin
+            fi
+
+            # 前置校验：override 文件只提供 image:。若 VPS 上那份 docker-compose.yml
+            # 缺服务定义（例如新增的 webmail 还没同步过去），compose 会「凭一个 image
+            # 造出没有网络/挂载/环境变量的空壳服务」而不是报错——宁可在这里大声失败。
+            for svc in web webmail; do
+              if ! docker compose -f docker-compose.yml config --services | grep -qx "$svc"; then
+                echo "!!! VPS 上的 docker-compose.yml 缺少服务 $svc，请先同步仓库里的该文件"
+                exit 1
+              fi
+            done
+
+            # 用 override 文件显式钉住本次部署的镜像，而不是依赖 VPS 上那份
+            # docker-compose.yml 的 image: 行——VPS 的仓库副本可能滞后于 main，
+            # 否则会出现「仓库里改了镜像地址、线上却还在拉旧地址」的静默错配。
+            cat > /tmp/registry-override.yml <<EOF
+            services:
+              web:
+                image: $WEB_IMAGE
+              webmail:
+                image: $WEBMAIL_IMAGE
+            EOF
+
+            for img in "$WEB_IMAGE" "$WEBMAIL_IMAGE"; do
               for i in 1 2 3; do
                 echo "=== 拉取 $img（第 $i 次）==="
                 if timeout 600 docker pull "$img"; then
@@ -79,7 +151,7 @@ jobs:
                 fi
               done
             done
-            docker compose up -d --no-deps web webmail
+            docker compose -f docker-compose.yml -f /tmp/registry-override.yml up -d --no-deps web webmail
             docker image prune -f
 
   smoke-test:

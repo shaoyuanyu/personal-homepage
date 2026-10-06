@@ -4,9 +4,12 @@
 
 services:
   web:
-    # 镜像标签与 GitHub Actions 推送的 GHCR 标签一致：
+    # 镜像标签与 GitHub Actions 推送的标签一致。默认 GHCR；若在仓库 Variables 里把
+    # REGISTRY / IMAGE_NAMESPACE 切到境内仓库（见 .github/workflows/deploy.yml 顶部），
+    # 自动部署会通过 override 文件传入实际地址——这里的默认值只影响手动
+    # `docker compose up -d --build` 场景，可同步用 WEB_IMAGE 覆盖。
     # 自动部署 = docker pull 该标签；手动部署 = docker load 同标签镜像
-    image: ghcr.io/shaoyuanyu/personal-homepage:latest
+    image: ${WEB_IMAGE:-ghcr.io/shaoyuanyu/personal-homepage:latest}
     build:
       context: .
       args:
@@ -39,7 +42,7 @@ services:
     # 站内邮箱后端（webmaild）：IMAP 同步 + 收发 / 通讯录 / 账号管理的 HTTP API。
     # 与 web 同网络、不发布任何宿主端口——只有 compose 网络内的 web 容器可达
     # （后端自身无认证，信任边界 = 网络隔离 + 站点代理层的 isOwner 守卫）。
-    image: ghcr.io/shaoyuanyu/webmail:latest
+    image: ${WEBMAIL_IMAGE:-ghcr.io/shaoyuanyu/webmail:latest}
     build:
       context: .
       dockerfile: docker/webmail.Dockerfile
