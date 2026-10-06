@@ -24,13 +24,13 @@ concurrency:
 #      - web 仓库用**内置规则**（tags:release-v$version → 镜像版本 $version）
 #        原生产出带版本号的镜像；
 #      - webmail 仓库用**自定义规则**（该处不支持 $version 变量，镜像版本
-#        固定 latest）构建，构建完成后由本工作流在服务端把 latest 重打成
-#        版本号标签（同仓库 manifest 级复制，不传输层数据）；
+#        固定 latest）构建，部署也直接用 latest（不重打版本号——webmail 因此
+#        不随版本回退，这是有意的简化）；
 #      GHA 侧不再跑任何 docker build/push；
-#   3. 本工作流轮询两个镜像 manifest，就绪后 SSH 到 VPS；
-#   4. VPS 按**版本号钉死**拉取镜像（境内直拉，秒级）并重建容器。
-#   VERSION 同时是回退锚点：回退 = workflow_dispatch 把 version 填成旧版本号重跑
-#  （旧版本镜像永远留在 ACR 版本列表里，不会被覆写）。
+#   3. 本工作流轮询镜像就绪（web 按版本号、webmail 按 latest 指纹变化）；
+#   4. VPS 拉取镜像并重建容器（web=版本号 / webmail=latest，均境内秒级）。
+#   VERSION 是 web 的回退锚点：回退 = workflow_dispatch 把 version 填成旧版本号
+#   重跑（旧版本镜像永远留在 ACR 版本列表里，不会被覆写；webmail 不参与回退）。
 #
 # 为什么不在 GHA 构建：GHA runner 在海外，推 ACR 走公网跨境上行实测 <60KB/s
 #   （84.7 MB 的 web 镜像 30+ 分钟没推完）→ 此路不通。ACR 侧构建时跨境流量只剩
@@ -58,9 +58,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Resolve image registry & version
-        # VERSION = <日期>-<短SHA>（如 2026.10.07-d2b3dc7），既是 ACR 构建出的镜像
-        # tag，也是部署/回退的锚点。手动触发且填了 version 输入（回退场景）时直接
-        # 采用该版本，并跳过「打标签 + 等构建」。
+        # VERSION = <日期>-<短SHA>（如 2026.10.07-d2b3dc7）：web 镜像的构建 tag 与
+        # 部署/回退锚点（webmail 用 latest，不参与版本回退）。手动触发且填了
+        # version 输入（回退场景）时直接采用该版本，并跳过「打标签 + 等构建」。
         env:
           IN_REGISTRY: ${{ vars.REGISTRY }}
           IN_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
@@ -85,8 +85,7 @@ jobs:
             echo "VERSION=$VERSION"
             echo "RELEASE_TAG=release-v$VERSION"
             echo "IMAGE=$REGISTRY/$NAMESPACE/$REPO:$VERSION"
-            echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/$REPO-webmail:$VERSION"
-            echo "WEBMAIL_IMAGE_LATEST=$REGISTRY/$NAMESPACE/$REPO-webmail:latest"
+            echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/$REPO-webmail:latest"
           } >> "$GITHUB_ENV"
 
       - name: Login to ACR
@@ -99,25 +98,19 @@ jobs:
       - name: Create release tag (triggers ACR build)
         if: env.SKIP_BUILD != '1'
         run: |
-          # 版本号内含短 SHA：镜像已存在即等价于「该 commit 已构建过」——重跑失败
-          # 的工作流时跳过打标签与等待，直接复用（幂等）。
-          if docker manifest inspect "$IMAGE" >/dev/null 2>&1 \
-             && docker manifest inspect "$WEBMAIL_IMAGE" >/dev/null 2>&1; then
-            echo "镜像 $VERSION 已存在，跳过打标签，直接复用"
-            echo "SKIP_BUILD=1" >> "$GITHUB_ENV"
-            exit 0
-          fi
           # 记录 webmail:latest 的构建前指纹（等待步骤靠「指纹变化」判断构建完成；
-          # webmail 自定义规则只能产出 latest；镜像不存在时为空串哈希，同样可用）。
-          base="$(docker buildx imagetools inspect --raw "$WEBMAIL_IMAGE_LATEST" 2>/dev/null | sha256sum | cut -d' ' -f1)"
+          # 镜像不存在时为空串哈希，同样可用）。
+          base="$(docker buildx imagetools inspect --raw "$WEBMAIL_IMAGE" 2>/dev/null | sha256sum | cut -d' ' -f1)"
           echo "WEBMAIL_LATEST_BEFORE=$base" >> "$GITHUB_ENV"
           # 优先 PAT 推标签：GITHUB_TOKEN 推送的事件是否会送达 ACR 的 GitHub App
           # 未经实测，PAT 一定送达；未配置则回退（行为见文件头「依赖」注释）。
           if [ -n "$PUSH_TOKEN" ]; then
             git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${{ github.repository }}.git"
           fi
+          # 标签已存在（重跑/同日重发）时删除重推：只有新的标签 push 事件才会触发
+          # ACR 构建（webmail 的上次构建可能失败过，必须重试而不是假设成功）。
           if git ls-remote --tags origin "refs/tags/$RELEASE_TAG" | grep -q .; then
-            echo "标签 $RELEASE_TAG 已存在但镜像缺失，删除后重推以重新触发构建"
+            echo "标签 $RELEASE_TAG 已存在，删除后重推以重新触发构建"
             git push origin ":refs/tags/$RELEASE_TAG" || true
           fi
           git tag -f "$RELEASE_TAG"
@@ -127,33 +120,29 @@ jobs:
       - name: Wait for ACR build
         if: env.SKIP_BUILD != '1'
         run: |
-          # 就绪判据：web 与 webmail 的**版本号镜像**都出现。
-          #   web：内置规则原生产出（$version）。
-          #   webmail：自定义规则只产出 latest（不支持 $version），因此 latest
-          #   指纹一变（构建完成）就用 imagetools 在服务端把它重打成版本号标签
-          #   （同仓库 manifest 级复制，不传输层数据）。若自定义规则也填了
-          #   $version 且原生出版本号镜像，此重打分支自然成为无操作。
+          # 就绪判据：
+          #   web     —— 版本号镜像出现（内置规则原生产出，$version）；
+          #   webmail —— latest 指纹与构建前不同（自定义规则只能产出 latest）。
           # 个人版单次构建上限 30 分钟，预算 35 分钟，每 20 秒轮询。
           deadline=$((SECONDS + 2100))
           while true; do
             web_ok=0; webmail_ok=0
             docker manifest inspect "$IMAGE" >/dev/null 2>&1 && web_ok=1
-            docker manifest inspect "$WEBMAIL_IMAGE" >/dev/null 2>&1 && webmail_ok=1
-            if [ "$web_ok" = 1 ] && [ "$webmail_ok" = 1 ]; then
-              echo "两个镜像均已就绪：$VERSION"
-              break
+            cur="$(docker buildx imagetools inspect --raw "$WEBMAIL_IMAGE" 2>/dev/null | sha256sum | cut -d' ' -f1)"
+            if [ "$cur" != "$WEBMAIL_LATEST_BEFORE" ]; then
+              webmail_ok=1
             fi
-            if [ "$webmail_ok" = 0 ]; then
-              cur="$(docker buildx imagetools inspect --raw "$WEBMAIL_IMAGE_LATEST" 2>/dev/null | sha256sum | cut -d' ' -f1)"
-              if [ "$cur" != "$WEBMAIL_LATEST_BEFORE" ]; then
-                echo "webmail:latest 已有新构建，重打版本号标签：$VERSION"
-                docker buildx imagetools create -t "$WEBMAIL_IMAGE" "$WEBMAIL_IMAGE_LATEST" || true
-              fi
+            if [ "$web_ok" = 1 ] && [ "$webmail_ok" = 1 ]; then
+              echo "两个镜像均已就绪（web=$VERSION，webmail=latest）"
+              break
             fi
             if [ "$SECONDS" -ge "$deadline" ]; then
               echo "!!! 等待 ACR 构建超时（35 分钟）：web=$web_ok webmail=$webmail_ok"
               echo "!!! 到 ACR 控制台对应仓库的「构建日志」页排查："
               echo "!!!   $REGISTRY/$NAMESPACE/$REPO 与 $REGISTRY/$NAMESPACE/$REPO-webmail"
+              echo "!!! 若日志显示构建成功（重跑命中全量缓存、产物与上次完全相同时会"
+              echo "!!! 出现指纹未变化）：用 workflow_dispatch 把 version 填成"
+              echo "!!! ${VERSION} 重跑，会跳过等待直接部署。"
               exit 1
             fi
             sleep 20
@@ -166,9 +155,9 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 20m
-          # ACR 为私有仓库，VPS 侧需登录；镜像按**版本号钉死**在 override 里。
-          # 回退 = workflow_dispatch 把 version 填成旧版本号重跑本工作流
-          #（拉取+重建+生产冒烟会跟着完整走一遍）。
+          # ACR 为私有仓库，VPS 侧需登录；override 钉住镜像（web=版本号、
+          # webmail=latest）。回退 = workflow_dispatch 把 version 填成旧版本号重跑
+          # 本工作流（拉取+重建+生产冒烟完整走一遍；只回退 web 镜像）。
           script: |
             set -e
             cd ~/personal-homepage
