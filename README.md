@@ -98,7 +98,7 @@ pnpm start        # 生产运行
    （umami 统计面板经 Nginx 分流到 127.0.0.1:3001（域名 status.shaoyuanyu.cn）；HTTPS 就绪后用 certbot 签发证书并将 SITE_URL 改为 https）
 3. 服务器上执行：
    ```bash
-   git clone <repo> && cd personal-homepage
+   git clone <repo> && cd ysy-homepage-web
    cp .env.example .env   # 填入与本地一致的密钥
    docker compose up -d --build
    ```
@@ -117,17 +117,33 @@ pnpm start        # 生产运行
 推 ACR 走公网跨境上行实测 <60KB/s（191MB 压缩层 30+ 分钟推不完）；换 ACR 侧构建后，
 跨境流量只剩源码（~11MB）。
 
-流程：`main` 推送 → Deploy 工作流打**两个** `release-v<日期>-<短SHA>` 标签（主仓库
-的标签用 PAT/GITHUB_TOKEN 推；邮件仓库的标签经 **deploy key** 跨仓库推，见
-`WEBMAIL_REPO_DEPLOY_KEY`）→ ACR 两个镜像仓库各自绑定对应 GitHub 仓库、由**内置
+流程：`main` 推送 → Deploy 工作流算版本号（**= 该仓库提交日期-短SHA**，同一个提交
+永远同一个版本号）并给**两个**仓库打 `release-v*` 标签（主仓库标签用 PAT/GITHUB_TOKEN
+推；邮件仓库标签经 **deploy key** 跨仓库推，见 `WEBMAIL_REPO_DEPLOY_KEY`；**标签与镜像
+都已存在则直接复用、不重建**）→ ACR 两个镜像仓库各自绑定对应 GitHub 仓库、由**内置
 规则**构建**各自仓库根的 Dockerfile**（天然正确，无需自定义规则），产出
-`2026.10.07-d2b3dc7` 这类**版本号镜像** → 工作流轮询两个版本号镜像就绪（含入口
-Cmd 校验，防误配）→ SSH 到 VPS 拉取并重建容器 → 对生产跑冒烟用例。
+`2026.10.07-7475b30` 这类**版本号镜像** → 工作流轮询两个版本号镜像可拉取 → SSH 到 VPS
+调用 `~/personal-homepage/deploy.sh <web版本> [<邮件版本>]`（拉取 + **入口 Cmd 校验**
++ 重建容器 + **健康探测**）→ 对生产跑冒烟用例。
 
-**回退**：Actions → Deploy → Run workflow → `version` 填 web 旧版本号、
-`webmail_version` 填邮件旧版本号（可选，不填则只回滚 web）→ 拉取+重建+冒烟完整
-跑一遍。版本号含 commit 短 SHA、永不覆写；VPS 每次部署后清理各仓库除最近 5 个
-版本外的旧镜像。
+**部署脚本在 VPS 上**（`scripts/deploy.sh` 是唯一事实来源，VPS 上跑的是它的副本；
+改完必须同步，否则流水线跑的还是旧脚本——部署步骤发现脚本缺失会明确报错）：
+
+```bash
+scp -i ~/.ssh/vps-deploy scripts/deploy.sh ysy@106.14.135.32:~/personal-homepage/deploy.sh
+```
+
+**回退**（两种写法等价）：
+
+1. Actions → Deploy → Run workflow → `version` 填 web 旧版本号、`webmail_version`
+   填邮件旧版本号（可选，不填则只回滚 web）→ 拉取 + 重建 + 冒烟完整跑一遍；
+2. 或直接 SSH 到 VPS：`cd ~/personal-homepage && bash deploy.sh <旧版本>` —— 不依赖
+   GitHub/Actions 健康；不带参数时只打印当前运行版本与本地保留的版本。
+
+⚠ **能退到哪一版，取决于镜像还在不在**：ACR 侧不保证保留历史版本（2026-10-07 实测
+两个仓库各只剩当前一个版本号），所以 **VPS 本地缓存才是回滚窗口**（脚本按
+`KEEP_VERSIONS` 保留，缺省 8；拉取失败但本地有同名镜像时按回滚处理直接用本地那份）。
+别在 ACR 控制台或 VPS 上随手删旧版本号镜像。
 
 前置配置：
 
@@ -147,6 +163,11 @@ Cmd 校验，防误配）→ SSH 到 VPS 拉取并重建容器 → 对生产跑�
    | Secret | `REGISTRY_PASSWORD` | ACR 固定密码（GHA 拉 manifest 校验与 VPS 拉取共用） |
    | Secret | `WEBMAIL_REPO_DEPLOY_KEY` | 邮件仓库 deploy key 私钥（写权限；跨仓库推标签用） |
    | Secret（可选） | `AUTOMERGE_TOKEN` | PAT：推主仓库标签时优先（未配置回退 `GITHUB_TOKEN`） |
+
+3. VPS 上放一份部署脚本（首次必做；之后每次改 `scripts/deploy.sh` 都要重传）：
+   ```bash
+   scp -i ~/.ssh/vps-deploy scripts/deploy.sh ysy@106.14.135.32:~/personal-homepage/deploy.sh
+   ```
 
 ⚠ 部署脚本用 compose **override 文件**传入镜像地址，因此**不需要**同步 VPS 上的
 `docker-compose.yml` 也不会错配（VPS 那份副本可能滞后于 `main`）。但 VPS 那份仍必须

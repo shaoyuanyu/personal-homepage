@@ -9,11 +9,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "回滚：web 镜像版本号（如 2026.10.07-abc1234）。留空 = 正常构建流程"
+        description: "回滚：web 镜像版本号（如 2026.10.07-7475b30）。留空 = 正常构建流程"
         required: false
         type: string
       webmail_version:
-        description: "回滚：webmail 镜像版本号（如 2026.10.07-def5678）。留空 = 回滚时不动 webmail"
+        description: "回滚：webmail 镜像版本号（如 2026.10.07-69642d6）。留空 = 回滚时不动 webmail"
         required: false
         type: string
 
@@ -30,23 +30,37 @@ concurrency:
 #
 # 两个 ACR 镜像仓库各自绑定对应的 GitHub 仓库，由各自的**内置规则**
 # （tags:release-v$version → 镜像版本 $version）构建**各自仓库根的 Dockerfile**：
-# 两边的根 Dockerfile 正是各自服务的构建文件，天然正确、不需要任何自定义规则
-# （这正是 webmail 从主仓库拆分独立出去的原因）。
+# 两边根 Dockerfile 正是各自服务的构建文件，天然正确、不需要任何自定义规则。
 #
 # 正常流程：
-#   1. main 推送 → 本工作流打两个标签：
-#        · 主仓库        release-v<日期>-<主仓库短SHA>    （web 版本）
-#        · 邮件后端仓库  release-v<日期>-<邮件仓库短SHA>  （webmail 版本，
-#          经 deploy key 跨仓库推送；两个仓库历史独立、版本号各自反映自身代码）
-#   2. ACR 两侧各自检测标签 → 构建并产出同名版本号镜像；
-#   3. 本工作流轮询两个版本号镜像就绪，并校验入口 Cmd（防构建规则误配时
-#      静默部署错内容——历史上曾发生「webmail 镜像里装成 web 应用」，
-#      校验失败直接终止部署）；
-#   4. VPS 按版本号拉取镜像重建容器（境内直连、秒级）。
+#   1. main 推送 → 本工作流算版本号并打标签：
+#        · 版本号 = <该仓库提交日期(UTC)>-<短SHA>——**取提交自身的日期，不是部署
+#          日期**。同一个提交永远同一个版本号，因此没改动的镜像不会因为"跨了一天"
+#          被重新构建、容器也不会白重启（邮件镜像是最慢的一个，收益最明显）；
+#        · 标签与镜像都已存在 → **直接复用**（不重推、不重建）；
+#          标签在但镜像被清理过 → 删标签重推，触发重建；
+#        · 邮件仓库的版本号取自该仓库自身 HEAD（两仓库历史独立），标签经
+#          deploy key 跨仓库推送（deploy key 推送是普通 push 事件，ACR 正常收到）。
+#   2. ACR 两侧各自检测标签 → 构建并产出同名版本号镜像（产物经阿里云内部链路上架）；
+#      GHA 侧**不跑任何 docker build/push**；
+#   3. 本工作流轮询两个版本号镜像"是否已经可拉取"——只等有没有，**不校验内容**
+#      （内容校验在 VPS 侧 deploy.sh 里做，见下）；
+#   4. SSH 到 VPS：登录 ACR → 调用 VPS 上的 ~/personal-homepage/deploy.sh
+#      <web版本> [<邮件版本>] → 拉取、校验入口 Cmd、重建容器、健康探测、清理旧版本。
 #
-# 回滚：workflow_dispatch —— version 填 web 旧版本号、webmail_version 填邮件
-#   旧版本号（两个镜像的全部版本都留在 ACR，各自永不覆写）。只填 version 时
-#   仅回滚 web、webmail 保持现状。
+# 为什么部署逻辑在 VPS 上而不在本文件里：
+#   · 回滚不该依赖 GitHub / Actions / PAT / deploy key 同时健康——SSH 上去一条
+#     命令就能退回上一版（`bash ~/personal-homepage/deploy.sh <旧版本>`）；
+#   · 流水线部署与手工回滚走**同一份实现**，不会出现"YAML 里改好了、手工那条路
+#     还是旧逻辑"的漂移；
+#   · 入口 Cmd 校验放在"拉取后、起容器前"（历史教训：ACR 规则误配时 webmail 镜像
+#     里装成过 web 应用，全链路无报错），校验失败时旧容器仍在跑，线上不受影响。
+#   ⚠ 仓库 scripts/deploy.sh 是唯一事实来源，改完必须 scp 同步到 VPS，否则流水线
+#     跑的还是旧脚本（部署步骤会在脚本缺失时明确报错并给出同步命令）。
+#
+# 回滚：workflow_dispatch —— version 填 web 旧版本号、webmail_version 填邮件旧
+#   版本号（两个镜像的全部版本都留在 ACR，各自永不覆写）。只填 version 时仅回滚
+#   web、webmail 保持现状（但仍会健康探测它）。
 #
 # 为什么不在 GHA 构建：GHA runner 在海外，推 ACR 跨境上行实测 <60KB/s
 #   （84.7 MB 的 web 镜像 30+ 分钟推不完）→ 此路不通。ACR 侧构建时跨境流量
@@ -76,8 +90,8 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Resolve image registry & version
-        # 正常模式：web 版本 = <日期>-<主仓库短SHA>（webmail 版本在打标签步骤
-        # 由邮件仓库 HEAD 确定）。回滚模式（填了 version 输入）：跳过构建，
+        # 正常模式：版本号 = <提交日期(UTC)>-<短SHA>（webmail 的版本号在打标签步骤
+        # 由邮件仓库自身 HEAD 算出）。回滚模式（填了 version 输入）：跳过构建，
         # 直接部署指定版本。
         env:
           IN_REGISTRY: ${{ vars.REGISTRY }}
@@ -103,11 +117,15 @@ jobs:
               echo "SKIP_BUILD=1"
             } >> "$GITHUB_ENV"
             if [ -n "$IN_WEBMAIL_VERSION" ]; then
-              echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/$WEBMAIL_REPO:$IN_WEBMAIL_VERSION" >> "$GITHUB_ENV"
+              {
+                echo "WEBMAIL_VERSION=$IN_WEBMAIL_VERSION"
+                echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/$WEBMAIL_REPO:$IN_WEBMAIL_VERSION"
+              } >> "$GITHUB_ENV"
             fi
           else
-            VERSION="$(date -u +%Y.%m.%d)-${GITHUB_SHA:0:7}"
-            echo "本次 web 版本：$VERSION（将由 ACR 构建；webmail 版本在打标签步骤确定）"
+            # ⚠ TZ=UTC 固定时区：否则 runner 时区一变，同一个提交会算出两个版本号
+            VERSION="$(TZ=UTC git show -s --format=%cd --date=format:%Y.%m.%d HEAD)-${GITHUB_SHA:0:7}"
+            echo "本次 web 版本：$VERSION（提交日期-短SHA；webmail 版本在打标签步骤确定）"
             {
               echo "VERSION=$VERSION"
               echo "RELEASE_TAG=release-v$VERSION"
@@ -128,22 +146,35 @@ jobs:
           WM_DEPLOY_KEY: ${{ secrets.WEBMAIL_REPO_DEPLOY_KEY }}
         run: |
           set -e
+
+          # 打标签的唯一目的 = 让 ACR 构建。因此三种情况分开处理：
+          #   标签 + 镜像都在  → 复用（同一个提交就是同一份产物，不重推不重建）
+          #   标签在、镜像没了 → 删标签重推（控制台清理过 / 上次构建失败）
+          #   标签不在        → 正常推送
+          push_tag_if_needed() {
+            tag="$1"; image="$2"
+            if git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
+              if docker manifest inspect "$image" >/dev/null 2>&1; then
+                echo "复用：标签 $tag 与镜像均已存在，跳过重建"
+                return 0
+              fi
+              echo "标签 $tag 已存在但镜像缺失，删除后重推以触发重建"
+              git push origin ":refs/tags/$tag" || true
+            fi
+            git tag -f "$tag"
+            git push origin "$tag"
+            echo "已推送标签：$tag（ACR 开始构建）"
+          }
+
           # ---- 主仓库（web）：PAT 优先（保证 ACR 的 GitHub App 收到事件），
-          #      GITHUB_TOKEN 回退。标签已存在则删除重推：只有新的标签 push
-          #      事件才会重新触发 ACR 构建。----
+          #      GITHUB_TOKEN 回退。----
           if [ -n "$PUSH_TOKEN" ]; then
             git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${{ github.repository }}.git"
           fi
-          if git ls-remote --tags origin "refs/tags/$RELEASE_TAG" | grep -q .; then
-            echo "标签 $RELEASE_TAG 已存在，删除后重推以重新触发构建"
-            git push origin ":refs/tags/$RELEASE_TAG" || true
-          fi
-          git tag -f "$RELEASE_TAG"
-          git push origin "$RELEASE_TAG"
-          echo "web 标签已推送：$RELEASE_TAG"
+          push_tag_if_needed "$RELEASE_TAG" "$IMAGE"
 
-          # ---- 邮件后端仓库（webmail）：deploy key 跨仓库推标签。版本号取
-          #      邮件仓库自身 HEAD 的短 SHA（两仓库历史独立）。----
+          # ---- 邮件后端仓库（webmail）：deploy key 跨仓库推标签。版本号取邮件
+          #      仓库自身 HEAD 的提交日期 + 短 SHA（两仓库历史独立）。----
           if [ -z "$WM_DEPLOY_KEY" ]; then
             echo "!!! 未配置 WEBMAIL_REPO_DEPLOY_KEY（邮件仓库 deploy key），无法推 webmail 标签"
             exit 1
@@ -157,59 +188,27 @@ jobs:
           git clone --depth 1 "$WM_URL" /tmp/wm-repo
           cd /tmp/wm-repo
           WM_SHA="$(git rev-parse --short=7 HEAD)"
-          WM_VERSION="$(date -u +%Y.%m.%d)-$WM_SHA"
-          WM_TAG="release-v$WM_VERSION"
-          if git ls-remote --tags origin "refs/tags/$WM_TAG" | grep -q .; then
-            echo "标签 $WM_TAG 已存在，删除后重推"
-            git push origin ":refs/tags/$WM_TAG" || true
-          fi
-          git tag -f "$WM_TAG"
-          git push origin "$WM_TAG"
-          echo "webmail 标签已推送：$WM_TAG（邮件仓库 $WM_SHA）"
+          WM_VERSION="$(TZ=UTC git show -s --format=%cd --date=format:%Y.%m.%d HEAD)-$WM_SHA"
+          WM_IMAGE="$REGISTRY/$NAMESPACE/$WEBMAIL_REPO:$WM_VERSION"
+          push_tag_if_needed "release-v$WM_VERSION" "$WM_IMAGE"
           cd - >/dev/null
           {
             echo "WEBMAIL_VERSION=$WM_VERSION"
-            echo "WEBMAIL_IMAGE=$REGISTRY/$NAMESPACE/$WEBMAIL_REPO:$WM_VERSION"
+            echo "WEBMAIL_IMAGE=$WM_IMAGE"
           } >> "$GITHUB_ENV"
 
       - name: Wait for ACR builds
         if: env.SKIP_BUILD != '1'
         run: |
-          # 两个版本号镜像都出现才算就绪。出现后校验入口 Cmd：web 的入口应含
-          # server.js、webmail 应含 tsx——防构建规则误配时静默部署错内容
-          # （历史上 ACR 规则曾误用根 Dockerfile，把 web 应用装进了 webmail
-          # 镜像；该缺陷全链路无报错，只有查镜像 config 才能拦住）。
-          # ⚠ buildx 的 json 模板输出是**缩进** JSON——必须先 tr 压平再匹配；
-          #    拿不到 config 时按就绪处理（保守）并打警告。
+          # 只判断两个版本号镜像**是否已经可拉取**——内容校验（Cmd 里必须有
+          # server.js / tsx）在 VPS 侧 deploy.sh 里做：那里是在"拉取后、起容器前"
+          # 检查本地镜像，既没有 buildx 缩进 JSON 那类坑，又能在校验失败时保住
+          # 正在跑的旧容器。标签被复用时这里第一轮就会通过。
           deadline=$((SECONDS + 2400))   # 40 分钟（ACR 单次构建上限 30 分钟）
           while true; do
             web_ok=0; webmail_ok=0
-            if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
-              cfg="$(docker buildx imagetools inspect --format '{{json .Image}}' "$IMAGE" 2>/dev/null | tr -d '[:space:]' || true)"
-              if [ -z "$cfg" ]; then
-                echo "（警告：web 镜像 config 校验不可用，跳过内容检查）"
-                web_ok=1
-              elif printf '%s' "$cfg" | grep -qF 'server.js'; then
-                web_ok=1
-              else
-                echo "!!! web 镜像入口异常（config 中未见 server.js）——终止部署"
-                printf '%s' "$cfg" | grep -o '"Cmd":\[[^]]*\]' | head -1 || true
-                exit 1
-              fi
-            fi
-            if docker manifest inspect "$WEBMAIL_IMAGE" >/dev/null 2>&1; then
-              cfg="$(docker buildx imagetools inspect --format '{{json .Image}}' "$WEBMAIL_IMAGE" 2>/dev/null | tr -d '[:space:]' || true)"
-              if [ -z "$cfg" ]; then
-                echo "（警告：webmail 镜像 config 校验不可用，跳过内容检查）"
-                webmail_ok=1
-              elif printf '%s' "$cfg" | grep -qF 'tsx'; then
-                webmail_ok=1
-              else
-                echo "!!! webmail 镜像入口异常（config 中未见 tsx，疑似构建了 web 应用）——终止部署"
-                printf '%s' "$cfg" | grep -o '"Cmd":\[[^]]*\]' | head -1 || true
-                exit 1
-              fi
-            fi
+            if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then web_ok=1; fi
+            if docker manifest inspect "$WEBMAIL_IMAGE" >/dev/null 2>&1; then webmail_ok=1; fi
             if [ "$web_ok" = 1 ] && [ "$webmail_ok" = 1 ]; then
               echo "两个镜像均已就绪：web=$VERSION webmail=$WEBMAIL_VERSION"
               break
@@ -232,84 +231,28 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 20m
-          # ACR 为私有仓库，VPS 侧需登录；override 把本次部署的镜像按版本号钉死。
-          # 回滚 = workflow_dispatch 把 version（与 webmail_version）填成旧版本号
-          # 重跑（拉取+重建+生产冒烟完整走一遍）。
+          # 部署/回滚的实现在 VPS 上的 ~/personal-homepage/deploy.sh（= 仓库
+          # scripts/deploy.sh 的副本）：拉取 + 入口 Cmd 校验 + 重建 + 健康探测 +
+          # 旧版本清理。这里只负责登录 ACR 并把版本号传进去。
           script: |
             set -e
-            cd ~/personal-homepage
-
-            REGISTRY="${{ env.REGISTRY }}"
-            NAMESPACE="${{ env.NAMESPACE }}"
-            REPO="${{ env.REPO }}"
-            WEBMAIL_REPO="${{ env.WEBMAIL_REPO }}"
-            VERSION="${{ env.VERSION }}"
-            WEB_IMAGE="${{ env.IMAGE }}"
-            WEBMAIL_IMAGE="${{ env.WEBMAIL_IMAGE }}"
-
+            DEPLOY_SH="$HOME/personal-homepage/deploy.sh"
+            if [ ! -f "$DEPLOY_SH" ]; then
+              echo "!!! VPS 上缺少部署脚本 $DEPLOY_SH（未同步或路径变了）"
+              echo "!!! 同步（仓库 scripts/deploy.sh 是唯一事实来源）："
+              echo "!!!   scp -i ~/.ssh/vps-deploy scripts/deploy.sh <user>@<host>:~/personal-homepage/deploy.sh"
+              exit 1
+            fi
             if [ -n "${{ secrets.REGISTRY_PASSWORD }}" ]; then
               echo "${{ secrets.REGISTRY_PASSWORD }}" \
-                | docker login "$REGISTRY" -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin
+                | docker login "${{ env.REGISTRY }}" -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin
             fi
-
-            # 前置校验：override 文件只提供 image:。若 VPS 上那份 docker-compose.yml
-            # 缺服务定义，compose 会「凭一个 image 造出没有网络/挂载/环境变量的空壳
-            # 服务」而不是报错——宁可在这里大声失败。
-            for svc in web webmail; do
-              if ! docker compose -f docker-compose.yml config --services | grep -qx "$svc"; then
-                echo "!!! VPS 上的 docker-compose.yml 缺少服务 $svc，请先同步仓库里的该文件"
-                exit 1
-              fi
-            done
-
-            # 用 override 文件显式钉住本次部署的镜像，而不是依赖 VPS 上那份
-            # docker-compose.yml 的 image: 行——VPS 的仓库副本可能滞后于 main。
-            # webmail 只在指定了版本时更新（回滚只回 web 的场景保持现状）。
-            cat > /tmp/registry-override.yml <<EOF
-            services:
-              web:
-                image: $WEB_IMAGE
-            EOF
-            SERVICES="web"
-            IMAGES="$WEB_IMAGE"
-            if [ -n "$WEBMAIL_IMAGE" ]; then
-              cat >> /tmp/registry-override.yml <<EOF
-              webmail:
-                image: $WEBMAIL_IMAGE
-            EOF
-              SERVICES="web webmail"
-              IMAGES="$WEB_IMAGE $WEBMAIL_IMAGE"
-            fi
-
-            for img in $IMAGES; do
-              for i in 1 2 3; do
-                echo "=== 拉取 $img（第 $i 次）==="
-                if timeout 600 docker pull "$img"; then
-                  break
-                fi
-                if [ "$i" -lt 3 ]; then
-                  echo "!!! 拉取失败，10 秒后重试"
-                  sleep 10
-                else
-                  echo "!!! 三次拉取均失败，终止部署"
-                  exit 1
-                fi
-              done
-            done
-            docker compose -f docker-compose.yml -f /tmp/registry-override.yml up -d --no-deps $SERVICES
-
-            # 版本清理：每个镜像仓库只保留最近 5 个「版本号格式」tag
-            # （YYYY.MM.DD-*，倒序即新旧序；正在使用的镜像 docker rmi 会拒绝删除）。
-            # ACR 构建缓存镜像（__ACR_BUILD_SERVICE_INTERNAL_IMAGE_CACHE）与
-            # probe 类标签不匹配该格式，不会误删。
-            for r in "$REPO" "$WEBMAIL_REPO"; do
-              docker images "$REGISTRY/$NAMESPACE/$r" --format '{{.Tag}}' | grep -E '^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-' \
-                | sort -r | tail -n +6 | while read -r t; do
-                    echo "清理旧版本：$r:$t"
-                    docker rmi "$REGISTRY/$NAMESPACE/$r:$t" || true
-                  done || true
-            done
-            docker image prune -f
+            # 版本号与仓库名由流水线传入；WEBMAIL_VERSION 为空 = 本次只动 web
+            REGISTRY="${{ env.REGISTRY }}" \
+            NAMESPACE="${{ env.NAMESPACE }}" \
+            WEB_REPO="${{ env.REPO }}" \
+            WEBMAIL_REPO="${{ env.WEBMAIL_REPO }}" \
+            bash "$DEPLOY_SH" "${{ env.VERSION }}" "${{ env.WEBMAIL_VERSION }}"
 
   smoke-test:
     name: Smoke Test (Production)
@@ -339,6 +282,9 @@ jobs:
         # ⚠ --retries=1：跨海链路（runner 在海外、站点在国内 VPS）偶发超时，
         #   1 次重试滤掉瞬时时序抖动；确定性缺陷重试后仍会失败，不会掩盖真问题。
         # --reporter=list,html：配合下面的工件上传，失败时可直接下载报告与 trace。
+        # ⚠ 这里只看游客视角：站主用例需要 TOTP_SECRET，生产上会真改线上数据，
+        #   故不注入；站内邮箱（webmail 容器，不暴露公网）的健康由部署脚本的
+        #   健康探测负责，公网冒烟测不到它。
         env:
           E2E_BASE_URL: https://shaoyuanyu.cn
         run: pnpm exec playwright test --retries=1 --reporter=list,html
