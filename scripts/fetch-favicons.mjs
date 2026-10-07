@@ -82,7 +82,7 @@ function looksLikeImage(buf, ext) {
 
 async function fetchImage(src) {
   const res = await fetch(src, {
-    headers: { "User-Agent": "ysy-personal-homepage/favicon-fetcher" },
+    headers: { "User-Agent": "ysy-homepage-web/favicon-fetcher" },
     redirect: "follow",
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });

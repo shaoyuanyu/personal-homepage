@@ -25,7 +25,7 @@ const DEFAULT_URL =
 // 且本模块会被 /api/deadlines/sync 导入，顶层不可有环境相关副作用）
 const OUT_FILE = () => path.join(process.cwd(), "lib/data/deadlines.json");
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; personal-homepage-deadlines/1.0; +https://shaoyuanyu.cn)";
+  "Mozilla/5.0 (compatible; ysy-homepage-deadlines/1.0; +https://shaoyuanyu.cn)";
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3000;
 

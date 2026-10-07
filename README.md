@@ -110,38 +110,33 @@ pnpm start        # 生产运行
 
 ### 镜像构建（阿里云 ACR）与版本回退
 
-**构建与推送全部由 ACR 完成**，GHA 只做编排。此前的「GHA 构建 + 推镜像」模式已废弃：
-GHA runner 在海外，推 ACR 走公网跨境上行实测 <60KB/s（191MB 压缩层 30+ 分钟推不完）；
-换 ACR 侧构建后，跨境流量只剩源码（~11MB）。
+**构建与推送全部由 ACR 完成**，GHA 只做编排。项目由两个代码仓库组成 →
+[`ysy-homepage-web`](https://github.com/shaoyuanyu/ysy-homepage-web)（本仓库，网站）与
+[`ysy-homepage-webmail`](https://github.com/shaoyuanyu/ysy-homepage-webmail)（邮件后端），
+各对应一个同名 ACR 镜像仓库。此前的「GHA 构建 + 推镜像」模式已废弃：GHA runner 在海外，
+推 ACR 走公网跨境上行实测 <60KB/s（191MB 压缩层 30+ 分钟推不完）；换 ACR 侧构建后，
+跨境流量只剩源码（~11MB）。
 
-流程：`main` 推送 → Deploy 工作流向该 commit 推 `release-v<日期>-<短SHA>` 标签 →
-ACR 两个仓库各自触发构建，产出 `2026.10.07-d2b3dc7` 这类**版本号镜像** → 工作流轮询
-两个版本号镜像就绪 → SSH 到 VPS 拉取并重建容器 → 对生产跑冒烟用例。
+流程：`main` 推送 → Deploy 工作流打**两个** `release-v<日期>-<短SHA>` 标签（主仓库
+的标签用 PAT/GITHUB_TOKEN 推；邮件仓库的标签经 **deploy key** 跨仓库推，见
+`WEBMAIL_REPO_DEPLOY_KEY`）→ ACR 两个镜像仓库各自绑定对应 GitHub 仓库、由**内置
+规则**构建**各自仓库根的 Dockerfile**（天然正确，无需自定义规则），产出
+`2026.10.07-d2b3dc7` 这类**版本号镜像** → 工作流轮询两个版本号镜像就绪（含入口
+Cmd 校验，防误配）→ SSH 到 VPS 拉取并重建容器 → 对生产跑冒烟用例。
 
-**回退**：Actions → Deploy → Run workflow → `version` 填旧版本号（两个仓库的「镜像
-版本」页可查全部历史版本，版本号含 commit 短 SHA、永不覆写）→ 拉取+重建+冒烟完整
-跑一遍（两个镜像一起回退）。VPS 每次部署后清理各仓库除最近 5 个版本外的旧镜像。
-
-⚠ **webmail 构建的兜底**：两种触发——① **产出内容错误**（ACR 构建规则误用根
-`Dockerfile` 时，`webmail:*` 镜像是 web 应用，Cmd=`node server.js`；工作流校验镜像
-config 的 Cmd 后立即改走桥接）；② web 版本号镜像已产出、webmail 宽限期（12 分钟）
-内仍未产出（规则被停用/缺失）。桥接 = 把对应提交的源码（`git archive`）直传 VPS、
-在 VPS 上 `docker build` 并**覆盖推送**该版本号 tag（日志会明确标注 `=== 启用 VPS
-桥接构建 ===`）。
+**回退**：Actions → Deploy → Run workflow → `version` 填 web 旧版本号、
+`webmail_version` 填邮件旧版本号（可选，不填则只回滚 web）→ 拉取+重建+冒烟完整
+跑一遍。版本号含 commit 短 SHA、永不覆写；VPS 每次部署后清理各仓库除最近 5 个
+版本外的旧镜像。
 
 前置配置：
 
-1. 阿里云 ACR 个人版：命名空间下建两个仓库 `personal-homepage` 与
-   `personal-homepage-webmail`（**webmail 仓库名 = `<主仓库名>-webmail`**，脚本按此
-   规则推导，推荐私有）。两个仓库均在「构建」页**绑定 GitHub 仓库**
-   `shaoyuanyu/personal-homepage`，开启「代码变更自动构建镜像」+「海外机器构建」：
-   - `personal-homepage`：用系统**内置规则**（标签 `release-v$version` → 镜像版本
-     `$version`，不可编辑也无需编辑）——原生产出带版本号的镜像；
-   - `personal-homepage-webmail`：**自定义规则**——类型 `Tag`、标签
-     `release-v*`、上下文目录 `/`、Dockerfile 文件名 `webmail.Dockerfile`
-     （**仓库根**；⚠ 该字段填 `Dockerfile` 会**静默构建出 web 应用**——工作流有
-     Cmd 内容校验兜底，检测到错误镜像会自动改走 VPS 桥接构建并覆盖该 tag）、
-     镜像版本 `$version`（实测该字段接受 `$version`）。
+1. 阿里云 ACR 个人版：命名空间下建两个镜像仓库 `ysy-homepage-web` 与
+   `ysy-homepage-webmail`（推荐私有）。两个仓库均在「构建」页**绑定对应的 GitHub
+   仓库**（`shaoyuanyu/ysy-homepage-web` / `shaoyuanyu/ysy-homepage-webmail`），
+   开启「代码变更自动构建镜像」+「海外机器构建」；构建规则用系统**内置规则**
+   （标签 `release-v$version` → 镜像版本 `$version`，不可编辑也无需编辑）——
+   不需要任何自定义规则。
 2. 仓库 `Settings → Secrets and variables → Actions`：
 
    | 类型 | 名称 | 值 |
@@ -150,7 +145,8 @@ config 的 Cmd 后立即改走桥接）；② web 版本号镜像已产出、web
    | Variable | `IMAGE_NAMESPACE` | ACR 命名空间，如 `shaoyuanyu` |
    | Secret | `REGISTRY_USERNAME` | ACR 用户名 |
    | Secret | `REGISTRY_PASSWORD` | ACR 固定密码（GHA 拉 manifest 校验与 VPS 拉取共用） |
-   | Secret（可选） | `AUTOMERGE_TOKEN` | PAT：用于推标签触发 ACR（未配置回退 `GITHUB_TOKEN`） |
+   | Secret | `WEBMAIL_REPO_DEPLOY_KEY` | 邮件仓库 deploy key 私钥（写权限；跨仓库推标签用） |
+   | Secret（可选） | `AUTOMERGE_TOKEN` | PAT：推主仓库标签时优先（未配置回退 `GITHUB_TOKEN`） |
 
 ⚠ 部署脚本用 compose **override 文件**传入镜像地址，因此**不需要**同步 VPS 上的
 `docker-compose.yml` 也不会错配（VPS 那份副本可能滞后于 `main`）。但 VPS 那份仍必须

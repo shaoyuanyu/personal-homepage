@@ -18,7 +18,7 @@ const PAGE_INTERVAL_MS = 2500;
 const RETRY_DELAY_MS = 30000;
 const MAX_RETRIES = 4;
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; personal-homepage-ccf-dblp/1.0; +https://shaoyuanyu.cn)";
+  "Mozilla/5.0 (compatible; ysy-homepage-ccf-dblp/1.0; +https://shaoyuanyu.cn)";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

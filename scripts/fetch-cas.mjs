@@ -23,7 +23,7 @@ import path from "node:path";
 const OUT_FILE = () =>
   path.join(import.meta.dirname, "../lib/data/cas-2025.json");
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; personal-homepage-cas/1.0; +https://shaoyuanyu.cn)";
+  "Mozilla/5.0 (compatible; ysy-homepage-cas/1.0; +https://shaoyuanyu.cn)";
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3000;
 

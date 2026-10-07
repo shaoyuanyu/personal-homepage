@@ -30,9 +30,7 @@
     ".next/types/**/*.ts",
     ".velite/**/*.ts"
   ],
-  // ⚠ mail/ 与 webmail/ 是独立子项目（各自的 package.json / tsconfig / node_modules）。
-  //   根 include 的 `**/*.ts` 会扫进它们，而 CI 与 Docker 只装根依赖 → 106 个
-  //   Cannot find module（曾致 CI typecheck 与 Docker 构建双双失败，2026-10-06）。
-  //   排除后，根程序只检查站点代码；子项目类型检查由各自的 tsconfig 负责。
-  "exclude": ["node_modules", "mail", "webmail"]
+  // mail/ 与 webmail/ 已拆分到独立仓库 ysy-homepage-webmail（2026-10-07），
+  // 根程序只检查站点代码。
+  "exclude": ["node_modules"]
 }

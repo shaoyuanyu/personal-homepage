@@ -4,12 +4,10 @@
 
 services:
   web:
-    # 镜像标签与 GitHub Actions 推送的标签一致。默认 GHCR；若在仓库 Variables 里把
-    # REGISTRY / IMAGE_NAMESPACE 切到境内仓库（见 .github/workflows/deploy.yml 顶部），
-    # 自动部署会通过 override 文件传入实际地址——这里的默认值只影响手动
-    # `docker compose up -d --build` 场景，可同步用 WEB_IMAGE 覆盖。
-    # 自动部署 = docker pull 该标签；手动部署 = docker load 同标签镜像
-    image: ${WEB_IMAGE:-ghcr.io/shaoyuanyu/personal-homepage:latest}
+    # 镜像由阿里云 ACR 构建（见 .github/workflows/deploy.yml 顶部）；自动部署会通过
+    # override 文件传入本次版本号地址——这里的默认值只影响手动 `docker compose up`
+    # 场景，也可用 WEB_IMAGE 环境变量覆盖。
+    image: ${WEB_IMAGE:-crpi-pko4rr79dtavwpp5.cn-shanghai.personal.cr.aliyuncs.com/shaoyuanyu/ysy-homepage-web:latest}
     build:
       context: .
       args:
@@ -42,10 +40,9 @@ services:
     # 站内邮箱后端（webmaild）：IMAP 同步 + 收发 / 通讯录 / 账号管理的 HTTP API。
     # 与 web 同网络、不发布任何宿主端口——只有 compose 网络内的 web 容器可达
     # （后端自身无认证，信任边界 = 网络隔离 + 站点代理层的 isOwner 守卫）。
-    image: ${WEBMAIL_IMAGE:-ghcr.io/shaoyuanyu/webmail:latest}
-    build:
-      context: .
-      dockerfile: docker/webmail.Dockerfile
+    # ⚠ 源码已拆分至独立仓库 ysy-homepage-webmail（2026-10-07）：根 Dockerfile
+    #   即其构建文件、由 ACR 构建；本服务只消费镜像，无本地 build。
+    image: ${WEBMAIL_IMAGE:-crpi-pko4rr79dtavwpp5.cn-shanghai.personal.cr.aliyuncs.com/shaoyuanyu/ysy-homepage-webmail:latest}
     restart: unless-stopped
     # 运行身份 = 宿主站点属主（VPS 上 ysy=1002；本地缺省 1000）——数据文件归 ysy，
     # 可直接备份/排查。⚠ 勿用镜像内建的 1001：这台 VPS 的 1001 是另一账号

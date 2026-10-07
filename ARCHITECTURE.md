@@ -1,7 +1,11 @@
 # 个人学术网站 · 技术架构
 
-> 最后更新：2026-08-03
+> 最后更新：2026-10-07
 > 目标：可拓展、可维护、可持续迭代的个人学术网站
+>
+> ⚠ 本文档记录总体设计与早期选型；部署细节持续演进，**现状以 `CLAUDE.md`（开发指南）
+> 与 `README.md` 为准**。2026-10 关键变化：镜像由**阿里云 ACR 构建**（非 GHA）、
+> 反代用 **Nginx**（非 Caddy）、**邮件后端已拆分到独立仓库 `ysy-homepage-webmail`**。
 
 ## 1. 需求总览
 
@@ -36,7 +40,7 @@
 ## 3. 目录结构
 
 ```
-ysy-personal-homepage/
+ysy-homepage-web/                 # 站点仓库（邮件后端见独立仓库 ysy-homepage-webmail）
 ├── app/                          # App Router 路由
 │   ├── [locale]/                 # i18n 路由段
 │   │   ├── page.tsx              # 首页（聚合展示）
@@ -73,7 +77,7 @@ ysy-personal-homepage/
 ├── docker-compose.yml            # 站点 + Umami + Caddy
 └── .github/workflows/
     ├── ci.yml                    # lint + typecheck + build 门禁
-    ├── deploy.yml                # 构建镜像 → 推送 GHCR → SSH 部署 VPS
+    ├── deploy.yml                # 双仓库打 tag → ACR 构建 → SSH 部署 VPS（见 README）
     └── sync-deadlines.yml        # 每 12 小时同步 CCF 会议 deadline → PR（自动合并）
 ```
 
@@ -98,11 +102,11 @@ ysy-personal-homepage/
 ```
 保留的定时任务：CCF 会议 deadline 每 12 小时同步（→ PR 自动合并）
 
-                          CI 门禁                        部署
-content/*.yaml（手工维护）──▶ lint/typecheck/build ──▶ docker build
-                            （失败禁止合并）             → 推 GHCR
-                                                        → SSH 到 VPS
-                                                        → compose pull && up -d
+                       CI 门禁                      部署
+content/*.yaml（手工维护）──▶ lint/typecheck/build ──▶ 推 release-v* 标签（双仓库）
+                        （失败禁止合并）             → 阿里云 ACR 构建镜像
+                                                     → SSH 到 VPS 按版本号 pull
+                                                     → compose up -d（+生产冒烟）
 ```
 
 ### 4.5 渲染策略
@@ -119,11 +123,9 @@ content/*.yaml（手工维护）──▶ lint/typecheck/build ──▶ docker 
                     └───────── 反代 ──▶ Umami 容器（/umami 路径）
 ```
 
-- `docker-compose.yml` 管理全部服务，`docker compose up -d` 一键启动
+- `docker-compose.yml` 管理全部服务（web / webmail / umami / db / radicale）
 - 数据卷持久化 Umami 数据库
-- GitHub Actions 推送镜像到镜像仓库，服务器拉取更新，**回滚 = 拉取旧镜像**
-  - 仓库地址可切换（默认 GHCR；境内 VPS 拉 GHCR 的 blob CDN 会卡死，
-    建议切到阿里云 ACR —— 见 README「镜像仓库可切换」）
+- 镜像由阿里云 ACR 构建并按版本号部署，服务器拉取更新，**回滚 = 指定旧版本号重跑**
 
 ## 6. 持续迭代路线
 
