@@ -946,10 +946,10 @@ section[id^="ccf-field"] {
 }
 
 /*
- * 选择模式下隐藏行内快捷操作（多选批量）：那三个按钮带着 `group-hover/row:flex`，
- * 而类选择器的优先级高于 `[hidden]` 的 UA 规则——只写 `hidden` 属性在鼠标悬停时
- * 依旧会冒出来（点击又会切到勾选语义）。这里显式压住。
- */
-[data-slot="mail-row-actions"][hidden] {
-  display: none !important;
-}
+ * ⚠ 这里曾有 `[data-slot="mail-row-actions"][hidden] { display: none !important }`：
+ *   选择模式下用 `hidden` 属性压住行内快捷操作（那三个按钮带 `group-hover/row:flex`，
+ *   类选择器优先级高于 `[hidden]` 的 UA 规则，只写属性会被悬停重新拉出来）。
+ *   2026-10-08「选择」入口搬进这条气泡栏后，选择模式改成**条件渲染**（`{!selectMode && …}`：
+ *   整条气泡栏都不渲染，「退出多选」移到了批量条最右端），`hidden` 属性不再出现，
+ *   这条规则成为死代码，已删。
+ *   ⚠ 若将来又把某个动作改回 `hidden` 属性来隐藏，必须把这条规则一起加回来。 */

@@ -4600,11 +4600,18 @@ test.describe("站内邮件（/mail）", () => {
     /**
      * 多选批量操作（2026-10-07）：此前只有「全部标为已读」一个批量动作，逐封操作在手机上
      * 尤其难（行内动作是 hover-only）。批量标记走 messageIds 口径，删除复用副本数组。
-     * ⚠ 批量条**没有**「移动」（用户指定：文件夹视图删除后，盲选目标搬走再也核对不了）、
-     *   也**没有**「退出」按钮（用户指定：太突兀）——出口是再点工具栏的「选择」（选中态下
-     *   可访问名为「退出多选」）、点列表空白处、或 Esc。
+     * ⚠ 入口 = **行内悬浮气泡栏**里那枚「选择」（`aria-label="选择"`，2026-10-08 从工具栏
+     *   行 1 搬过去的）；出口 = **批量条最右端**那枚 ✕「退出多选」（单实例），
+     *   另有隐式出口：点列表空白处、按 Esc。
+     * ⚠ 入口按钮**每行一枚**、且 hover 之前是 `display:none`（`group-hover/row:flex`）：
+     *   必须 `hover()` 那一行、再在**该行内**取按钮。整页
+     *   `getByRole("button", { name: "选择" })` 会命中多行（Playwright 严格模式直接报错），
+     *   不 hover 就点则会因元素不可见而超时。
+     * ⚠ 选中模式下**整条气泡栏不渲染**（2026-10-08 用户报障后定稿）——所以入口按钮在
+     *   选中期间不可见，出口只认批量条那枚（行内挂「退出」会随行重复：桌面端焦点+悬停
+     *   同时冒两枚、触屏端每行一枚）。
      */
-    test("多选批量：状态化可用性 / 批量已读 / 全选 ⇄ 取消 / 批量删除（确认）/ 两种隐式退出", async ({ page }) => {
+    test("多选批量：状态化可用性 / 批量已读 / 全选 ⇄ 取消 / 批量删除（确认）/ 退出（批量条 ✕ 与点空白处）", async ({ page }) => {
       const calls = {
         flags: [] as unknown[],
         send: [],
@@ -4616,18 +4623,32 @@ test.describe("站内邮件（/mail）", () => {
 
       await gotoReady(page, "/mail");
       const rows = page.locator('[data-slot="mail-list"] > li');
-      // 未进入选择模式：没有复选框、批量条不出现
+      /** 进入选择模式：悬停该行 → 气泡栏现身 → 点里面的「选择」 */
+      const enterSelectMode = async (li: Locator) => {
+        await li.locator("[data-mail-row]").hover();
+        await expect(li.locator('[data-slot="mail-row-actions"]')).toBeVisible();
+        await li.getByRole("button", { name: "选择", exact: true }).click();
+      };
+      // 未进入选择模式：没有复选框、批量条不出现、气泡栏里是「选择」
       await expect(page.locator('[data-slot="mail-row-checkbox"]')).toHaveCount(0);
       await expect(page.locator('[data-slot="mail-batch-bar"]')).toHaveCount(0);
+      await rows.first().locator("[data-mail-row]").hover();
+      await expect(
+        rows.first().getByRole("button", { name: "选择", exact: true }),
+      ).toBeVisible();
+      await expect(page.locator('[data-slot="mail-row-actions"]')).toHaveCount(4);
 
-      await page.getByRole("button", { name: "选择", exact: true }).click();
+      await enterSelectMode(rows.first());
       const bar = page.locator('[data-slot="mail-batch-bar"]');
       await expect(bar).toBeVisible();
       await expect(bar).toContainText("已选 0 封");
       await expect(page.locator('[data-slot="mail-row-checkbox"]')).toHaveCount(4);
-      // 批量条里没有「移动」，也没有「退出」（两个都由用户指定删除）
+      // 选中模式下行内气泡栏**整体不渲染**（用户 2026-10-08 报障：行内挂「退出」会重复）
+      await rows.nth(1).locator("[data-mail-row]").hover();
+      await expect(page.locator('[data-slot="mail-row-actions"]')).toHaveCount(0);
+      // 批量条里没有「移动」（用户指定删除）；出口是它最右端那枚 ✕，且只有一枚
       await expect(bar.getByRole("button", { name: "移动", exact: true })).toHaveCount(0);
-      await expect(bar.getByRole("button", { name: "退出", exact: true })).toHaveCount(0);
+      await expect(bar.getByRole("button", { name: "退出多选" })).toHaveCount(1);
 
       // 按主题取两行（不依赖数组顺序）：w04 未读、w03 已读
       const unreadRow = rows.filter({ hasText: "Report with attachment" }).locator("[data-mail-row]");
@@ -4686,17 +4707,19 @@ test.describe("站内邮件（/mail）", () => {
       const delBody = calls.delete[0] as { copies: unknown[] };
       expect(delBody.copies.length).toBeGreaterThanOrEqual(4);
 
-      // 隐式出口一：再点工具栏那个「选择」按钮（选中态下可访问名变成「退出多选」）
-      await page.getByRole("button", { name: "退出多选" }).click();
+      // 出口一：批量条最右端那枚 ✕「退出多选」（唯一一枚，单实例）
+      await bar.getByRole("button", { name: "退出多选" }).click();
       await expect(page.locator('[data-slot="mail-batch-bar"]')).toHaveCount(0);
       await expect(page.locator('[data-slot="mail-row-checkbox"]')).toHaveCount(0);
+      // 退出后行内气泡栏回来了（4 行 = 4 条）
+      await expect(page.locator('[data-slot="mail-row-actions"]')).toHaveCount(4);
 
-      // 隐式出口二：点左栏的空白处
+      // 隐式出口：点左栏的空白处
       // ⚠ **不能假设「最后一行下方有空白」**（原断言实测就红：4 行数据 + 批量条占位时列表
       //   正好填满滚区，最后一行的底边比滚区底边还低 134px）。取「工具栏块与批量条之间的
       //   行间隙」——它永远在，且命中的是挂着 onClick 的列表栏根元素（`mail-list-column`；
       //   面板自己的 padding 在那个根**之外**，点它不触发，见 onListBlankClick 注释）
-      await page.getByRole("button", { name: "选择", exact: true }).click();
+      await enterSelectMode(rows.first());
       await expect(bar).toBeVisible();
       const barBox = (await bar.boundingBox())!;
       const blank = { x: barBox.x + 40, y: barBox.y - 8 };

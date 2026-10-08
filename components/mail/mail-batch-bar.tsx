@@ -8,6 +8,7 @@ import {
   SquareCheckBigIcon,
   SquareXIcon,
   Trash2Icon,
+  XIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -19,9 +20,18 @@ import { Spinner } from "@/components/ui/spinner";
  *
  * 形态（2026-10-07 用户验收后重做，六条反馈里的 1/2/3/5/6 都落在这里）：
  * - 左栏内容宽只有 384px——动作**不能**平铺文字，一律图标 + `aria-label` / `title`。
- * - ⚠ **没有「退出」按钮**（2026-10-07 用户指定：它太突兀）。出口是隐式的：再点一次工具栏
- *   的「选择」按钮（它的可访问名在选中态变成「退出多选」）、点列表空白处、或按 Esc
- *   （见 MailClient 的 onListBlankClick / onListKeyDown）。
+ * - ⚠ **「退出多选」在这条栏的最右端**（`ml-auto`，✕ 图标，2026-10-08 用户定稿）：
+ *   它是这个模式**唯一**的出口按钮（另有隐式出口：点列表空白处、按 Esc，见 MailClient 的
+ *   `onListBlankClick` / `onListKeyDown`）。
+ *   ⚠ 为什么不再挂在行内气泡栏：那个位置是 **per-row** 的——
+ *     ① 桌面端「点进来的那一行保有焦点（`group-focus-within/row`）+ 鼠标移到另一行
+ *        （`group-hover/row`）」会**同时冒出两枚**（用户 2026-10-08 截图报障）；
+ *     ② 触屏端气泡栏本来就常显（`@media (hover:none)`），选中模式下**每行一枚**、
+ *        6 行就是 6 枚「退出多选」。单例动作必须挂在单例容器里。
+ *   ⚠ 2026-10-07 曾**取缔**批量条里的「退出」（当时是文字按钮，用户嫌突兀）——那次之所以
+ *     能接纳，是因为出口还在工具栏行 1；2026-10-08 入口搬进行内气泡栏后，本条成为模式的
+ *     唯一容器，故按用户指示把出口放回来（纯图标 + 最右端，与「没有文字」的既有形态一致）。
+ *     选中模式下行内气泡栏**整体不渲染**（星标/已读/删除同样不渲染，见 MailClient）。
  * - ⚠ **没有「移动」**（用户指定）：文件夹视图删除后（见 4.15 一），站内看不到任何
  *   非默认文件夹，盲选一个目标搬过去、结果再也无从核对——这个动作失去了意义。
  *   整理动作只留本条的「删除」与详情页的「标为垃圾邮件」。
@@ -48,6 +58,7 @@ export function MailBatchBar({
   onMarkUnseen,
   onDelete,
   onToggleAll,
+  onExit,
 }: {
   count: number;
   /** 当前列表已加载的封数（「全选」的范围） */
@@ -62,6 +73,8 @@ export function MailBatchBar({
   onDelete: () => void;
   /** 全选 / 取消全选（同一个按钮：已全选时再点即清空） */
   onToggleAll: () => void;
+  /** 退出选择模式（最右端那枚 ✕；隐式出口见组件注释） */
+  onExit: () => void;
 }) {
   const t = useTranslations("mail");
   const allSelected = total > 0 && count === total;
@@ -126,6 +139,19 @@ export function MailBatchBar({
         onClick={onDelete}
       >
         <Trash2Icon />
+      </Button>
+      {/* 退出（最右端，`ml-auto` 把它推到另一侧）：这个模式**唯一**的出口按钮——
+          ⚠ 不能挪进行内气泡栏，那是 per-row 容器（桌面会同时冒出两枚、触屏每行一枚），
+          理由见组件头注释。也不禁用：批量动作进行中同样允许先退出去 */}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={t("batchExit")}
+        title={t("batchExit")}
+        onClick={onExit}
+        className="ml-auto"
+      >
+        <XIcon />
       </Button>
     </div>
   );

@@ -106,14 +106,16 @@ function formatDate(dateIso: string | null, locale: string): string {
 type ViewFilter = "all" | "received" | "sent" | "drafts" | "junk";
 
 /**
- * 行 1 的固定开销：搜索图标 28 +「选择」28 +「全部标为已读」28 + 刷新 28，加五个间距
- * （gap-1.5 = 6px × 5，六个子项之间）。账号触发器与「写邮件」分享剩下的宽
+ * 行 1 的固定开销：搜索图标 28 +「全部标为已读」28 + 刷新 28，加四个间距
+ * （gap-1.5 = 6px × 4，五个子项之间）。账号触发器与「写邮件」分享剩下的宽
  * （分配规则见组件内「行 1 的宽度分配」注释）。
- * ⚠ 2026-10-07 新增「选择」图标后按 384px 重算：账号触发器上限 384 − 142 − 74（中文
- *   「写邮件」）= 168px（英文 174）——仍远大于下限 72，只会让账号文字更早截断，
- *   **不会换行**（换行才是要守的红线；`flex-wrap` 只是超窄屏安全网）。
+ * ⚠ 「选择」（多选批量）曾占这里的一个 28px 图标位（2026-10-07 ~ 2026-10-08），代价是
+ *   账号触发器从 198 掉到 168：**邮箱那一行被裁掉 30px**（`me@mail.shaoyuanyu.cn` 需
+ *   145、只剩 115，实测中英文各裁 30 / 24px）。2026-10-08 按用户要求把它搬进**行内
+ *   悬浮气泡栏**（`mail-row-actions`，见列表行），账号这才拿回 198px 的完整宽。
+ *   改这一行常量前先重量：`.cache/probe-select-pos.mjs` 会同时报账号宽与邮箱裁切量。
  */
-const ROW_FIXED_W = 28 * 4 + 30;
+const ROW_FIXED_W = 28 * 3 + 24;
 
 /** 加载占位：列表行骨架（4.9：不用居中 spinner 充数） */
 function ListSkeleton() {
@@ -992,21 +994,10 @@ export function MailClient() {
               位置 = 行 1 右端簇的**最左位**（搜索 / 刷新 / 写邮件都不因此移位，保「点击位置
               稳定」）。⚠ 不能放行 2：英文下 Tabs + 两个开关已占 380/384，再挤一个 28px
               图标必然换行（实测 en free = 4px；「未读」开关旁的空间中文够、英文不够）。
-              无未读时禁用（title 换成原因说明，避免「点了没反应」） */}
-          {/* 「选择」（2026-10-07，多选批量）：进入后列表行变成勾选、上方出现批量条。
-              与「全部标为已读」同一簇（右端最左位），草稿视图不可用（草稿有自己的行内删除） */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={selectMode ? t("batchExit") : t("batchEnter")}
-            title={selectMode ? t("batchExit") : t("batchEnter")}
-            aria-pressed={selectMode}
-            disabled={view === "drafts"}
-            className="aria-pressed:bg-accent"
-            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-          >
-            <SquareCheckBigIcon data-icon="default" />
-          </Button>
+              无未读时禁用（title 换成原因说明，避免「点了没反应」）
+              ⚠ 「选择」（多选批量）2026-10-07 曾同挂这一簇的最左位，2026-10-08 用户要求
+                搬到**行内悬浮气泡栏**：它每行都在，账号邮箱才不再被裁（见 ROW_FIXED_W）。
+                **勿加回行 1**——这一簇每多一个 28px 图标，账号选择器就少 28px。 */}
           <Button
             variant="ghost"
             size="icon-sm"
@@ -1219,7 +1210,7 @@ export function MailClient() {
       </div>
 
       {/* 多选批量操作条（多选批量）：只在选择模式下出现，位于列表之上、不随列表滚动。
-          没有「退出」按钮（用户指定）——出口是：再点「选择」、点列表空白处、按 Esc */}
+          「退出多选」就在这条栏的最右端（✕，单实例）；另有隐式出口：点列表空白处、按 Esc */}
       {selectMode && view !== "drafts" && (
         <MailBatchBar
           count={selected.size}
@@ -1231,6 +1222,7 @@ export function MailClient() {
           onMarkUnseen={() => void batchFlags({ seen: false })}
           onDelete={() => setBatchDeleteOpen(true)}
           onToggleAll={toggleAll}
+          onExit={exitSelectMode}
         />
       )}
 
@@ -1477,38 +1469,64 @@ export function MailClient() {
               </button>
               {/* 行内快捷操作（4.9）：hover / 键盘聚焦时显现（日期同时让位）；
                   与行主按钮是兄弟节点，避免嵌套交互元素。
-                  ⚠ 选择模式下整体不渲染（hidden）：此刻整行点击 = 勾选，再摆一排行内动作会打架 */}
-              <span
-                  hidden={selectMode}
+                  ⚠ 「选择」（多选批量）2026-10-08 按用户要求从工具栏行 1 **搬到这里**
+                    （行 1 那 28px 挤掉了账号选择器里的邮箱地址）——**它只是入口**，
+                    退出在批量条最右端那枚 ✕。
+                  ⚠ **选择模式下整条气泡栏不渲染**（含这里的 ☑ 与星标/已读/删除）：此刻整行
+                    点击 = 勾选，摆一排行内动作会打架。⚠ 曾试过「选中模式只留 ☑ 当出口」——
+                    那个位置是 **per-row** 的：桌面端「点进来那行保有焦点 + 鼠标移到另一行」
+                    会同时冒两枚，触屏端气泡栏常显、每行一枚（6 行 = 6 枚「退出多选」），
+                    用户 2026-10-08 截图报障。单例动作必须挂在单例容器里。
+                    ⚠ 用条件渲染而非 `hidden` 属性：`globals.css` 里那条
+                    `[data-slot="mail-row-actions"][hidden] { display: none !important }`
+                    已随之删除（类选择器优先级高于 `[hidden]` 的 UA 规则，属性写法压不住
+                    hover），**别改回属性写法**。`@media (hover:none)` 的常显规则与结构无关，
+                    仍然有效（触屏上这条气泡栏一直可见，也是触屏进多选的入口） */}
+              {!selectMode && (
+                <span
                   data-slot="mail-row-actions"
                   className="absolute top-2 right-3 hidden items-center gap-0.5 rounded-lg border border-border bg-background p-0.5 shadow-sm group-hover/row:flex group-focus-within/row:flex"
                 >
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={m.flagged ? t("unflag") : t("flag")}
-                  aria-pressed={m.flagged}
-                  onClick={() => postFlags(m, { flagged: !m.flagged })}
-                >
-                  <StarIcon className={cn(m.flagged && "fill-foreground")} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={m.seen ? t("markUnread") : t("markRead")}
-                  onClick={() => postFlags(m, { seen: !m.seen })}
-                >
-                  {m.seen ? <MailOpenIcon /> : <MailIcon />}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t("delete")}
-                  onClick={() => setPendingDelete(m)}
-                >
-                  <Trash2Icon />
-                </Button>
-              </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("batchEnter")}
+                    title={t("batchEnter")}
+                    onClick={() => setSelectMode(true)}
+                  >
+                    <SquareCheckBigIcon />
+                  </Button>
+                  {/* 分隔线：把「选择」（模式的开关，作用于整张列表）与后三个**作用于本行**
+                      的动作分开——否则四枚图标并排，☑ 会被读成「第四个行内动作」。
+                      形态抄批量条里「计数 | 动作」那道分隔线（h-4 w-px bg-border） */}
+                  <span className="h-4 w-px shrink-0 bg-border" aria-hidden />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={m.flagged ? t("unflag") : t("flag")}
+                    aria-pressed={m.flagged}
+                    onClick={() => postFlags(m, { flagged: !m.flagged })}
+                  >
+                    <StarIcon className={cn(m.flagged && "fill-foreground")} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={m.seen ? t("markUnread") : t("markRead")}
+                    onClick={() => postFlags(m, { seen: !m.seen })}
+                  >
+                    {m.seen ? <MailOpenIcon /> : <MailIcon />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("delete")}
+                    onClick={() => setPendingDelete(m)}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </span>
+              )}
             </li>
             );
           })}
