@@ -33,9 +33,22 @@ async function proxy(
   }
 
   const headers = new Headers();
-  for (const name of ["content-type", "content-disposition"]) {
+  // ⚠ 附件响应头必须原样转发（2026-10-07）：webmaild 在附件端点做了类型白名单
+  // 与 nosniff / CSP 加固（webmail/src/attachment.ts），代理漏转发这几个头就等于
+  // 加固没做——发信人可用一封 inline text/html 附件在站点源上执行脚本。
+  for (const name of [
+    "content-type",
+    "content-disposition",
+    "content-length",
+    "x-content-type-options",
+    "content-security-policy",
+  ]) {
     const v = upstream.headers.get(name);
     if (v) headers.set(name, v);
+  }
+  // 兜底：即使上游没给（旧版 webmaild），也不允许浏览器嗅探改写类型
+  if (!headers.has("x-content-type-options")) {
+    headers.set("x-content-type-options", "nosniff");
   }
   return new NextResponse(upstream.body, { status: upstream.status, headers });
 }

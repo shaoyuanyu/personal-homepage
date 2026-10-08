@@ -65,6 +65,8 @@ export function NavFab() {
   return (
     <div
       ref={fabRef}
+      // data-print="hide"：浮动入口不参与打印（否则每张打印件右下角都盖一个圆钮）
+      data-print="hide"
       className="fixed right-5 bottom-5 z-40 transition-transform duration-200 ease-out sm:right-6 sm:bottom-6"
     >
       <Tooltip>

@@ -41,8 +41,11 @@ export default async function MailboxLayout({ children, params }: Props) {
     //   于是面板高度只由视口决定，与「全部 / 未读 / 星标」筛出多少邮件无关（4.12）：
     //   少邮件时面板不缩成一小条，多邮件时列表在面板内部滚动、页面本身不滚（页脚正好在折线处）。
     //   窄屏保持自然文档流（整页滚动），与手机邮件客户端一致。
-    <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-12 sm:px-6 lg:h-[calc(100dvh_-_3.5rem_-_1px_-_4.0625rem)] lg:overflow-hidden">
-      <div className="mb-8 flex shrink-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+    <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-12 sm:px-6 print:px-0 print:py-0 lg:h-[calc(100dvh_-_3.5rem_-_1px_-_4.0625rem)] lg:overflow-hidden">
+      {/* ⚠ 页头整块 `data-print="hide"`（2026-10-07）：打印的是**邮件本体**，页头（标题 /
+          描述 / 通讯录 / 账号 / agent 入口）属于站点外壳，出现在纸面上是噪音——
+          globals.css 的 `@media print` 靠这个属性隐藏它 */}
+      <div className="mb-8 flex shrink-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between" data-print="hide">
         <div className="flex flex-col gap-2">
           {/* 未读角标（2026-10-06 用户需求）：大标题右上角，新邮件到达时播放弹跳动画
               （见 MailUnreadBadge / new-mail-notifier.tsx） */}

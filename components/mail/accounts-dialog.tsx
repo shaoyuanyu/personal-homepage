@@ -1,8 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { CircleAlertIcon, PencilIcon, PlusIcon, Trash2Icon, UserCogIcon, XIcon } from "lucide-react";
+import {
+  CircleAlertIcon,
+  FolderOpenIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+  UserCogIcon,
+  XIcon,
+} from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -13,11 +21,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import type { MailAccount } from "@/lib/mail/types";
+import { mailErrorText } from "@/lib/mail/error-text";
+import { folderSpecialKey } from "@/lib/mail/folder-special";
+import type { MailAccount, MailFolder } from "@/lib/mail/types";
 
 /** 账号增删后广播，邮件列表（MailClient）据此刷新账号筛选 chips */
 export const MAIL_ACCOUNTS_CHANGED_EVENT = "mail-accounts-changed";
@@ -73,9 +83,76 @@ function accountToForm(a: MailAccount): AddForm {
   };
 }
 
+/**
+ * 按邮箱域名自动填 IMAP / SMTP 主机（2026-10-08 用户要求：「输入邮箱地址后，主机应该
+ * 自动对应生成，如果不对用户自己会改」）。
+ *
+ * 两层：常见服务商是**确定的**主机名（下表），其余域名按最通行的约定猜
+ * `imap.<域名>` / `smtp.<域名>`——猜错也只是预填错，用户改一下即可。
+ * ⚠ 只覆盖**空着**或**仍是我们上次自动填的值**的字段：用户手改过就不再动它
+ *   （见 patchEmail 的 autoHostsRef）。
+ */
+const PROVIDER_HOSTS: { domains: string[]; imap: string; smtp: string }[] = [
+  { domains: ["gmail.com", "googlemail.com"], imap: "imap.gmail.com", smtp: "smtp.gmail.com" },
+  {
+    domains: ["outlook.com", "hotmail.com", "live.com", "msn.com", "outlook.com.cn"],
+    imap: "outlook.office365.com",
+    smtp: "smtp.office365.com",
+  },
+  { domains: ["qq.com", "foxmail.com", "vip.qq.com"], imap: "imap.qq.com", smtp: "smtp.qq.com" },
+  {
+    domains: ["exmail.qq.com"],
+    imap: "imap.exmail.qq.com",
+    smtp: "smtp.exmail.qq.com",
+  },
+  {
+    domains: ["163.com", "126.com", "yeah.net", "188.com"],
+    imap: "imap.163.com",
+    smtp: "smtp.163.com",
+  },
+  {
+    domains: ["qiye.163.com"],
+    imap: "imap.qiye.163.com",
+    smtp: "smtp.qiye.163.com",
+  },
+  {
+    domains: ["aliyun.com", "aliyun.cn", "mxhichina.com"],
+    imap: "imap.qiye.aliyun.com",
+    smtp: "smtp.qiye.aliyun.com",
+  },
+  { domains: ["sina.com", "sina.cn"], imap: "imap.sina.com", smtp: "smtp.sina.com" },
+  { domains: ["sohu.com"], imap: "imap.sohu.com", smtp: "smtp.sohu.com" },
+  { domains: ["139.com"], imap: "imap.139.com", smtp: "smtp.139.com" },
+  { domains: ["189.cn"], imap: "imap.189.cn", smtp: "smtp.189.cn" },
+  {
+    domains: ["icloud.com", "me.com", "mac.com"],
+    imap: "imap.mail.me.com",
+    smtp: "smtp.mail.me.com",
+  },
+  {
+    domains: ["yahoo.com", "yahoo.com.cn"],
+    imap: "imap.mail.yahoo.com",
+    smtp: "smtp.mail.yahoo.com",
+  },
+  { domains: ["zoho.com", "zoho.com.cn"], imap: "imap.zoho.com", smtp: "smtp.zoho.com" },
+  { domains: ["fastmail.com"], imap: "imap.fastmail.com", smtp: "smtp.fastmail.com" },
+  { domains: ["gmx.com", "gmx.net"], imap: "imap.gmx.com", smtp: "smtp.gmx.com" },
+];
+
+/** 邮箱地址 → `{imap, smtp}` 预填值；域名还没成形（没有 `@` 或没有点）时返回 null（不动表单） */
+export function hostsForEmail(email: string): { imap: string; smtp: string } | null {
+  const domain = email.split("@")[1]?.trim().toLowerCase() ?? "";
+  if (!domain.includes(".") || domain.startsWith(".") || domain.endsWith(".")) return null;
+  const hit = PROVIDER_HOSTS.find((p) => p.domains.includes(domain));
+  if (hit) return { imap: hit.imap, smtp: hit.smtp };
+  return { imap: `imap.${domain}`, smtp: `smtp.${domain}` };
+}
+
 /** 账号管理弹窗：列出已添加账号（可删除）+ 添加新账号（保存前先做 IMAP/SMTP 连接测试） */
 export function AccountsDialog() {
   const t = useTranslations("mail.accounts");
+  /** 顶层 mail 命名空间：文件夹徽章文案（folderSpecial.*）在它下面 */
+  const tMail = useTranslations("mail");
   const [open, setOpen] = useState(false);
   const [accounts, setAccounts] = useState<MailAccount[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -158,18 +235,47 @@ export function AccountsDialog() {
     setForm((prev) => ({ ...prev, ...change }));
   }, []);
 
+  /** 上一次「按域名自动填」写进表单的主机名——用来判断某个字段是否还归自动填管 */
+  const autoHostsRef = useRef<{ imap: string; smtp: string }>({ imap: "", smtp: "" });
+
+  /**
+   * 邮箱地址变更：顺带把两个主机名跟着域名走。
+   * ⚠ 副作用（更新 autoHostsRef）写在 setState **之外**——StrictMode 下 updater 会被
+   *   调用两次，写在里面会重复执行（CLAUDE.md「静默失效陷阱 5」）。
+   * ⚠ 用户手改过的主机名不动：只在字段为空、或仍是上次自动填的值时才覆盖。
+   */
+  const patchEmail = useCallback(
+    (email: string) => {
+      const hosts = hostsForEmail(email);
+      const auto = autoHostsRef.current;
+      const change: Partial<AddForm> = { email };
+      if (hosts) {
+        if (!form.imapHost || form.imapHost.trim() === auto.imap) change.imapHost = hosts.imap;
+        if (!form.smtpHost || form.smtpHost.trim() === auto.smtp) change.smtpHost = hosts.smtp;
+      }
+      autoHostsRef.current = {
+        imap: change.imapHost ?? auto.imap,
+        smtp: change.smtpHost ?? auto.smtp,
+      };
+      patch(change);
+    },
+    [form.imapHost, form.smtpHost, patch],
+  );
+
   /** 关闭表单（取消 / 保存成功后）：两条入口（新增 / 编辑）共用 */
   const closeForm = useCallback(() => {
     setAdding(false);
     setEditing(null);
     setForm(EMPTY_FORM);
     setSaveError(null);
+    autoHostsRef.current = { imap: "", smtp: "" };
   }, []);
 
   const openAdd = useCallback(() => {
     setEditing(null);
     setForm(EMPTY_FORM);
     setSaveError(null);
+    autoHostsRef.current = { imap: "", smtp: "" };
     setAdding(true);
   }, []);
 
@@ -177,8 +283,88 @@ export function AccountsDialog() {
     setEditing(a);
     setForm(accountToForm(a));
     setSaveError(null);
+    // 编辑已有账号：预填的是账号自己的主机名，**不归自动填管**——改邮箱域名时不会把它冲掉
+    autoHostsRef.current = { imap: "", smtp: "" };
     setAdding(true);
   }, []);
+
+  // ---- 同步文件夹选择器（2026-10-07，MAIL-AGENT.md 4.15）----
+  // 起因：以前这里是一个手打的输入框（「INBOX, 已发送」），用户得先知道服务器上的文件夹
+  // 叫什么；猜错（写 Sent 而实际叫「已发送」）就静默少同步一个文件夹——最典型的症状是新
+  // 账号「发件」页永远为空。现在改为：探测（IMAP LIST）→ 勾选。
+  // ⚠ 新增模式下账号还没落盘、拿不到 id，走 `POST /folders` 用表单里现填的连接参数登录
+  //   （因此需要先填密码；未填则按钮禁用并给出提示）。
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [folderList, setFolderList] = useState<MailFolder[] | null>(null);
+  const [folderSuggested, setFolderSuggested] = useState<string[]>([]);
+  const [folderLoading, setFolderLoading] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
+
+  const selectedFolders = useMemo(
+    () => form.folders.split(",").map((f) => f.trim()).filter(Boolean),
+    [form.folders],
+  );
+  const canProbe = !!editing || (!!form.password && !!form.imapHost);
+
+  const probeFolders = useCallback(async () => {
+    setFolderLoading(true);
+    setFolderError(null);
+    try {
+      const res = editing
+        ? await fetch(`/api/mail/folders?account=${encodeURIComponent(editing.id)}`)
+        : await fetch("/api/mail/folders", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              email: form.email,
+              imapHost: form.imapHost,
+              imapPort: Number(form.imapPort),
+              imapSecure: form.imapSecure,
+              username: form.username || undefined,
+              password: form.password,
+            }),
+          });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `${res.status}`);
+      const data = (await res.json()) as {
+        folders: MailFolder[];
+        suggested: string[];
+        synced?: string[];
+      };
+      setFolderList(data.folders);
+      setFolderSuggested(data.suggested);
+      // 编辑模式：预选服务器上当前的白名单（用户在此基础上增减）
+      if (editing && data.synced && selectedFolders.length === 0) {
+        patch({ folders: data.synced.join(", ") });
+      }
+    } catch (err) {
+      setFolderList(null);
+      setFolderError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFolderLoading(false);
+    }
+    // ⚠ 不把 selectedFolders 放进依赖：预选只在首次探测时发生，避免后续勾选重跑探测
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, form.email, form.imapHost, form.imapPort, form.imapSecure, form.username, form.password, patch]);
+
+  // ⚠ 副作用**不能写进 setState 的 updater 里**（2026-10-07 实测）：React 在
+  //   StrictMode（next dev 默认开）下会把 updater 调用两次探测纯度，于是点一次
+  //   「选择文件夹」会发**两次** `POST /folders`（E2E 断言 calls.folders.length === 1
+  //   时暴露）。改成先算 next 再 setState，判断走正常的 render 期值。
+  const openPicker = useCallback(() => {
+    const next = !pickerOpen;
+    setPickerOpen(next);
+    if (next && folderList === null && !folderLoading) void probeFolders();
+  }, [pickerOpen, folderList, folderLoading, probeFolders]);
+
+  const toggleFolder = useCallback(
+    (path: string) => {
+      const next = selectedFolders.includes(path)
+        ? selectedFolders.filter((f) => f !== path)
+        : [...selectedFolders, path];
+      patch({ folders: next.join(", ") });
+    },
+    [selectedFolders, patch],
+  );
 
   const submit = useCallback(async () => {
     setSaving(true);
@@ -282,7 +468,7 @@ export function AccountsDialog() {
             {loadError && (
               <p className="flex items-center gap-2 text-sm text-destructive">
                 <CircleAlertIcon className="size-4" aria-hidden />
-                {t("loadFailed")}：{loadError}
+                {mailErrorText(loadError, tMail)}
               </p>
             )}
 
@@ -370,7 +556,7 @@ export function AccountsDialog() {
                       id="acct-email"
                       type="email"
                       value={form.email}
-                      onChange={(e) => patch({ email: e.target.value })}
+                      onChange={(e) => patchEmail(e.target.value)}
                     />
                   </Field>
                   <Field>
@@ -461,13 +647,99 @@ export function AccountsDialog() {
                 </div>
 
                 <Field>
-                  <FieldLabel htmlFor="acct-folders">{t("fieldFolders")}</FieldLabel>
-                  <Input
-                    id="acct-folders"
-                    value={form.folders}
-                    placeholder={t("foldersHint")}
-                    onChange={(e) => patch({ folders: e.target.value })}
-                  />
+                  <FieldLabel>{t("fieldFolders")}</FieldLabel>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {selectedFolders.length === 0 ? (
+                      <span className="text-sm text-muted-foreground">{t("foldersAuto")}</span>
+                    ) : (
+                      selectedFolders.map((f) => (
+                        <span
+                          key={f}
+                          data-slot="folder-chip"
+                          className="rounded-full border border-border px-2 py-0.5 text-xs"
+                        >
+                          {f}
+                        </span>
+                      ))
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!canProbe}
+                      title={canProbe ? undefined : t("foldersNeedPassword")}
+                      onClick={openPicker}
+                    >
+                      <FolderOpenIcon data-icon="default" />
+                      {pickerOpen ? t("foldersClose") : t("foldersPick")}
+                    </Button>
+                  </div>
+                  {pickerOpen && (
+                    <div
+                      data-slot="folder-picker"
+                      className="mt-2 flex flex-col gap-2 rounded-xl border border-border p-3"
+                    >
+                      {folderLoading ? (
+                        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Spinner /> {t("foldersProbing")}
+                        </p>
+                      ) : folderError ? (
+                        <div className="flex flex-col items-start gap-2">
+                          <p className="text-sm text-destructive">{folderError}</p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void probeFolders()}
+                          >
+                            {t("foldersRetry")}
+                          </Button>
+                        </div>
+                      ) : folderList === null ? null : (
+                        <>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => patch({ folders: folderSuggested.join(", ") })}
+                            >
+                              {t("foldersUseSuggested")}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => patch({ folders: "" })}
+                            >
+                              {t("foldersClear")}
+                            </Button>
+                          </div>
+                          <ul className="flex flex-col gap-1">
+                            {folderList.map((f) => (
+                              <li key={`${f.path}`}>
+                                <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 text-sm hover:bg-accent/40">
+                                  <input
+                                    type="checkbox"
+                                    className="size-4 accent-primary"
+                                    checked={selectedFolders.includes(f.path)}
+                                    onChange={() => toggleFolder(f.path)}
+                                  />
+                                  <span className="min-w-0 flex-1 truncate">{f.path}</span>
+                                  {folderSpecialKey(f.specialUse) && (
+                                    <span className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
+                                      {tMail(`folderSpecial.${folderSpecialKey(f.specialUse)}`)}
+                                    </span>
+                                  )}
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <FieldDescription>{t("foldersHint")}</FieldDescription>
                 </Field>
 
                 {saveError && (

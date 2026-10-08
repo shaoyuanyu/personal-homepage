@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type ConsoleMessage, type Locator, type Page } from "@playwright/test";
 import { TOTP } from "otpauth";
 
 /**
@@ -3045,7 +3045,32 @@ const MAIL_LIST = [
   }),
 ];
 
+/**
+ * 文件夹清单桩（MAIL-AGENT.md 4.15，2026-10-07）：`GET/POST /api/mail/folders` 返回它。
+ * 覆盖三种情形：INBOX、带特殊用途标志的「已发送 / 垃圾邮件」（阿里云靠本地化名字推断，
+ * 见 webmail/src/folders.ts）、无标志的自定义文件夹「项目」。
+ */
+const MAIL_FOLDERS: Record<
+  string,
+  { path: string; name: string; delimiter: string; specialUse: string; specialUseSource: string; selectable: boolean }[]
+> = {
+  acc1: [
+    { path: "INBOX", name: "INBOX", delimiter: "/", specialUse: "", specialUseSource: "", selectable: true },
+    { path: "已发送", name: "已发送", delimiter: "/", specialUse: "\\Sent", specialUseSource: "name", selectable: true },
+    { path: "垃圾邮件", name: "垃圾邮件", delimiter: "/", specialUse: "\\Junk", specialUseSource: "name", selectable: true },
+    { path: "项目", name: "项目", delimiter: "/", specialUse: "", specialUseSource: "", selectable: true },
+  ],
+  acc2: [
+    { path: "INBOX", name: "INBOX", delimiter: "/", specialUse: "", specialUseSource: "", selectable: true },
+    { path: "Sent", name: "Sent", delimiter: "/", specialUse: "\\Sent", specialUseSource: "extension", selectable: true },
+  ],
+};
+
 const MAIL_DETAIL_HTML = `<p>newsletter body</p>
+<h2>newsletter heading</h2>
+<ul><li>first item</li><li>second item</li></ul>
+<table border="1"><tbody><tr><td>cell one</td><td>cell two</td></tr></tbody></table>
+<div style="background-color:#1a1a1a;color:#ffffff">dark band</div>
 <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/%3E" data-remote-src="https://tracker.example.com/pixel.png" />
 <img src="https://pics.edu.cn/logo.png" />
 <img src="/api/mail/message/mid%3Aw03%40test.local/attachment/0" />`;
@@ -3069,11 +3094,24 @@ function stubMailApi(
     accounts?: unknown[];
     whitelist?: unknown[];
     drafts?: unknown[];
+    /** 文件夹预览探测（POST /folders）与移动（POST /move）的请求体 */
+    folders?: unknown[];
+    move?: unknown[];
+    /** 按需取原文（POST /message/:id/source）的调用记录 */
+    source?: unknown[];
+    /** 这些消息的详情按「只入库索引」（truncated）返回：正文/附件为空（4.15 的按需取原文） */
+    truncatedIds?: string[];
+    /** 详情请求返回该状态码 + `{error:"webmaild_unreachable"}`（验证内部错误码不回显） */
+    detailError?: number;
     /** 账号内存桩的实时引用（用例可改写 unread 等字段模拟新邮件 / 新账号） */
     accountStore?: Record<string, unknown>[];
     /** 「上次收到新邮件」信号（/health 的 lastNewMail）的可控引用：
      *  新邮件提醒器只认它前进（未读总数上升不弹——「标为未读」也是上升，是假信号） */
     healthStore?: { lastNewMail: string };
+    /** 「垃圾」tab 用例：acc1 的「垃圾邮件」是否已在同步白名单里（GET /folders 的 synced） */
+    junkSynced?: boolean;
+    /** 「垃圾」tab 用例：带 folder 参数的列表请求返回一封落在「垃圾邮件」里的桩邮件 */
+    junkFolderItems?: boolean;
   },
   // 状态条（5.5）的健康端点覆盖：默认全部健康；传 {status, body} 模拟告警/不可达
   health?: { mailagentd?: { status: number; body: unknown }; webmail?: { status: number; body: unknown } },
@@ -3225,13 +3263,66 @@ function stubMailApi(
       };
       return route.fulfill({ status: health?.mailagentd?.status ?? 200, contentType: "application/json", body: JSON.stringify(body) });
     }
+    if (path === "/folders" && route.request().method() === "GET") {
+      const account = url.searchParams.get("account") ?? "";
+      return json({
+        folders: MAIL_FOLDERS[account] ?? [],
+        suggested: ["INBOX", "已发送", "垃圾邮件"],
+        // acc1 的「垃圾邮件」默认**不在**白名单里（`junkSynced` 打开它，见「垃圾」tab 用例）
+        synced: calls.junkSynced ? ["INBOX", "垃圾邮件"] : ["INBOX"],
+      });
+    }
+    if (path === "/folders" && route.request().method() === "POST") {
+      calls.folders?.push(route.request().postDataJSON());
+      return json({ folders: MAIL_FOLDERS.acc1, suggested: ["INBOX", "已发送", "垃圾邮件"] });
+    }
+    if (path === "/move") {
+      const body = route.request().postDataJSON() as { copies?: unknown[] };
+      calls.move?.push(body);
+      // 服务端契约（2026-10-07）：`to` 可以是**特殊用途记号**（`\Junk`），由 webmaild 在
+      // 该账号上探测真实文件夹；`affected` = 真正搬动的副本数、`skipped` = 目标不存在的
+      // 账号。前端按这两个数决定提示与跳转（0 且无 skipped = 本来就在目标里）。
+      return json({ affected: body.copies?.length ?? 0, skipped: [] });
+    }
     if (path === "/messages") {
       const account = url.searchParams.get("account");
       const q = url.searchParams.get("q");
       const filter = url.searchParams.get("filter");
       const direction = url.searchParams.get("direction");
+      // 文件夹筛选（4.15）：`folder=<账号id>|<路径>`，**可给多个**（并集，2026-10-08 起；
+      // 每个参数自带账号）——与服务端 parseFolderParams / SQL 同口径。「垃圾」tab 用它一次
+      // 筛出各账号的垃圾文件夹。
+      const folderParams = url.searchParams.getAll("folder").map((v) => {
+        const sep = v.indexOf("|");
+        return sep <= 0 ? { account: "", path: v } : { account: v.slice(0, sep), path: v.slice(sep + 1) };
+      });
       let items = MAIL_LIST;
       if (account) items = items.filter((m) => m.accounts.includes(account));
+      if (folderParams.length && calls.junkFolderItems) {
+        // 「垃圾」tab 的桩：带 folder 参数的请求直接给这封（真实服务端会按副本路径匹配）
+        return json({
+          items: [
+            mailItem({
+              messageId: "mid:junk1@test.local",
+              date: "2026-09-25T06:00:00.000Z",
+              subject: "中奖通知",
+              fromAddr: "spam@example.net",
+              snippet: "恭喜您中奖",
+              copies: [{ accountId: "acc1", folder: "垃圾邮件", uid: 42 }],
+            }),
+          ],
+          next: null,
+        });
+      }
+      if (folderParams.length) {
+        items = items.filter((m) =>
+          m.copies.some((c) =>
+            folderParams.some(
+              (f) => c.folder === f.path && (!f.account || c.accountId === f.account),
+            ),
+          ),
+        );
+      }
       if (q) items = items.filter((m) => m.subject.includes(q) || m.snippet.includes(q));
       // 状态筛选（4.2）：与服务端 filter 参数同口径（2026-10-04 起支持逗号多值取交集）
       const filters = new Set((filter ?? "").split(",").filter(Boolean));
@@ -3256,6 +3347,18 @@ function stubMailApi(
     if (path === "/delete") {
       calls.delete.push(route.request().postDataJSON());
       return json({ affected: 2 });
+    }
+    // 原始邮件（2026-10-07）：详情桩带 headers；truncated 由 calls/桩按需覆盖
+    if (path.endsWith("/source") && route.request().method() === "POST") {
+      calls.source?.push(path);
+      return json({ fetched: true, size: 1234 });
+    }
+    if (path.endsWith("/source")) {
+      return route.fulfill({
+        contentType: "application/octet-stream",
+        headers: { "content-disposition": 'attachment; filename="w04.eml"' },
+        body: "Subject: raw\r\n\r\nbody\r\n",
+      });
     }
     // 会话端点（4.7）：必须在 /message/:id 分发之前匹配，否则会被详情桩吞掉
     if (path.startsWith("/message/") && path.endsWith("/thread")) {
@@ -3317,6 +3420,38 @@ function stubMailApi(
       });
     }
     if (path.startsWith("/message/")) {
+      // 详情加载失败：代理层给的内部错误码（webmaild_unreachable）——UI 必须换成友好文案
+      if (calls.detailError && !path.endsWith("/thread") && !path.endsWith("/source")) {
+        return route.fulfill({
+          status: calls.detailError,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "webmaild_unreachable" }),
+        });
+      }
+      // 超大邮件（truncated）：只入库索引 → 正文/附件为空（详情页应给出提示与补取入口）
+      const truncatedHit = (calls.truncatedIds ?? []).find((id) => path.includes(encodeURIComponent(id)) || path.includes(id));
+      if (truncatedHit && !path.endsWith("/thread") && !path.endsWith("/source")) {
+        return json({
+          ...mailItem({
+            messageId: truncatedHit,
+            subject: "大附件邮件",
+            fromAddr: "big@example.com",
+            copies: [{ accountId: "acc2", folder: "INBOX", uid: 2 }],
+            accounts: ["acc2"],
+          }),
+          truncated: true,
+          snippet: "",
+          text: "",
+          html: "",
+          attachments: [],
+          cc: [],
+          refs: [],
+          headers: [
+            { key: "From", line: "From: big@example.com" },
+            { key: "Subject", line: "Subject: 大附件邮件" },
+          ],
+        });
+      }
       // 按请求的消息 id 分发：w01 是多副本（删除用例）、s01 是发件样本
       //（「收件 / 发件区分」用例打开它，副本只在「已发送」），其余返回 w03 详情
       if (path.includes("s01")) {
@@ -3390,6 +3525,12 @@ function stubMailApi(
               cid: null,
               inline: false,
             },
+          ],
+          // 原始邮件头（2026-10-07）：按原文顺序与折行
+          headers: [
+            { key: "From", line: "From: newsletter@example.com" },
+            { key: "Subject", line: "Subject: HTML Newsletter" },
+            { key: "Message-ID", line: "Message-ID: <w03@test.local>" },
           ],
         }),
       );
@@ -3659,6 +3800,48 @@ test.describe("站内邮件（/mail）", () => {
       await page.setViewportSize({ width: 1280, height: 720 });
     });
 
+    /**
+     * 水合守卫（2026-10-07）：邮件页此前**没有任何控制台断言**（`collectPageErrors` 只用在
+     * 首页），而 Base UI 的自动 id 一旦错位，唯一症状就是一条 hydration mismatch——没有
+     * 任何用例会红。这条把「整页加载 + 水合」逐个邮件路由走一遍：
+     * - 用 `gotoReady`（真实文档加载，真的走 SSR + hydration），不是 SPA 跳转；
+     * - 断言没有水合不匹配、没有未捕获异常、没有其它 console 错误（`Failed to load
+     *   resource` 网络噪音除外——桩里 agent 端点已有响应，真实环境缺 mailagentd 时才 502）。
+     * ⚠ 已知的 dev-only 现象（**不是缺陷、不必追**）：改完 mail 相关文件而页面还开着时，
+     *   旧 SSR HTML 与新客户端 chunk 会短暂错位，Base UI 的 useId 随之对不上 → 硬刷新即
+     *   消失；生产构建 HTML/JS 同批产出，不会出现。见 CLAUDE.md。
+     */
+    test("水合守卫：各邮件路由整页加载无 console 错误 / 无水合不匹配", async ({ page }) => {
+      test.slow();
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      const errors: string[] = [];
+      const onConsole = (msg: ConsoleMessage) => {
+        if (msg.type() === "error") errors.push(msg.text());
+      };
+      const onPageError = (err: Error) => errors.push(`pageerror: ${err.message}`);
+      page.on("console", onConsole);
+      page.on("pageerror", onPageError);
+
+      try {
+        for (const path of ["/mail", "/mail/compose", "/mail/contacts", "/mail/agent"]) {
+          errors.length = 0;
+          await gotoReady(page, path); // 含 waitForHydration → 水合确实跑过
+          await page.waitForTimeout(800); // 让挂载后的轮询/取数也把话说出来
+          const hydration = errors.filter((e) => /hydrat|didn'?t match|did not match/i.test(e));
+          expect(hydration, `${path} 出现水合不匹配：${hydration.join(" | ")}`).toEqual([]);
+          const rest = errors.filter((e) => !/Failed to load resource/i.test(e));
+          expect(rest, `${path} 控制台错误：${rest.join(" | ")}`).toEqual([]);
+        }
+      } finally {
+        page.off("console", onConsole);
+        page.off("pageerror", onPageError);
+      }
+    });
+
     test("合并视图：跨账号副本聚合 + 账号筛选 + 搜索", async ({ page }) => {
       const calls = { flags: [], send: [], delete: [] };
       await stubMailApi(page, calls);
@@ -3707,17 +3890,29 @@ test.describe("站内邮件（/mail）", () => {
       await expect(page.locator('[data-slot="unseen-count"]')).toHaveText("3");
       await expect(page.getByRole("tab", { name: "收件" })).not.toContainText("3");
 
-      // Tab 顺序（2026-10-06 用户定稿）：全部 / 收件 / 发件 / 草稿（草稿不算入「全部」）；
-      // 未读、星标是右侧开关不是 tab
+      // Tab 顺序（2026-10-08 定稿）：全部 / 收件 / 发件 / 草稿 / 垃圾 = **5 个**
+      // （草稿与垃圾都不算入「全部」——两者都是独立的固定用途，不是"随便挑一个文件夹看"；
+      //   曾试过并已删除的是「任意文件夹」视图，原因见 mail-client.tsx 的 ViewFilter 注释）。
+      // 未读、星标是右侧开关不是 tab。⚠ 中文下 5 个 tab 实测 232px、容器 234px，刚好放得下；
+      // 英文放不下时「草稿/垃圾」会收进 chevron 下拉（另有用例锁定）。
       const viewTabs = page.locator('[aria-label="切换邮件视图"] [role="tab"]');
-      await expect(viewTabs).toHaveCount(4);
+      await expect(viewTabs).toHaveCount(5);
       await expect(viewTabs.nth(0)).toHaveText("全部");
       await expect(viewTabs.nth(1)).toContainText("收件");
       await expect(viewTabs.nth(2)).toHaveText("发件");
       await expect(viewTabs.nth(3)).toHaveText("草稿");
+      await expect(viewTabs.nth(4)).toHaveText("垃圾");
       // 方向配色：收件下划线 emerald / 发件 amber（与头像方向角标同色）
       await expect(viewTabs.nth(1)).toHaveClass(/data-active:after:bg-emerald-600/);
       await expect(viewTabs.nth(2)).toHaveClass(/data-active:after:bg-amber-600/);
+      // ⚠ 行内不变量（2026-10-07 用户报）：右侧两个开关必须与 tab 条**同一行**。
+      // 已删的第五个 tab 正是把「未读 / 星标」挤到了第二行，这条断言就是它的哨兵。
+      // 判据用「垂直区间是否重叠」而非具体坐标——换字号 / 行高都不会误报。
+      const tabsBox = (await viewTabs.first().boundingBox())!;
+      const switchesBox = (await page.locator('[aria-label="快捷筛选（未读 / 星标）"]').boundingBox())!;
+      const sameRow =
+        tabsBox.y < switchesBox.y + switchesBox.height && switchesBox.y < tabsBox.y + tabsBox.height;
+      expect(sameRow, "「未读 / 星标」开关被挤出了 tab 所在行").toBe(true);
 
       // 账号未读徽章（4.2）：2026-10-05 起在行 1 账号下拉的菜单里（acc1 = 3；acc2 = 0 不显示）
       const accountTrigger = page.locator('button[aria-label="按账号筛选"]');
@@ -3829,6 +4024,108 @@ test.describe("站内邮件（/mail）", () => {
       await expect(rows.nth(0).locator("[data-mail-row]")).toBeFocused();
     });
 
+    /**
+     * 「垃圾」tab（2026-10-08 用户要求新增）。
+     * 契约：① 文件夹路径**由服务端探测**（`GET /folders` 的 `specialUse = \Junk`），前端
+     * 只按账号拼 `folder=<账号>|<路径>`；② 只有**在同步白名单里**的垃圾文件夹才查得到，
+     * 没同步时必须说清原因（否则「垃圾」页永远空白且没有解释）。
+     */
+    test("「垃圾」tab：按账号探测 \\Junk 后按文件夹筛；未同步时说明原因", async ({ page }) => {
+      const calls = {
+        flags: [] as unknown[],
+        send: [],
+        delete: [] as unknown[],
+        junkSynced: true,
+        junkFolderItems: true,
+      };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      const listRequests: string[] = [];
+      page.on("request", (r) => {
+        if (r.url().includes("/api/mail/messages")) listRequests.push(decodeURIComponent(r.url()));
+      });
+
+      await gotoReady(page, "/mail");
+      await page.getByRole("tab", { name: "垃圾", exact: true }).click();
+      const rows = page.locator('[data-slot="mail-list"] > li');
+      await expect(rows).toHaveCount(1);
+      await expect(rows.first()).toContainText("中奖通知");
+      // 请求带上了「账号|路径」——账号维度不能丢（多账号下各自探测各自的垃圾文件夹）
+      expect(listRequests.some((u) => u.includes("folder=acc1|垃圾邮件"))).toBe(true);
+      // 垃圾不算入任何方向视图：切回「全部」时它不在
+      await page.getByRole("tab", { name: "全部", exact: true }).click();
+      await expect(page.locator('[data-slot="mail-list"] > li')).toHaveCount(5);
+
+      // 文件夹存在但没进同步白名单：显示原因而不是「暂无邮件」
+      calls.junkSynced = false;
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.getByRole("tab", { name: "垃圾", exact: true }).click();
+      await expect(page.getByText(/「垃圾邮件」还不在同步范围里/)).toBeVisible();
+      await expect(page.getByText("「垃圾」中暂无邮件")).toHaveCount(0);
+    });
+
+    /**
+     * 展开「快速回复」不应该让整个右栏变成可滚动的（2026-10-08 用户报）：
+     * 正文是那一列里**唯一可伸缩**的项，多出来的高度由它让出（内部滚动），外层保持不滚。
+     * 用例给一封超长正文的邮件（详情桩局部覆盖），断言展开前后外层都没有可滚动的余量。
+     */
+    test("快速回复：展开后由正文让出高度（正文内部滚动），外层不出现滚动", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      // 这封的正文足够长（远超右栏高度）：局部覆盖详情桩（/thread 仍走通用桩）。
+      // ⚠ 必须自己拼响应，**不能 `route.fetch()` 再改**——`route.fetch()` 是绕过所有桩
+      //   真发一次请求（E2E 环境里 webmaild 根本没起），拿不到通用桩的数据。
+      await page.route("**/api/mail/message/*", async (route) => {
+        if (route.request().url().endsWith("/thread")) return route.fallback();
+        return route.fulfill({
+          json: {
+            ...mailItem({
+              messageId: "mid:long@test.local",
+              subject: "长正文邮件",
+              fromAddr: "long@example.com",
+              to: [{ name: "", address: "me@mail.example.cn" }],
+            }),
+            cc: [],
+            refs: [],
+            headers: [{ key: "From", line: "From: long@example.com" }],
+            text: "",
+            html: Array.from(
+              { length: 40 },
+              (_, i) => `<p>第 ${i + 1} 行长正文，用于把右栏高度占满。</p>`,
+            ).join(""),
+            remoteBlocked: 0,
+            attachments: [],
+          },
+        });
+      });
+
+      await gotoReady(page, "/mail");
+      await page.locator('[data-slot="mail-list"] > li').nth(0).locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+      const pane = page.locator('[data-slot="mail-pane-detail"] > div');
+      const overflow = () =>
+        pane.evaluate((el) => el.scrollHeight - el.clientHeight);
+
+      expect(await overflow(), "展开前右栏就不该有滚动余量").toBeLessThanOrEqual(1);
+      const bodyHeightBefore = (await page.locator(".mail-body").boundingBox())!.height;
+      await page.getByRole("button", { name: "快速回复" }).click();
+      await expect(page.locator('[data-slot="mail-quick-reply"]')).toHaveAttribute("data-open", "true");
+      await expect(page.getByRole("button", { name: "发送" })).toBeVisible();
+      expect(await overflow(), "展开快速回复后右栏不该出现滚动").toBeLessThanOrEqual(1);
+      const bodyHeightAfter = (await page.locator(".mail-body").boundingBox())!.height;
+      expect(bodyHeightAfter, "正文应该变矮，把高度让给快速回复").toBeLessThan(bodyHeightBefore);
+      // 正文自己是可以滚的（内容没被裁掉）
+      const bodyScrolls = await page
+        .locator(".mail-body")
+        .evaluate((el) => el.scrollHeight - el.clientHeight);
+      expect(bodyScrolls).toBeGreaterThan(0);
+    });
+
     test("详情页：会话区块 + 上一封/下一封 + 页内快速回复", async ({ page }) => {
       const calls = { flags: [] as unknown[], send: [] as unknown[], delete: [] };
       await stubMailApi(page, calls);
@@ -3879,7 +4176,7 @@ test.describe("站内邮件（/mail）", () => {
       expect(sent.references).toContain("<w03@test.local>");
     });
 
-    test("回复/回复全部/转发：预填收件人、引用链、附件与「回复」的边框", async ({ page }) => {
+    test("回复/回复全部/转发：预填收件人、引用链、附件与「回复」的款式（同「写邮件」）", async ({ page }) => {
       const calls = { flags: [] as unknown[], send: [] as unknown[], delete: [] };
       await stubMailApi(page, calls);
       const code = new TOTP({ secret: totpSecret! }).generate();
@@ -3894,21 +4191,29 @@ test.describe("站内邮件（/mail）", () => {
       const bar = page.locator('[data-slot="message-actions"]');
       const reply = bar.getByRole("link", { name: "回复", exact: true });
       const forward = bar.getByRole("link", { name: "转发", exact: true });
-      const replyAll = bar.getByRole("link", { name: "回复全部", exact: true });
+      // 「回复全部」2026-10-07 起并进「回复」右侧的下拉（分裂按钮），不再是并排的链接
+      const replyAll = bar.getByRole("button", { name: "回复全部", exact: true });
       const del = bar.getByRole("button", { name: "删除", exact: true });
       await expect(reply).toBeVisible();
       await expect(replyAll).toBeVisible();
       await expect(forward).toBeVisible();
+      // 「回复」与「写邮件」**同款式**（2026-10-07 用户指定：「同等重要」）——判据是
+      // 两者的背景 / 前景 / 高度逐项相等（此前「回复」是 outline 描边款）
+      const styleOf = (el: Element) => {
+        const s = getComputedStyle(el);
+        return { bg: s.backgroundColor, color: s.color, height: s.height };
+      };
+      const replyStyle = await reply.evaluate(styleOf);
+      const composeStyle = await page.getByRole("link", { name: "写邮件" }).evaluate(styleOf);
+      expect(replyStyle.bg, "背景应与「写邮件」同色").toBe(composeStyle.bg);
+      expect(replyStyle.color, "前景应与「写邮件」同色").toBe(composeStyle.color);
+      expect(replyStyle.height, "高度应与「写邮件」一致").toBe(composeStyle.height);
+      // 安静动作仍然是透明边框（ghost）
       const borderColor = (el: Element) => getComputedStyle(el).borderTopColor;
-      const replyBorder = await reply.evaluate(borderColor);
-      const forwardBorder = await forward.evaluate(borderColor);
-      const deleteBorder = await del.evaluate(borderColor);
-      expect(forwardBorder).toMatch(/rgba\(0, 0, 0, 0\)/); // 安静动作 = 透明边框
-      expect(deleteBorder).toMatch(/rgba\(0, 0, 0, 0\)/); // 「删除」同样无边框
-      expect(replyBorder).not.toBe(forwardBorder); // 「回复」真的有边框
-      // 「回复」在最右边、「回复全部」紧挨它（2026-10-04 用户反馈「应当挨着」）：
-      // 两者之间只隔一个 gap（8px），中间不许再夹别的按钮
-      const [replyBox, replyAllBox, delBox, forwardBox] = await Promise.all([
+      expect(await forward.evaluate(borderColor)).toMatch(/rgba\(0, 0, 0, 0\)/);
+      expect(await del.evaluate(borderColor)).toMatch(/rgba\(0, 0, 0, 0\)/);
+      // 分裂按钮：两半共边（右半的左边 = 左半的右边），整体贴在最右缘；菜单展开见下
+      const [replyBox, caretBox, delBox, forwardBox] = await Promise.all([
         reply.boundingBox(),
         replyAll.boundingBox(),
         del.boundingBox(),
@@ -3916,11 +4221,16 @@ test.describe("站内邮件（/mail）", () => {
       ]);
       expect(replyBox!.x).toBeGreaterThan(delBox!.x);
       expect(replyBox!.x).toBeGreaterThan(forwardBox!.x);
-      expect(replyAllBox!.x).toBeLessThan(replyBox!.x);
-      expect(replyBox!.x - (replyAllBox!.x + replyAllBox!.width)).toBeLessThanOrEqual(12);
+      expect(caretBox!.x, "caret 必须紧贴「回复」右缘（共边，中间不留缝）").toBe(
+        replyBox!.x + replyBox!.width,
+      );
 
-      // 回复全部：原收件人 me@ 是自己 → 剔除；Cc 同口径
-      await gotoReady(page, "/mail/compose?replyTo=mid%3Aw03%40test.local&all=1");
+      // caret 菜单里就是「回复全部」，点了走 ?all=1（原收件人 me@ 是自己 → 剔除；Cc 同口径）
+      await replyAll.click();
+      const replyMenu = page.locator('[data-slot="dropdown-menu-content"]');
+      await expect(replyMenu.getByRole("menuitem", { name: "回复全部" })).toBeVisible();
+      await replyMenu.getByRole("menuitem", { name: "回复全部" }).click();
+      await expect(page).toHaveURL(/\/mail\/compose\?replyTo=.+&all=1$/);
       await expect(page.locator("#mail-to")).toHaveValue("newsletter@example.com");
       // ⚠ 抄送行默认收起（2026-10-06 表单头重设计）：cc 为空时该行不渲染（不是隐藏）。
       //   展开后应仍为空（自己不进 Cc）——语义与旧断言一致，只是要先把行打开
@@ -4256,6 +4566,483 @@ test.describe("站内邮件（/mail）", () => {
       await expect(page).toHaveURL(/\/mail$/);
     });
 
+    /**
+     * 标为垃圾（2026-10-07 二次定稿、文案随后缩写）：文件夹视图删除后，详情页只留这一个
+     * 整理动作——菜单式「移动」是盲选（搬过去再也看不见），而垃圾邮件有明确语义，且目标
+     * 文件夹由服务端自己在该账号上探测（`to` 给的是特殊用途记号 `\Junk`，不是路径）。
+     */
+    test("标为垃圾：详情页只发一个 \\Junk 记号，服务端认文件夹", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] as unknown[], move: [] as unknown[] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      // 收件视图 4 行 = w04 / w03 / w02 / w01（按日期倒序），故 nth(3) = w01「面试通知」——
+      // 它是**唯一在 acc1 / acc2 各有一份副本**的那封，正好验「所有副本一起交给后端」
+      await page.locator('[data-slot="mail-list"] > li').nth(3).locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+
+      // 「移动」下拉已删（连同它的菜单项）；工具栏只有这一枚按钮
+      await expect(page.getByRole("button", { name: "移动", exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "标为垃圾", exact: true }).click();
+
+      await expect.poll(() => calls.move.length).toBe(1);
+      const body = calls.move[0] as { copies: { accountId: string; folder: string }[]; to: string };
+      // 目标是**记号**而不是路径：前端不再需要知道各家的垃圾文件夹叫什么
+      expect(body.to).toBe("\\Junk");
+      // 一封邮件的**所有副本**原样交给后端（红线 8）——哪个账号没有垃圾文件夹，
+      // 由服务端跳过并在 `skipped` 里回报 reason，不阻断另一个账号
+      expect(body.copies.map((c) => c.accountId).sort()).toEqual(["acc1", "acc2"]);
+      await expect(page).toHaveURL(/\/mail$/);
+    });
+
+    /**
+     * 多选批量操作（2026-10-07）：此前只有「全部标为已读」一个批量动作，逐封操作在手机上
+     * 尤其难（行内动作是 hover-only）。批量标记走 messageIds 口径，删除复用副本数组。
+     * ⚠ 批量条**没有**「移动」（用户指定：文件夹视图删除后，盲选目标搬走再也核对不了）、
+     *   也**没有**「退出」按钮（用户指定：太突兀）——出口是再点工具栏的「选择」（选中态下
+     *   可访问名为「退出多选」）、点列表空白处、或 Esc。
+     */
+    test("多选批量：状态化可用性 / 批量已读 / 全选 ⇄ 取消 / 批量删除（确认）/ 两种隐式退出", async ({ page }) => {
+      const calls = {
+        flags: [] as unknown[],
+        send: [],
+        delete: [] as unknown[],
+      };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      const rows = page.locator('[data-slot="mail-list"] > li');
+      // 未进入选择模式：没有复选框、批量条不出现
+      await expect(page.locator('[data-slot="mail-row-checkbox"]')).toHaveCount(0);
+      await expect(page.locator('[data-slot="mail-batch-bar"]')).toHaveCount(0);
+
+      await page.getByRole("button", { name: "选择", exact: true }).click();
+      const bar = page.locator('[data-slot="mail-batch-bar"]');
+      await expect(bar).toBeVisible();
+      await expect(bar).toContainText("已选 0 封");
+      await expect(page.locator('[data-slot="mail-row-checkbox"]')).toHaveCount(4);
+      // 批量条里没有「移动」，也没有「退出」（两个都由用户指定删除）
+      await expect(bar.getByRole("button", { name: "移动", exact: true })).toHaveCount(0);
+      await expect(bar.getByRole("button", { name: "退出", exact: true })).toHaveCount(0);
+
+      // 按主题取两行（不依赖数组顺序）：w04 未读、w03 已读
+      const unreadRow = rows.filter({ hasText: "Report with attachment" }).locator("[data-mail-row]");
+      const readRow = rows.filter({ hasText: "HTML Newsletter" }).locator("[data-mail-row]");
+
+      // 点两行 = 勾选两行（不跳转），计数与 aria-pressed 同步
+      await unreadRow.click();
+      await readRow.click();
+      await expect(page).toHaveURL(/\/mail$/);
+      await expect(bar).toContainText("已选 2 封");
+      await expect(unreadRow).toHaveAttribute("aria-pressed", "true");
+      await expect(rows.nth(2).locator("[data-mail-row]")).toHaveAttribute("aria-pressed", "false");
+
+      // 动作可用性跟着选中项的状态走（2026-10-07 用户指定）：全都已读 → 「标为已读」禁用，
+      // 全都未读 → 「标为未读」禁用，混合选中 → 两个都可用
+      const markRead = bar.getByRole("button", { name: "标为已读" });
+      const markUnread = bar.getByRole("button", { name: "标为未读" });
+      await expect(markRead).toBeEnabled(); // 此刻 = 未读 + 已读，混合
+      await expect(markUnread).toBeEnabled();
+      await unreadRow.click(); // 取消未读那封 → 只剩已读
+      await expect(bar).toContainText("已选 1 封");
+      await expect(markRead).toBeDisabled();
+      await expect(markUnread).toBeEnabled();
+      await unreadRow.click(); // 换回来
+      await readRow.click(); // 取消已读那封 → 只剩未读
+      await expect(markRead).toBeEnabled();
+      await expect(markUnread).toBeDisabled();
+      await readRow.click(); // 再选回已读那封 → 混合
+      await expect(markRead).toBeEnabled();
+      await expect(markUnread).toBeEnabled();
+
+      // 批量标为已读：一次请求带两个 messageId（不是逐封两次）
+      await markRead.click();
+      await expect.poll(() => calls.flags.length).toBe(1);
+      const flagsBody = calls.flags[0] as { messageIds: string[]; seen?: boolean };
+      expect(flagsBody.messageIds.length).toBe(2);
+      expect(flagsBody.seen).toBe(true);
+      // 处理完清空选择
+      await expect(bar).toContainText("已选 0 封");
+
+      // 全选 → 计数 = 当前列表 4 封；再点一次 = 取消全选（同一个按钮，可访问名随状态变）
+      await bar.getByRole("button", { name: "全选（当前列表）" }).click();
+      await expect(bar).toContainText("已选 4 封");
+      await bar.getByRole("button", { name: "取消全选" }).click();
+      await expect(bar).toContainText("已选 0 封");
+      await bar.getByRole("button", { name: "全选（当前列表）" }).click();
+      await expect(bar).toContainText("已选 4 封");
+
+      // 批量删除：确认弹窗 → 对该批全部副本发一次 delete
+      await bar.getByRole("button", { name: "删除", exact: true }).click();
+      const confirm = page.locator('[data-slot="confirm-dialog"]');
+      await expect(confirm).toContainText("删除选中的 4 封邮件？");
+      // 确认按钮文案 = 传入的 confirmLabel（「删除」，不是默认的「确定」）
+      await confirm.getByRole("button", { name: "删除" }).click();
+      await expect.poll(() => calls.delete.length).toBe(1);
+      const delBody = calls.delete[0] as { copies: unknown[] };
+      expect(delBody.copies.length).toBeGreaterThanOrEqual(4);
+
+      // 隐式出口一：再点工具栏那个「选择」按钮（选中态下可访问名变成「退出多选」）
+      await page.getByRole("button", { name: "退出多选" }).click();
+      await expect(page.locator('[data-slot="mail-batch-bar"]')).toHaveCount(0);
+      await expect(page.locator('[data-slot="mail-row-checkbox"]')).toHaveCount(0);
+
+      // 隐式出口二：点左栏的空白处
+      // ⚠ **不能假设「最后一行下方有空白」**（原断言实测就红：4 行数据 + 批量条占位时列表
+      //   正好填满滚区，最后一行的底边比滚区底边还低 134px）。取「工具栏块与批量条之间的
+      //   行间隙」——它永远在，且命中的是挂着 onClick 的列表栏根元素（`mail-list-column`；
+      //   面板自己的 padding 在那个根**之外**，点它不触发，见 onListBlankClick 注释）
+      await page.getByRole("button", { name: "选择", exact: true }).click();
+      await expect(bar).toBeVisible();
+      const barBox = (await bar.boundingBox())!;
+      const blank = { x: barBox.x + 40, y: barBox.y - 8 };
+      const hit = await page.evaluate(({ x, y }) => {
+        const el = document.elementFromPoint(x, y);
+        return { tag: el?.tagName ?? "(无)", slot: el?.getAttribute("data-slot") ?? "" };
+      }, blank);
+      expect(hit.slot, `空白点应命中列表栏根元素，实际命中 ${hit.tag}[${hit.slot}]`).toBe("mail-list-column");
+      await page.mouse.click(blank.x, blank.y);
+      await expect(page.locator('[data-slot="mail-batch-bar"]')).toHaveCount(0);
+      await expect(page.locator('[data-slot="mail-row-checkbox"]')).toHaveCount(0);
+    });
+
+    /**
+     * 详情页操作栏（2026-10-07 用户验收反馈，两轮定稿）：
+     * ① 低频的「原始邮件 / 打印」收进「更多」菜单，而**「更多」固定在这一行最左端**
+     *    （用户明确否掉「放主题行那种别的行」；放最左还有个好处：宽屏下这一端本来是空的，
+     *    不吃右组那 ~620px 的宽度预算）；
+     * ② 「回复全部」并进「回复」右侧的下拉（分裂按钮，见回复用例）；
+     * ③ 整行必须一行放下——加按钮前先量宽度。
+     */
+    test("详情页操作栏：1280 宽下一行放下；「更多」在最左、低频动作在菜单里", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await gotoReady(page, "/mail");
+      await page.locator('[data-slot="mail-list"] > li').nth(0).locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+
+      const bar = page.locator('[data-slot="message-actions"]');
+      // 判据是「可见动作的垂直位置只有一组」（同排 = 一行），不锁具体坐标：
+      // 换字号 / 换行高都不会误报，多摆一个按钮立刻红
+      const tops = await bar.locator("a, button").evaluateAll((els) =>
+        els.filter((el) => el.checkVisibility()).map((el) => Math.round(el.getBoundingClientRect().top)),
+      );
+      expect(tops.length, "操作栏应有动作").toBeGreaterThan(3);
+      expect(new Set(tops).size, "操作栏应只有一行").toBe(1);
+
+      // 两个低频动作不在操作栏里（它们是菜单项，不是按钮）
+      await expect(bar.getByRole("button", { name: "打印" })).toHaveCount(0);
+      await expect(bar.getByRole("button", { name: "原始邮件" })).toHaveCount(0);
+      await expect(bar.getByRole("button", { name: "标为垃圾", exact: true })).toBeVisible();
+      await expect(bar.getByRole("button", { name: "移动", exact: true })).toHaveCount(0);
+
+      // 「更多」在操作栏里，且是这一行**最左**的可见动作（用户 2026-10-07 指定）
+      const more = bar.getByRole("button", { name: "更多" });
+      await expect(more).toHaveCount(1);
+      const xs = await bar.locator("a, button").evaluateAll((els) =>
+        els.filter((el) => el.checkVisibility()).map((el) => Math.round(el.getBoundingClientRect().x)),
+      );
+      const moreBox = (await more.boundingBox())!;
+      expect(Math.round(moreBox.x), "「更多」应是最左端那个动作").toBe(Math.min(...xs));
+
+      // 收在「更多」菜单里
+      await more.click();
+      const menu = page.locator('[data-slot="dropdown-menu-content"]');
+      await expect(menu.getByRole("menuitem", { name: "原始邮件" })).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: "打印" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(menu).toHaveCount(0);
+
+      // 空间不够时**只留图标**（2026-10-07 用户指定，容器查询 @min-[36rem]）：
+      // 1024 视口下详情栏只有 ~494px，标签整条隐藏、按钮缩到 36px，但名字仍在 aria-label
+      // 里（display:none 的文本不进可访问名），且整行必须仍是一行
+      const seen = bar.getByRole("button", { name: "标为未读" });
+      await expect(seen.locator("span")).toBeVisible(); // 宽窗：文字在
+      await page.setViewportSize({ width: 1024, height: 900 });
+      await expect(seen.locator("span")).toBeHidden(); // 窄窗：只剩图标
+      await expect(seen, "图标态下按钮仍有可访问名").toBeVisible();
+      const narrowTops = await bar.locator("a, button").evaluateAll((els) =>
+        els.filter((el) => el.checkVisibility()).map((el) => Math.round(el.getBoundingClientRect().top)),
+      );
+      expect(new Set(narrowTops).size, "图标态也必须一行放下").toBe(1);
+      await page.setViewportSize({ width: 1280, height: 900 });
+    });
+
+    test("打印：详情页有打印入口；打印规则只保留邮件本体", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      await page.locator('[data-slot="mail-list"] > li').nth(0).locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+
+      // 入口在「更多」菜单里（点击会调 window.print()——桩掉它，别真弹打印对话框）。
+      // 桩里顺手记录 print() 那一刻的 DOM 状态：那就是浏览器拿去打印的快照
+      // （`html.dark` 必须已被摘掉、标题必须是邮件主题，否则深色主题会印成白纸白字、
+      //   存 PDF 的文件名会是「邮件」）。
+      await page.evaluate(() => {
+        (window as unknown as { __printed?: number }).__printed = 0;
+        window.print = () => {
+          const w = window as unknown as { __printed?: number; __snap?: unknown };
+          w.__printed! += 1;
+          const band = document.querySelector<HTMLElement>(".mail-body div[style]");
+          w.__snap = {
+            dark: document.documentElement.classList.contains("dark"),
+            title: document.title,
+            // 邮件自己画的深色块：不打印背景时白字会消失在白纸上，打印前必须就地改成浅底黑字
+            band: band
+              ? {
+                  bg: getComputedStyle(band).backgroundColor,
+                  fg: getComputedStyle(band).color,
+                }
+              : null,
+          };
+        };
+      });
+      await page.getByRole("button", { name: "更多" }).click();
+      await page.getByRole("menuitem", { name: "打印" }).click();
+      expect(await page.evaluate(() => (window as unknown as { __printed?: number }).__printed)).toBe(1);
+      const snap = await page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __snap?: { dark: boolean; title: string; band: { bg: string; fg: string } | null };
+            }
+          ).__snap,
+      );
+      expect(snap?.dark, "打印快照不能带 dark 标记类（否则深色下印出白纸白字）").toBe(false);
+      const subject = (await page.locator("h2").first().innerText()).trim();
+      expect(snap?.title, "打印标题应换成邮件主题（打印页眉 / 存 PDF 的文件名）").toBe(subject);
+      // 深色块就地改浅底黑字：判据用亮度（同样是 lab()/oklch() 解析问题，借 canvas 拿 sRGB）
+      const bandLum = await page.evaluate((band) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const ctx = canvas.getContext("2d")!;
+        const lumOf = (color: string) => {
+          ctx.fillStyle = color;
+          ctx.fillRect(0, 0, 1, 1);
+          const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+          return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        };
+        return { bg: lumOf(band!.bg), fg: lumOf(band!.fg) };
+      }, snap?.band);
+      expect(bandLum.bg, "深色底要改成浅色（否则关掉背景图形就是白纸白字）").toBeGreaterThan(0.8);
+      expect(bandLum.fg, "浅底上的文字必须是深色").toBeLessThan(0.3);
+
+      // 打印媒体的实际效果：工具栏 / 左栏列表 / 底栏 / 站点顶栏 / 「更多」按钮都不参与打印。
+      // ⚠ 先把「更多」菜单在**屏幕媒体**下打开：菜单项是打印入口，而打印快照就发生在这个
+      //   瞬间（菜单还没开始收起）——2026-10-08 用户正是这样在纸上印出了一份下拉菜单
+      await page.getByRole("button", { name: "更多" }).click();
+      await expect(page.locator('[data-slot="dropdown-menu-content"]')).toBeVisible();
+      await page.emulateMedia({ media: "print" });
+      await expect(page.locator('[data-slot="dropdown-menu-content"]')).toBeHidden();
+      await expect(page.locator('[data-slot="message-actions"]')).toBeHidden();
+      await expect(page.locator('[data-slot="mail-pane-list"]')).toBeHidden();
+      await expect(page.locator('[data-slot="mail-statusbar"]')).toBeHidden();
+      await expect(page.locator(".site-header")).toBeHidden();
+      await expect(page.getByRole("button", { name: "更多" })).toBeHidden();
+      // 正文仍然可见（打印的就是它）
+      await expect(page.locator(".mail-body")).toBeVisible();
+      // 被拦截的远程图片：纸上不留虚线空框；改成**打印用的**说明文案 + 去掉「显示图片」入口
+      // （2026-10-08 用户报「打印渲染还有很多问题」后定的：读者要知道"这里少了几张图"）
+      await expect(page.locator(".mail-body img[data-remote-src]")).toBeHidden();
+      // 头像（含方向角标）是屏幕上的识别辅助，纸上没有交互与色彩语境（2026-10-08 排版轮）
+      await expect(page.locator('[data-slot="mail-avatar"]')).toBeHidden();
+      // 提示条在纸上压平成一行小字：虚线框印出来像一只"没填的输入框"
+      const noticeBox = await page
+        .locator('[data-slot="mail-remote-notice"]')
+        .evaluate((el) => {
+          const cs = getComputedStyle(el);
+          return { border: parseFloat(cs.borderTopWidth), padding: parseFloat(cs.paddingLeft) };
+        });
+      expect(noticeBox.border, "拦截提示在纸上不要描边").toBe(0);
+      expect(noticeBox.padding, "拦截提示在纸上不要内边距").toBe(0);
+      await expect(page.getByRole("button", { name: "显示图片" })).toBeHidden();
+      await expect(page.getByText(/已拦截 \d+ 张外部图片/)).toBeHidden();
+      await expect(page.getByText(/\d+ 张外部图片未随打印件输出/)).toBeVisible();
+      await page.emulateMedia({ media: "screen" });
+      await page.keyboard.press("Escape");
+      // 回到屏幕上：提示条恢复成"防追踪"那句 + 「显示图片」按钮可用
+      await expect(page.getByRole("button", { name: "显示图片" })).toBeVisible();
+      await expect(page.getByText(/已拦截 \d+ 张外部图片/)).toBeVisible();
+      // 附件在纸上是「内容」不是「按钮」（描边 / 图标去掉，只留文件名 + 大小）
+      await page.emulateMedia({ media: "print" });
+      const attach = page.locator('[data-slot="mail-pane-detail"] a[data-slot="button"]').first();
+      if (await attach.count()) {
+        const box = await attach.evaluate((el) => {
+          const cs = getComputedStyle(el);
+          return {
+            border: parseFloat(cs.borderTopWidth),
+            padding: parseFloat(cs.paddingLeft),
+            icon: el.querySelector("svg") ? getComputedStyle(el.querySelector("svg")!).display : "none",
+          };
+        });
+        expect(box.border, "附件在纸上不要描边").toBe(0);
+        expect(box.icon, "附件在纸上不要下载图标").toBe("none");
+      }
+      await page.emulateMedia({ media: "screen" });
+    });
+
+    /**
+     * 邮件正文的结构（2026-10-08 打印打磨）：Tailwind preflight 是给应用 UI 写的，
+     * 会把 `ol/ul` 的列表符号、标题字号、段落间距、`<table border>` 的框线全部清零——
+     * 邮件靠这些元素表达结构，不还原的话打印出来就是"一整块文字"。
+     */
+    test("正文：HTML 邮件的段落 / 标题 / 列表 / 表格边框要还原", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      await page.locator('[data-slot="mail-list"] > li').nth(0).locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+      const shape = await page.evaluate(() => {
+        const body = document.querySelector(".mail-body")!;
+        const li = body.querySelector("li")!;
+        const p = body.querySelector("p")!;
+        const h2 = body.querySelector("h2")!;
+        const td = body.querySelector("td")!;
+        return {
+          listStyle: getComputedStyle(li.parentElement!).listStyleType,
+          listIndent: parseFloat(getComputedStyle(li.parentElement!).paddingInlineStart),
+          // ⚠ 取 margin-block-**end**：首个子元素的 margin-block-start 被有意归零
+          //   （容器自己有内边距，再叠一段外边距会显得上下不对称）
+          pMargin: parseFloat(getComputedStyle(p).marginBlockEnd),
+          h2Size: parseFloat(getComputedStyle(h2).fontSize),
+          h2Weight: getComputedStyle(h2).fontWeight,
+          pSize: parseFloat(getComputedStyle(p).fontSize),
+          // `<table border="1">` 是「presentational hint」，权重低于任何作者样式：
+          // preflight 的 `* { border: 0 solid }` 会把框线整片清掉
+          tdBorder: parseFloat(getComputedStyle(td).borderTopWidth),
+        };
+      });
+      expect(shape.listStyle, "列表符号不能被 preflight 清成 none").not.toBe("none");
+      expect(shape.listIndent, "列表要有缩进").toBeGreaterThan(0);
+      expect(shape.pMargin, "段落之间要有间距").toBeGreaterThan(0);
+      expect(shape.h2Size, "邮件里的标题要比正文大").toBeGreaterThan(shape.pSize);
+      expect(Number(shape.h2Weight), "标题要加粗").toBeGreaterThanOrEqual(600);
+      expect(shape.tdBorder, "border=1 的数据表要有框线").toBeGreaterThan(0);
+    });
+
+    /**
+     * 深色主题下打印（2026-10-08 用户报「打印渲染还有很多问题」）：
+     * 浏览器默认不打印背景 → 深色下就是**白纸白字**；勾上「背景图形」则是一整页黑底。
+     * 契约：打印一律走浅色（正文近黑、纸面近白）。判据用亮度阈值而非具体色值。
+     */
+    test("打印：深色主题下导出仍是浅色（不印黑底 / 白字）", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      await page.locator('[data-slot="mail-list"] > li').nth(0).locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+      // 深色主题（next-themes 把 dark 挂在 html 上）+ 打印媒体
+      await page.evaluate(() => document.documentElement.classList.add("dark"));
+      await page.emulateMedia({ media: "print" });
+      const lum = await page.evaluate(() => {
+        // ⚠ 不能直接解析 computed color：Chrome 现在给的是 `lab(100 0 0)` / `oklch(...)`，
+        //   而 canvas 会把任何 CSS 颜色解析成 sRGB 像素——借它拿到真实亮度
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const ctx = canvas.getContext("2d")!;
+        const lumOf = (color: string) => {
+          ctx.fillStyle = color;
+          ctx.fillRect(0, 0, 1, 1);
+          const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+          return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        };
+        const body = getComputedStyle(document.body);
+        const text = getComputedStyle(
+          document.querySelector(".mail-body")?.firstElementChild ?? document.body,
+        );
+        return { bg: lumOf(body.backgroundColor), fg: lumOf(text.color), fgBody: lumOf(body.color) };
+      });
+      expect(lum.bg, "打印时页面底色必须是浅色").toBeGreaterThan(0.85);
+      expect(Math.min(lum.fg, lum.fgBody), "打印时文字必须是深色").toBeLessThan(0.25);
+      await page.emulateMedia({ media: "screen" });
+      await page.evaluate(() => document.documentElement.classList.remove("dark"));
+    });
+
+    test("详情加载失败：友好文案（不回显 webmaild_unreachable 这类内部错误码）", async ({ page }) => {
+      const calls = {
+        flags: [] as unknown[],
+        send: [],
+        delete: [] as unknown[],
+        detailError: 502,
+      };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      await page.locator('[data-slot="mail-list"] > li').nth(0).locator("[data-mail-row]").click();
+      const detail = page.locator('[data-slot="mail-pane-detail"]');
+      await expect(detail).toContainText("邮件服务暂时不可用");
+      await expect(detail).not.toContainText("webmaild_unreachable");
+    });
+
+    /**
+     * 取证能力（2026-10-07）：普通账号此前既看不到原始邮件头，也下载不到 .eml——
+     * 只有 agent 只读页有。超大邮件（truncated）更是点开一片空白且无任何提示。
+     */
+    test("原始邮件：头部按原文展示 + .eml 下载；超大邮件给出补取入口", async ({ page }) => {
+      const calls = {
+        flags: [] as unknown[],
+        send: [],
+        delete: [] as unknown[],
+        source: [] as unknown[],
+        // w02（列表第 3 行「Weekly Digest」）按「只入库索引」返回：走界面自己的导航
+        truncatedIds: ["mid:w02@test.local"] as string[],
+      };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      // 普通邮件：原始邮件对话框（头部顺序与原文一致）+ .eml 下载链接
+      await gotoReady(page, "/mail");
+      await page.locator('[data-slot="mail-list"] > li').nth(0).locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+      // 入口在主题行右侧的「更多」菜单里（操作栏只放对信的动作）
+      await page.getByRole("button", { name: "更多" }).click();
+      await page.getByRole("menuitem", { name: "原始邮件" }).click();
+      const rawDialog = page.locator('[data-slot="dialog-content"]');
+      const headers = rawDialog.locator('[data-slot="mail-raw-headers"]');
+      await expect(headers).toContainText("From: newsletter@example.com");
+      await expect(headers).toContainText("Message-ID: <w03@test.local>");
+      // 顺序 = 原文顺序（From 在 Subject 之前）
+      const text = (await headers.textContent()) ?? "";
+      expect(text.indexOf("From:")).toBeLessThan(text.indexOf("Subject:"));
+      const eml = rawDialog.getByRole("link", { name: "下载 .eml 原件" });
+      await expect(eml).toHaveAttribute("href", /\/api\/mail\/message\/.+\/source$/);
+      // 没有「补取原文」提示（这封有原文）
+      await expect(rawDialog.getByText(/只入库了索引/)).toHaveCount(0);
+      await page.keyboard.press("Escape");
+
+      // 超大邮件：正文区给出说明 + 「取回原文」按钮，点了才发 POST /source
+      await page.locator('[data-slot="mail-list"] > li').nth(2).locator("[data-mail-row]").click();
+      const notice = page.locator('[data-slot="mail-truncated-notice"]');
+      await expect(notice).toBeVisible();
+      await expect(notice).toContainText("站内只存了索引");
+      await expect(notice).toContainText("50MB");
+      await notice.getByRole("button", { name: "取回原文" }).click();
+      await expect.poll(() => calls.source?.length ?? 0).toBe(1);
+      expect(String(calls.source?.[0])).toContain("/message/");
+      await expect(page.getByText("已取回原文")).toBeVisible();
+    });
+
     test("通讯录：空态 → 新增 → 编辑 → 自动收录一键存入 → 删除", async ({ page }) => {
       const calls = { flags: [], send: [], delete: [], contacts: [] as unknown[] };
       await stubMailApi(page, calls);
@@ -4398,6 +5185,106 @@ test.describe("站内邮件（/mail）", () => {
       await page.locator('[data-slot="confirm-dialog"]').getByRole("button", { name: "确定" }).click();
       await expect(rows).toHaveCount(1);
       await expect(rows.nth(0).getByRole("button", { name: /^删除账号/ })).toBeDisabled();
+    });
+
+    /**
+     * 同步文件夹选择器（4.15，2026-10-07）：此前是手打的逗号字符串——写错（Sent vs
+     * 「已发送」）会静默少同步一个文件夹，最典型的症状是新账号「发件」页永远为空。
+     * 现在：探测（POST /folders，用表单里现填的连接参数）→ 勾选 → 随账号一起提交。
+     */
+    test("账号管理：文件夹选择器（探测 → 用推荐 → 随账号提交 folders）", async ({ page }) => {
+      const calls = { flags: [], send: [], delete: [], accounts: [] as unknown[], folders: [] as unknown[] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      await page.getByRole("button", { name: "账号", exact: true }).click();
+      const dialog = page.locator('[data-slot="dialog-content"]');
+      await dialog.getByRole("button", { name: "添加账号" }).click();
+
+      const pick = dialog.getByRole("button", { name: "选择文件夹" });
+      // 未填密码时探测按钮禁用（新增模式拿不到已存凭据）
+      await expect(pick).toBeDisabled();
+      await dialog.getByLabel("备注名").fill("镜像");
+      await dialog.getByLabel("邮箱地址").fill("mirror@example.com");
+      await dialog.getByLabel("密码 / 授权码").fill("secret");
+      await dialog.getByLabel("主机").first().fill("imap.example.com");
+      await dialog.getByLabel("主机").nth(1).fill("smtp.example.com");
+      await expect(pick).toBeEnabled();
+
+      await pick.click();
+      const picker = dialog.locator('[data-slot="folder-picker"]');
+      await expect(picker).toBeVisible();
+      // 探测请求带上了表单里的连接参数（没有账号 id 也能预览）
+      await expect.poll(() => calls.folders?.length).toBe(1);
+      expect(calls.folders?.[0]).toMatchObject({
+        imapHost: "imap.example.com",
+        email: "mirror@example.com",
+        password: "secret",
+      });
+      const boxes = picker.locator('input[type="checkbox"]');
+      await expect(boxes).toHaveCount(4);
+      await expect(picker).toContainText("垃圾邮件");
+
+      // 「用推荐的一组」= INBOX + 已发送 + 垃圾邮件 → 3 个 chips
+      await picker.getByRole("button", { name: "用推荐的一组" }).click();
+      await expect(dialog.locator('[data-slot="folder-chip"]')).toHaveCount(3);
+      // 手动加一个自定义文件夹、去掉 INBOX
+      await boxes.nth(3).check();
+      await boxes.nth(0).uncheck();
+      await expect(dialog.locator('[data-slot="folder-chip"]')).toHaveCount(3);
+      await expect(dialog.locator('[data-slot="folder-chip"]').nth(0)).toHaveText("已发送");
+
+      // 收起探测面板（按钮在展开态下位于对话框滚动区之外，真实使用也是先收起再保存）
+      await dialog.getByRole("button", { name: "收起" }).click();
+      await expect(dialog.locator('[data-slot="folder-picker"]')).toHaveCount(0);
+      await dialog.getByRole("button", { name: "测试并保存" }).click();
+      await expect.poll(() => calls.accounts?.length).toBe(1);
+      expect(calls.accounts?.[0]).toMatchObject({
+        method: "POST",
+        body: { folders: ["已发送", "垃圾邮件", "项目"] },
+      });
+    });
+
+    /**
+     * 输入邮箱地址后自动填 IMAP / SMTP 主机（2026-10-08 用户要求）。
+     * 契约：① 常见服务商给确定主机名；② 其余域名按 `imap.<域名>` / `smtp.<域名>` 约定猜；
+     * ③ **用户手改过就不再覆盖**（"如果不对用户自己会改"）。
+     */
+    test("账号管理：输入邮箱后自动填主机；手改过的不再被覆盖", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      await page.getByRole("button", { name: "账号", exact: true }).click();
+      const dialog = page.locator('[data-slot="dialog-content"]');
+      await dialog.getByRole("button", { name: "添加账号" }).click();
+      const imapHost = dialog.getByLabel("主机").first();
+      const smtpHost = dialog.getByLabel("主机").nth(1);
+
+      // 常见服务商：确定的两条主机名
+      await dialog.getByLabel("邮箱地址").fill("someone@gmail.com");
+      await expect(imapHost).toHaveValue("imap.gmail.com");
+      await expect(smtpHost).toHaveValue("smtp.gmail.com");
+
+      // 换域名 → 跟着变（仍是自动填的值，可以覆盖）
+      await dialog.getByLabel("邮箱地址").fill("me@shaoyuanyu.cn");
+      await expect(imapHost).toHaveValue("imap.shaoyuanyu.cn");
+      await expect(smtpHost).toHaveValue("smtp.shaoyuanyu.cn");
+
+      // 用户手改 IMAP 主机 → 再改邮箱域名时它不动，SMTP 仍随域名走
+      await imapHost.fill("imap.qiye.aliyun.com");
+      await dialog.getByLabel("邮箱地址").fill("me@example.org");
+      await expect(imapHost, "手改过的主机不能被自动填覆盖").toHaveValue("imap.qiye.aliyun.com");
+      await expect(smtpHost).toHaveValue("smtp.example.org");
+
+      // 域名还没成形（没有 @ 后段）时不动表单
+      await dialog.getByLabel("邮箱地址").fill("nobody");
+      await expect(imapHost).toHaveValue("imap.qiye.aliyun.com");
+      await expect(smtpHost).toHaveValue("smtp.example.org");
     });
 
     test("账号管理：远程图片白名单增删即时落盘，保存失败有提示（4.4）", async ({ page }) => {
@@ -4659,7 +5546,10 @@ test.describe("站内邮件（/mail）", () => {
       await expect(detail.locator('[data-slot="mail-direction-badge"]')).toHaveAttribute("data-direction", "sent");
       await expect(bar.getByRole("link", { name: "转发", exact: true })).toBeVisible();
       await expect(bar.getByRole("link", { name: "回复", exact: true })).toHaveCount(0);
-      await expect(bar.getByRole("link", { name: "回复全部", exact: true })).toHaveCount(0);
+      // 「回复全部」现在是「回复」右侧那个 caret（分裂按钮）——发件邮件整组都不该出现
+      await expect(bar.getByRole("button", { name: "回复全部", exact: true })).toHaveCount(0);
+      // 回复组（官方 ButtonGroup）整体不该出现
+      await expect(bar.locator('[data-slot="button-group"]')).toHaveCount(0);
       await expect(page.locator('[data-slot="mail-quick-reply"]')).toHaveCount(0);
       await expect(detail.locator('[data-slot="mail-sent-badge"]')).toHaveCount(0);
       // 「所在邮箱」一栏已删（勿加回）

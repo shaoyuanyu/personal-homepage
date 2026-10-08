@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { Link } from "@/lib/i18n/navigation";
+import { mailErrorText } from "@/lib/mail/error-text";
 import { useOwnAddresses } from "@/lib/mail/use-own-addresses";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -226,7 +227,7 @@ export function ContactsClient() {
       {error && (
         <p className="flex items-center gap-2 text-sm text-destructive">
           <CircleAlertIcon className="size-4" aria-hidden />
-          {t("loadFailed")}：{error}
+          {mailErrorText(error, t)}
         </p>
       )}
 

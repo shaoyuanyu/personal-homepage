@@ -83,6 +83,8 @@ export interface MailOwnAddress {
 
 export interface MailDetail extends MailListItem {
   cc: MailAddress[];
+  /** 原始邮件头（按原文顺序与折行；2026-10-07 取证用） */
+  headers?: { key: string; line: string }[];
   text: string;
   html: string;
   remoteBlocked: number;
@@ -96,6 +98,21 @@ export interface MailDetail extends MailListItem {
 export interface MailListResponse {
   items: MailListItem[];
   next: string | null;
+}
+
+/**
+ * 服务器上的文件夹（webmaild `GET /folders`，2026-10-07）。
+ * `specialUse` 是 RFC 6154 的特殊用途标志（`\Sent` / `\Drafts` / `\Trash` / `\Junk`…），
+ * 服务商不支持该扩展时由 webmaild 按本地化名字推断（阿里云的「已发送 / 草稿 / 垃圾邮件 /
+ * 已删除邮件」都能认出来），认不出为空串。
+ */
+export interface MailFolder {
+  path: string;
+  name: string;
+  delimiter: string;
+  specialUse: string;
+  specialUseSource: string;
+  selectable: boolean;
 }
 
 /** 通讯录：手动维护的联系人（webmaild /contacts） */

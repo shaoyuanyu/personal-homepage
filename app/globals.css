@@ -155,6 +155,14 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/*
+ * 深色主题的变量块（2026-10-08）：
+ * ⚠ 包在 `@media not print` 里——**打印一律走浅色**。深色下页面近黑、文字近白，而浏览器
+ *   默认不打印背景，用户拿到的会是「白纸白字」；即使勾上「背景图形」，印一整页黑底也毫无
+ *   意义。（`html.dark` 这个标记类在打印时仍然在，所以只能用媒体查询把它关掉；`dark:` 变体
+ *   的类不受这里影响，那部分由详情页 `printMessage()` 打印前摘掉标记类来解决。）
+ */
+@media not print {
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -187,6 +195,7 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
 }
 
 @layer base {
@@ -300,6 +309,10 @@
 .mail-body :where(img) {
   max-width: 100%;
   height: auto;
+  /* ⚠ preflight 把可替换元素设成 `display: block`（那是给应用 UI 的图片用的）——
+     邮件里的小图标 / 行内图会因此**各占一行**，把一句话切成好几段。还原成行内 */
+  display: inline-block;
+  vertical-align: middle;
 }
 .mail-body :where(a) {
   color: var(--primary);
@@ -323,6 +336,97 @@
 }
 .mail-body :where(td, th) {
   padding: 0.25rem 0.5rem;
+}
+
+/* ---- 邮件正文的「文档流」还原（2026-10-08 打印打磨）----
+   ⚠ Tailwind preflight 是**为应用 UI 写的**：`* { margin: 0; padding: 0; border: 0 }`、
+   标题 `font-size/weight: inherit`、`ol,ul { list-style: none }`、`table { border-collapse }`。
+   而邮件 HTML 恰恰靠这些浏览器默认样式表达**文档结构**——不还原的话，一封带标题 /
+   段落 / 列表 / 表格的邮件会被压成"一整块文字"（屏幕上就已经如此，纸上更明显：
+   段落之间没有间距、列表没有圆点、`border="1"` 的数据表连框线都没有——属性形式的
+   边框属于「presentational hint」，权重低于任何作者样式，会被 preflight 的 `*` 清掉）。
+   ⚠ 规则一律 `:where()`（零权重）且**只作用于 `.mail-body` 内部**：发件人自己写的
+   inline style 仍然优先，本站的 Tailwind 类不受影响。
+   ⚠ 不还原的（有意）：`div/span` 的 margin（版式表格靠它们做定位，给了间距会散架）、
+   `th` 的对齐（HTML 默认居中，是发件人的排版意图）。 */
+.mail-body :where(p, ul, ol, dl, blockquote, pre, figure) {
+  margin-block: 0.75em;
+}
+.mail-body :where(table) {
+  margin-block: 0.75em;
+}
+/* 版式表格（放在单元格里的表格）是"布局容器"不是"内容块"：不留外边距 */
+.mail-body :where(td, th) > :where(table) {
+  margin-block: 0;
+}
+.mail-body :where(li) {
+  margin-block: 0.15em;
+}
+.mail-body :where(ul, ol) :where(ul, ol) {
+  margin-block: 0.25em;
+}
+.mail-body :where(h1, h2, h3, h4, h5, h6) {
+  margin-block: 1.1em 0.5em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.mail-body :where(h1) {
+  font-size: 1.5em;
+}
+.mail-body :where(h2) {
+  font-size: 1.25em;
+}
+.mail-body :where(h3) {
+  font-size: 1.1em;
+}
+.mail-body :where(h4, h5, h6) {
+  font-size: 1em;
+}
+.mail-body :where(ul) {
+  list-style: disc;
+  padding-inline-start: 1.5em;
+}
+.mail-body :where(ol) {
+  list-style: decimal;
+  padding-inline-start: 1.5em;
+}
+.mail-body :where(ul ul) {
+  list-style: circle;
+}
+.mail-body :where(ul ul ul) {
+  list-style: square;
+}
+.mail-body :where(ol ol) {
+  list-style: lower-alpha;
+}
+.mail-body :where(hr) {
+  margin-block: 1em;
+  border-top: 1px solid var(--border);
+}
+.mail-body :where(dt) {
+  font-weight: 600;
+}
+.mail-body :where(dd) {
+  margin-inline-start: 1.5em;
+}
+.mail-body :where(small) {
+  font-size: 0.875em;
+}
+.mail-body :where(code, kbd, samp) {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+/* 数据表：属性式边框（`<table border="1">`）在 preflight 下会整片消失，按本站描边色补回。
+   只在真的声明过 border 的表格上补——版式表格（border="0" / 无属性）不该长出框线 */
+.mail-body :where(table[border]) :where(td, th) {
+  border: 1px solid var(--border);
+}
+/* 首尾不留空：容器自己有内边距，再叠一段外边距会让上下看起来不对称 */
+.mail-body > :where(:first-child) {
+  margin-block-start: 0;
+}
+.mail-body > :where(:last-child) {
+  margin-block-end: 0;
 }
 /* 被剥除的远程图片占位：给一个可见的虚线框，点击「显示图片」后换回原图 */
 .mail-body :where(img[data-remote-src]) {
@@ -660,4 +764,192 @@ section[id^="ccf-field"] {
   .dark [data-slot="calendar-legend-dot"] {
     background-color: var(--legend-color);
   }
+}
+
+/*
+ * 邮件行的快捷操作（星标 / 已读 / 删除）：hover 与键盘聚焦时显现（2026-10-05 定稿）。
+ * ⚠ 触屏设备没有 hover——`display:none` 会让这三个操作**在手机上完全不可达**（只能进详情
+ *   逐封处理）。`@media (hover: none)` 下常显；桌面（有 hover）保持原样的「悬停才出现」。
+ */
+@media (hover: none) {
+  [data-slot="mail-row-actions"] {
+    display: flex;
+  }
+}
+
+/* 打印邮件（2026-10-07）：只留邮件本体——顶栏 / 页脚 / 左栏列表 / 详情工具栏 / 底栏 /
+   页内快速回复 / **邮件页的页头（标题 + 通讯录/账号/agent 入口）** / **右下角浮动导航钮**
+   全部隐藏，右栏内容占满整页宽。挂 `data-print="hide"` 的元素 = 详情页工具栏与主题行右侧
+   的「更多」按钮（`message-view.tsx`）、邮件页页头（`mail/(mailbox)/layout.tsx`）、
+   浮动导航钮（`layout/nav-fab.tsx`）——后两个是 2026-10-07 打了一份真实 PDF 才发现的：
+   页头与圆钮会跟着印到纸上。
+
+   ⚠ 用 `!important`：这些元素带着 Tailwind 的 `flex` / `sticky` 等工具类，
+   不加会被同优先级的类名盖掉（打印样式表在最后加载，但工具类的选择器权重相同、
+   顺序也不保证）。 */
+@media print {
+  /* 纸面留白：Chrome 的「默认」边距取这里的值（用户在打印对话框里选「无边距」仍以用户为准）。
+     没有它时按打印机默认（约 10mm），中文长行贴着纸边不好看 */
+  @page {
+    margin: 14mm;
+  }
+  .site-header,
+  footer,
+  [data-slot="mail-pane-list"],
+  [data-slot="mail-statusbar"],
+  [data-slot="mail-batch-bar"],
+  [data-slot="mail-quick-reply"],
+  [data-slot="mail-thread"],
+  [data-slot="mail-avatar"],
+  [data-print="hide"] {
+    display: none !important;
+  }
+  /* 会话区块的标题挂在 section 上（`mail-thread` 是里面的 ul）：只藏 ul 会留下
+     一个孤零零的「会话」小标题，整块一起去掉 */
+  [data-slot="mail-pane-detail"] section:has(> [data-slot="mail-thread"]) {
+    display: none !important;
+  }
+  /* 右栏（详情）撑满整页：解除锁高与内部滚动（锁高是给屏幕上的两栏滚动用的），
+     左栏外层 grid 也退成单列 */
+  [data-slot="mail-pane-detail"],
+  [data-slot="mail-pane-detail"] > div,
+  [data-slot="mail-pane-detail"] > div > div {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    width: 100% !important;
+    max-width: none !important;
+    border: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  /* 正文：不再裁剪，也不留屏幕上的圆角边框（纸面上那道框只会被分页切开）
+     ⚠ 纯文本邮件是另一个容器（`data-slot="mail-text-body"`，没有 `.mail-body` 类），
+     两者在纸上要长一个样 */
+  .mail-body,
+  [data-slot="mail-text-body"] {
+    border: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    /* 纸面不能横向滚动：长 URL / 宽内容必须就地折行（2026-10-08 实测补） */
+    overflow-wrap: anywhere !important;
+  }
+  .mail-body img,
+  .mail-body table {
+    max-width: 100% !important;
+  }
+  /* 附件是「内容」不是「按钮」：去掉描边/内边距/固定高度，印成一行行文件名 + 大小；
+     下载图标在纸上没有任何意义（点不了），一并去掉 */
+  [data-slot="mail-pane-detail"] [data-slot="button"] {
+    border: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+  }
+  [data-slot="mail-pane-detail"] [data-slot="button"] svg {
+    display: none !important;
+  }
+
+  /* ---- 纸面排版（2026-10-08「打印还是有点丑」轮）----
+     屏幕上详情栏是 flex + gap 撑开的纵向节奏；上面那条 block 化把 gap 丢掉了，
+     于是页眉 / 提示 / 正文 / 附件全贴在一起——这里把节奏显式补回来。 */
+  /* 页眉：主题 + 收发件信息之后加一道细分隔线，与正文拉开层次 */
+  [data-slot="mail-pane-detail"] header {
+    margin-bottom: 14pt;
+    padding-bottom: 12pt;
+    border-bottom: 1px solid var(--border);
+  }
+  /* 附件区（thread / quick-reply 已被整块隐藏，能走到这的 section 只剩附件） */
+  [data-slot="mail-pane-detail"] section {
+    margin-top: 16pt;
+  }
+  /* 提示条在纸上压平成一行灰色小字：虚线框 / 琥珀框在纸面上像一只"没填的输入框" */
+  [data-slot="mail-remote-notice"] {
+    display: block !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin-bottom: 10pt;
+  }
+  [data-slot="mail-truncated-notice"] {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin-bottom: 10pt;
+  }
+  [data-slot="mail-truncated-notice"] svg {
+    display: none !important;
+  }
+  /* 附件在纸上是一份清单：一行一条（屏幕上是横排药丸，gap 随 block 化丢失） */
+  [data-slot="mail-pane-detail"] section > ul:not([data-slot]) {
+    display: block !important;
+  }
+  [data-slot="mail-pane-detail"] section > ul:not([data-slot]) > li + li {
+    margin-top: 4pt;
+  }
+
+  /* ---- 打印瞬间"打开着的浮层"（2026-10-08 用户在真实浏览器里发现）----
+     点菜单里的「打印」时，菜单还没收起来（打印快照早于关闭动画），于是纸上印着一份
+     「原始邮件 / 打印」下拉框。浮层都挂在 portal 里（不在详情栏内），只能按 data-slot 兜。
+     ⚠ **不隐藏 `dialog-content`**：对话框是用户主动打开的内容视图（例如「原始邮件」），
+     打印它是有意义的需求；菜单 / 气泡 / 提示 / 下拉这些只是"过路 UI"。 */
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="popover-content"],
+  [data-slot="select-content"],
+  [data-slot="tooltip-content"],
+  [data-slot="toast-viewport"] {
+    display: none !important;
+  }
+
+  /* ---- 分页控制（2026-10-08 打印打磨）----
+     实测第一版：附件列表被从中间切开，最后**只剩一行掉到第 2 页**；标题也会孤零零
+     留在页尾。规则就是两条：能整体挪走的块（附件区 / 邮件头 / 表格行 / 图片 / 引用）
+     不许在中间断开，标题后面不许立刻分页。 */
+  [data-slot="mail-pane-detail"] :where(header, section) {
+    break-inside: avoid;
+  }
+  .mail-body {
+    /* 段落切分时至少留 2 行，不要出现"页尾一行、下一页一行" */
+    orphans: 2;
+    widows: 2;
+  }
+  .mail-body :where(tr, img, blockquote, figure, li) {
+    break-inside: avoid;
+  }
+  .mail-body :where(h1, h2, h3, h4, h5, h6) {
+    break-after: avoid;
+  }
+  /* 长表格 / 长代码块要允许跨页（`break-inside: avoid` 用在比一页还高的块上，
+     浏览器只能把它整块推到下一页然后溢出裁掉） */
+  .mail-body :where(table, pre) {
+    break-inside: auto;
+  }
+
+  /* 被拦截的远程图片：纸面上不留一个虚线空框（那只是个"这里原本有图"的空洞）。
+     替代信息由正文上方的拦截提示行承担（见 message-view.tsx，打印时保留提示、去掉按钮） */
+  .mail-body :where(img[data-remote-src]) {
+    display: none !important;
+  }
+  /* 兜底（脚本没跑到的路径，例如用户直接按 Ctrl+P）：发件人写死的白字在"不打印背景"
+     的默认设置下会消失在白纸里——凡是显式声明过浅色文字的，纸上强制按黑字印。
+     正常路径由 printMessage() 逐元素按**计算出的背景亮度**处理（更准，见其注释）。 */
+  .mail-body :where([style*="color: #fff"], [style*="color:#fff"], [style*="color: white"], [style*="color:white"]) {
+    color: #000 !important;
+  }
+}
+
+/*
+ * 选择模式下隐藏行内快捷操作（多选批量）：那三个按钮带着 `group-hover/row:flex`，
+ * 而类选择器的优先级高于 `[hidden]` 的 UA 规则——只写 `hidden` 属性在鼠标悬停时
+ * 依旧会冒出来（点击又会切到勾选语义）。这里显式压住。
+ */
+[data-slot="mail-row-actions"][hidden] {
+  display: none !important;
 }

@@ -1,11 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ArrowDownLeftIcon,
   ArrowLeftRightIcon,
   ArrowUpRightIcon,
+  CheckIcon,
+  ChevronDownIcon,
   CircleAlertIcon,
   FilePenLineIcon,
   InboxIcon,
@@ -15,6 +25,7 @@ import {
   PaperclipIcon,
   RefreshCwIcon,
   SearchIcon,
+  SquareCheckBigIcon,
   SquarePenIcon,
   StarIcon,
   Trash2Icon,
@@ -31,12 +42,19 @@ import { MAIL_DRAFTS_CHANGED_EVENT } from "@/components/mail/compose-form";
 import { MAIL_ITEM_CHANGED_EVENT, type MailItemChange } from "@/components/mail/message-view";
 import { MAIL_UNREAD_EVENT } from "@/components/mail/new-mail-notifier";
 import { AccountMenu } from "@/components/mail/account-menu";
+import { MailBatchBar, MailRowCheckbox } from "@/components/mail/mail-batch-bar";
 import { accountDotProps } from "@/components/mail/account-dot";
 import { MOTION_SIZE, TOOLBAR_MS } from "@/components/mail/motion";
 import { usePublishMailBar } from "@/components/mail/mail-statusbar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -44,7 +62,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { toast } from "@/components/ui/toast";
-import type { MailAccount, MailDraft, MailListItem, MailListResponse } from "@/lib/mail/types";
+import type {
+  MailAccount,
+  MailDraft,
+  MailFolder,
+  MailListItem,
+  MailListResponse,
+} from "@/lib/mail/types";
 
 function formatDate(dateIso: string | null, locale: string): string {
   if (!dateIso) return "";
@@ -57,25 +81,39 @@ function formatDate(dateIso: string | null, locale: string): string {
 }
 
 /**
- * 视图切换（2026-10-05 微调，用户定稿）：下划线 Tabs「全部 / 收件（默认）/ 发件 / 草稿」——
+ * 视图切换（2026-10-05 微调，用户定稿）：下划线 Tabs「全部 / 收件（默认）/ 发件 / 草稿 / 垃圾」——
  * 纯方向维度 + 独立的草稿箱（2026-10-06 用户指定：草稿不算入「全部」——草稿来自
- * webmaild /drafts，与 messages 完全分离，只有这个 tab 会读它）。
+ * webmaild /drafts，与 messages 完全分离，只有这个 tab 会读它）
+ * + 独立的垃圾箱（2026-10-08 用户要求新增：垃圾是**文件夹**维度，但它是"我该看一眼"的
+ * 少数几个位置之一，值一个 tab；见下方 junkFolders 的实现注记）。
  * 「星标」从视图降为与「未读」并列的独立开关，放在 tab 行右侧，
  * 可与任意方向叠加（星标 ∩ 收件 / 发件 / 全部都合法）。
  * - 收件（默认，邮箱的直觉入口）/ 发件 → 服务端 `direction` 参数；全部 → 不带方向参数
  * - 草稿 → 不查 /messages，单独 GET /drafts（行点击进 /mail/compose?draft=<id>）
+ * - 垃圾 → 服务端 `folder` 参数（多个 = 并集）：路径先按账号探测（`GET /folders`），
+ *   见 junkFolders
  * - 「未读」「星标」两个开关 → `filter` 逗号多值取交集（如 星标+未读 = `filter=flagged,unseen`）；
  *   未读计数「(n)」挂在「未读」开关上（2026-10-05 用户改：原在「收件」tab 徽标——
  *   「发件」不可能有未读，挂在方向 tab 上语义刻意；未读开关与方向无关，语义自然对齐）
  * - tab 下划线着色 = 方向配色（收件 emerald / 发件 amber，与头像方向角标、agent 页方向徽章同源）
+ *
+ * ⚠ 「文件夹」视图（按任意文件夹浏览）已于 2026-10-07 **删除**（用户定稿，勿加回）：
+ * 它把「数据位置」混进「数据切片」，5 个 tab 把右侧两个开关挤到第二行。⚠ 但「垃圾」
+ * 不是这个坑的重演——它是**一个固定的特殊用途**（服务商自己认定的 `\Junk`），语义上
+ * 与「草稿」（另一个固定特殊用途）同级，不是"让用户随便挑一个文件夹看"。
+ * 空间不够时的做法见下方 tab 条的注释（收进 chevron 下拉）。
  */
-type ViewFilter = "all" | "received" | "sent" | "drafts";
+type ViewFilter = "all" | "received" | "sent" | "drafts" | "junk";
 
 /**
- * 行 1 的固定开销：搜索图标 28 +「全部标为已读」28 + 刷新 28 + 四个间距（gap-1.5 = 6px）。
- * 账号触发器与「写邮件」分享剩下的宽（分配规则见组件内「行 1 的宽度分配」注释）。
+ * 行 1 的固定开销：搜索图标 28 +「选择」28 +「全部标为已读」28 + 刷新 28，加五个间距
+ * （gap-1.5 = 6px × 5，六个子项之间）。账号触发器与「写邮件」分享剩下的宽
+ * （分配规则见组件内「行 1 的宽度分配」注释）。
+ * ⚠ 2026-10-07 新增「选择」图标后按 384px 重算：账号触发器上限 384 − 142 − 74（中文
+ *   「写邮件」）= 168px（英文 174）——仍远大于下限 72，只会让账号文字更早截断，
+ *   **不会换行**（换行才是要守的红线；`flex-wrap` 只是超窄屏安全网）。
  */
-const ROW_FIXED_W = 28 + 28 + 28 + 24;
+const ROW_FIXED_W = 28 * 4 + 30;
 
 /** 加载占位：列表行骨架（4.9：不用居中 spinner 充数） */
 function ListSkeleton() {
@@ -115,6 +153,30 @@ export function MailClient() {
   const [view, setView] = useState<ViewFilter>("received");
   const [unseenOnly, setUnseenOnly] = useState(false);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
+  /**
+   * 垃圾视图（2026-10-08 用户要求新增「垃圾」tab）。
+   *
+   * 各家的垃圾文件夹名字不同（阿里云「垃圾邮件」、Gmail `[Gmail]/Spam`…），所以路径
+   * **由服务端探测**（`GET /folders` 里 `specialUse === "\\Junk"` 的那些），前端只负责
+   * 拼 `folder` 参数（每个账号一个，服务端取并集）。路径按账号缓存，账号配置变化时清空。
+   * ⚠ 只有**在同步白名单里**的垃圾文件夹才查得到邮件——没同步的文件夹本地根本没有副本。
+   *   这一点要作为空态文案说出来，否则「垃圾」页永远空白且没有解释（见 junkNote）。
+   */
+  const junkCacheRef = useRef<Map<string, { hasFolder: boolean; synced: string[] }>>(new Map());
+  const [junkNote, setJunkNote] = useState<"none" | "unsynced" | null>(null);
+  /**
+   * 多选批量操作（2026-10-07，MAIL-AGENT.md 4.16）：`selectMode` 打开后列表行变成
+   * "点一下 = 勾选/取消"（不再跳转），列表上方出现批量操作条。
+   * - 选中集合按 **messageId** 记（跨账号合并视图里一行 = 一封邮件，与删除/移动的
+   *   "全部副本一起动"口径一致）；
+   * - 切换视图 / 账号 / 搜索词时**清空选择**——否则会对看不见的行动手（用户无从核对）；
+   * - 草稿视图不参与（草稿有自己的行内删除，也不是 messages 数据源）。
+   */
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  /** 批量操作进行中（禁用所有批量按钮，防连点重复提交） */
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   /**
    * 当前视图下「真正生效」的筛选值（2026-10-06 用户定稿）：「未读」在「发件」「草稿」
    * 不可用（「发件」不可能有未读——与「草稿」同规则；「星标」仅「草稿」不可用，
@@ -223,6 +285,8 @@ export function MailClient() {
       q: string;
       before?: string | null;
       append?: boolean;
+      /** 垃圾视图：每个（账号, 路径）一项，服务端取并集（见 junkFolders） */
+      folders?: { account: string; path: string }[];
     }) => {
       const params = new URLSearchParams();
       // 完整加载（非「加载更多」）递增序号：先发后到的旧响应会被丢弃（append 不递增，
@@ -238,6 +302,11 @@ export function MailClient() {
       if (opts.view === "received") params.set("direction", "received");
       if (opts.view === "sent") params.set("direction", "sent");
       if (opts.q.trim()) params.set("q", opts.q.trim());
+      // 垃圾视图：每个（账号, 路径）一个 `folder` 参数（服务端并集；⚠ 不用逗号拼，
+      // 文件夹名里可以有逗号）
+      for (const f of opts.folders ?? []) {
+        params.append("folder", f.account ? `${f.account}|${f.path}` : f.path);
+      }
       if (opts.before) params.set("before", opts.before);
       const res = await fetch(`/api/mail/messages?${params}`);
       if (seq !== loadSeqRef.current) return; // 过期响应：静默丢弃（连点筛选时的旧结果）
@@ -290,8 +359,13 @@ export function MailClient() {
   useEffect(() => {
     loadAccounts();
     // 账号管理弹窗增删账号后广播，筛选 chips 随之刷新
-    window.addEventListener(MAIL_ACCOUNTS_CHANGED_EVENT, loadAccounts);
-    return () => window.removeEventListener(MAIL_ACCOUNTS_CHANGED_EVENT, loadAccounts);
+    const onAccountsChanged = () => {
+      // 同步文件夹白名单可能刚被改过（勾上「垃圾邮件」等）→ 垃圾视图的路径缓存作废
+      junkCacheRef.current.clear();
+      loadAccounts();
+    };
+    window.addEventListener(MAIL_ACCOUNTS_CHANGED_EVENT, onAccountsChanged);
+    return () => window.removeEventListener(MAIL_ACCOUNTS_CHANGED_EVENT, onAccountsChanged);
   }, [loadAccounts]);
 
   // 账号被禁用/删除后，选择失效就回到「全部账号」（否则列表会被一个看不见的条件压空）
@@ -315,19 +389,82 @@ export function MailClient() {
     return () => window.clearTimeout(timer);
   }, [searchClosing, searchOpen]);
 
+  /**
+   * 垃圾视图的文件夹解析（2026-10-08）：当前账号范围内每个账号的 `\Junk` 路径，
+   * **只取在同步白名单里的**（没同步的文件夹本地没有副本，查了也是空）。
+   * 结果按账号缓存（会话内）；账号配置变化时清空（见 MAIL_ACCOUNTS_CHANGED_EVENT 监听）。
+   * 顺带把「一个都没有」的原因写进 junkNote，供空态显示。
+   */
+  // ⚠ 账号 id 列表用**字符串**当依赖：`loadAccounts()` 每次都会给出新数组（同一批账号、
+  //   新引用），若把 `accounts` 直接写进 junkFolders 的依赖，就会波及 loadCurrent →
+  //   reload → 「条件变化即加载」的 effect，于是**每次未读计数刷新都会整表重取一次**
+  //   （行内点星标后乐观更新被重取结果冲掉——2026-10-08 实测就是这样红的）。
+  const accountIdsKey = useMemo(() => accounts.map((a) => a.id).join(","), [accounts]);
+
+  const junkFolders = useCallback(async (): Promise<{ account: string; path: string }[]> => {
+    if (view !== "junk") return [];
+    const ids = accountFilter === "all" ? accountIdsKey.split(",").filter(Boolean) : [accountFilter];
+    const out: { account: string; path: string }[] = [];
+    let hasFolder = false;
+    for (const id of ids) {
+      let hit = junkCacheRef.current.get(id);
+      if (!hit) {
+        const res = await fetch(`/api/mail/folders?account=${encodeURIComponent(id)}`);
+        if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `${res.status}`);
+        const data = (await res.json()) as { folders: MailFolder[]; synced: string[] };
+        const paths = data.folders
+          .filter((f) => f.specialUse === "\\Junk" && f.selectable)
+          .map((f) => f.path);
+        hit = { hasFolder: paths.length > 0, synced: paths.filter((p) => data.synced.includes(p)) };
+        junkCacheRef.current.set(id, hit);
+      }
+      hasFolder = hasFolder || hit.hasFolder;
+      for (const path of hit.synced) out.push({ account: id, path });
+    }
+    setJunkNote(out.length ? null : hasFolder ? "unsynced" : "none");
+    return out;
+  }, [view, accountFilter, accountIdsKey]);
+
+  /**
+   * 拉取「当前筛选」的列表——四处调用（初次/筛选变化、刷新、全部标为已读、加载更多）
+   * 共用：垃圾视图要先解析文件夹，解析不到就直接给空列表（不查 /messages，
+   * 否则会退化成"查全部"）。
+   */
+  const loadCurrent = useCallback(
+    async (opts?: { before?: string | null; append?: boolean }) => {
+      const folders = await junkFolders();
+      if (view === "junk" && folders.length === 0) {
+        setItems([]);
+        setNext(null);
+        return;
+      }
+      await load({
+        account: accountFilter,
+        view,
+        unseen: unseenActive,
+        flagged: flaggedActive,
+        q,
+        before: opts?.before,
+        append: opts?.append,
+        folders,
+      });
+    },
+    [accountFilter, view, unseenActive, flaggedActive, q, load, junkFolders],
+  );
+
   // 拉取当前筛选下的列表（首次 / 筛选变化 / 错误态「重试」按钮共用）
   const reload = useCallback(() => {
     // 草稿视图不查 /messages（loadDrafts 负责）；切回其它 tab 时本 effect 会重跑
     if (view === "drafts") return;
     setLoading(true);
     setError(null);
-    load({ account: accountFilter, view, unseen: unseenActive, flagged: flaggedActive, q })
+    loadCurrent()
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => {
         hasLoadedRef.current = true;
         setLoading(false);
       });
-  }, [accountFilter, view, unseenActive, flaggedActive, q, load]);
+  }, [view, loadCurrent]);
 
   // 搜索词 300ms 防抖后提交（⚠ 防抖只在搜索上；tab / 开关 / 账号切换按下即加载，
   // 否则每次点击都要白等 300ms，观感卡顿——2026-10-05 用户报）
@@ -346,13 +483,13 @@ export function MailClient() {
     setError(null);
     try {
       await fetch("/api/mail/sync", { method: "POST" });
-      await load({ account: accountFilter, view, unseen: unseenActive, flagged: flaggedActive, q });
+      await loadCurrent();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRefreshing(false);
     }
-  }, [accountFilter, view, unseenActive, flaggedActive, q, load]);
+  }, [loadCurrent]);
 
   /**
    * 「全部标为已读」（2026-10-05 用户定稿）：范围 = 当前账号筛选（「全部账号」= 全部账号）；
@@ -378,26 +515,119 @@ export function MailClient() {
       } else {
         toast.add({ title: t("markAllReadNone") });
       }
-      await Promise.all([
-        loadAccounts(),
-        load({ account: accountFilter, view, unseen: unseenActive, flagged: flaggedActive, q }),
-      ]);
+      await Promise.all([loadAccounts(), loadCurrent()]);
     } catch {
       toast.add({ title: t("actionFailed"), type: "error" });
     } finally {
       setMarkingAll(false);
     }
-  }, [accountFilter, view, unseenActive, flaggedActive, q, load, loadAccounts, t]);
+  }, [accountFilter, loadCurrent, loadAccounts, t]);
+
+  // 多选：选中的列表项（顺序按当前列表）
+  const selectedItems = useMemo(
+    () => items.filter((m) => selected.has(m.messageId)),
+    [items, selected],
+  );
+  /**
+   * 选中项的状态（2026-10-07 用户指定）：全都已读 → 「标为已读」无事可做（禁用）；
+   * 全都未读 → 「标为未读」无事可做。混合选中时两个都可用。空选中时两个都为 false，
+   * 由 count === 0 负责禁用。
+   */
+  const allSeen = selectedItems.length > 0 && selectedItems.every((m) => m.seen);
+  const allUnseen = selectedItems.length > 0 && selectedItems.every((m) => !m.seen);
+  // 视图 / 账号 / 搜索变化时清空选择（选择模式本身保留：用户可能想接着选下一批）
+  useEffect(() => {
+    setSelected(new Set());
+  }, [view, accountFilter, q]);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelected(new Set());
+  }, []);
+
+  /**
+   * 全选 / 取消全选（同一个按钮，2026-10-07 用户指定）：已全选时再点即清空。
+   * ⚠ 判据用 `count === total` 而不是"有没有选中项"——只选了一部分时点它仍是全选。
+   */
+  const toggleAll = useCallback(() => {
+    setSelected((prev) =>
+      items.length > 0 && prev.size === items.length
+        ? new Set()
+        : new Set(items.map((m) => m.messageId)),
+    );
+  }, [items]);
+
+  const toggleSelect = useCallback((messageId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) next.delete(messageId);
+      else next.add(messageId);
+      return next;
+    });
+  }, []);
+
+  /** 批量标记（已读 / 未读）：走后端的 messageIds 口径（每账号一次连接、每文件夹一次 STORE） */
+  const batchFlags = useCallback(
+    async (change: { seen?: boolean; flagged?: boolean }) => {
+      const ids = [...selected];
+      if (ids.length === 0) return;
+      setBatchBusy(true);
+      try {
+        const res = await fetch("/api/mail/flags", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ messageIds: ids, ...change }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `${res.status}`);
+        const data = (await res.json()) as { updated: number; skipped: unknown[] };
+        if (Array.isArray(data.skipped) && data.skipped.length > 0) {
+          toast.add({ title: t("batchPartial"), type: "error" });
+        } else {
+          toast.add({ title: t("batchDone", { count: ids.length }), type: "success" });
+        }
+        setSelected(new Set());
+        await Promise.all([loadAccounts(), reload()]);
+      } catch {
+        toast.add({ title: t("actionFailed"), type: "error" });
+      } finally {
+        setBatchBusy(false);
+      }
+    },
+    [selected, reload, loadAccounts, t],
+  );
+
+  /** 批量删除：确认后对该批消息的**全部副本**一起删（与单条删除同一接口同一口径） */
+  const batchDelete = useCallback(async () => {
+    const copies = selectedItems.flatMap((m) => m.copies);
+    if (copies.length === 0) return;
+    setBatchBusy(true);
+    try {
+      const res = await fetch("/api/mail/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ copies }),
+      });
+      if (!res.ok) throw new Error();
+      toast.add({ title: t("batchDeleted", { count: selectedItems.length }), type: "success" });
+      setBatchDeleteOpen(false);
+      setSelected(new Set());
+      await Promise.all([loadAccounts(), reload()]);
+    } catch {
+      toast.add({ title: t("actionFailed"), type: "error" });
+    } finally {
+      setBatchBusy(false);
+    }
+  }, [selectedItems, reload, loadAccounts, t]);
 
   const loadMore = useCallback(async () => {
     if (!next || loadingMore) return;
     setLoadingMore(true);
     try {
-      await load({ account: accountFilter, view, unseen: unseenActive, flagged: flaggedActive, q, before: next, append: true });
+      await loadCurrent({ before: next, append: true });
     } finally {
       setLoadingMore(false);
     }
-  }, [next, loadingMore, accountFilter, view, unseenActive, flaggedActive, q, load]);
+  }, [next, loadingMore, loadCurrent]);
 
   // 无限滚动（4.9）：底部哨兵进入视口即取下一页，「加载更多」按钮保留兜底
   useEffect(() => {
@@ -413,8 +643,38 @@ export function MailClient() {
     return () => ob.disconnect();
   }, [next, loadMore]);
 
-  // 键盘导航（4.9）：j / ↓ 下一行，k / ↑ 上一行；Enter 由按钮原生激活打开
+  /**
+   * 点**空白处**退出选择模式（2026-10-07 用户指定：不设专门的「退出」按钮）。
+   * 判据是"点到的不是行、也不是任何可交互元素"——否则会误伤「加载更多」、行内快捷操作
+   * （它们在 li 内、是行按钮的兄弟节点）、草稿行内的删除按钮，以及批量条自己。
+   * ⚠ 挂在**整个左栏**（工具栏 + tab 行 + 列表）而不是只挂列表滚动区：列表长到填满面板时，
+   *   行下方没有空白可点，而工具栏行/tab 行右侧永远留着空白——那是最容易点到的地方。
+   */
+  const onListBlankClick = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      if (!selectMode) return;
+      const el = e.target as HTMLElement;
+      if (
+        el.closest(
+          '[data-mail-row], [data-slot="mail-batch-bar"], button, a, input, label, [role="button"], [role="menuitem"]',
+        )
+      ) {
+        return;
+      }
+      exitSelectMode();
+    },
+    [selectMode, exitSelectMode],
+  );
+
+  // 键盘导航（4.9）：j / ↓ 下一行，k / ↑ 上一行；Enter 由按钮原生激活打开；
+  // Esc 退出选择模式（⚠ 弹窗打开时不抢：删除确认弹窗的 Esc 归弹窗自己）
   const onListKeyDown = useCallback((e: KeyboardEvent<HTMLUListElement>) => {
+    if (e.key === "Escape" && selectMode) {
+      if (typeof document !== "undefined" && document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      exitSelectMode();
+      return;
+    }
     const delta = e.key === "j" || e.key === "ArrowDown" ? 1 : e.key === "k" || e.key === "ArrowUp" ? -1 : 0;
     if (delta === 0) return;
     const rows = Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-mail-row]") ?? []);
@@ -424,7 +684,7 @@ export function MailClient() {
       e.preventDefault();
       target.focus();
     }
-  }, []);
+  }, [selectMode, exitSelectMode]);
 
   const patchItem = useCallback((messageId: string, change: Partial<MailListItem>) => {
     setItems((prev) => prev.map((m) => (m.messageId === messageId ? { ...m, ...change } : m)));
@@ -598,11 +858,15 @@ export function MailClient() {
    * 列表空态文案（2026-10-05 用户指定）：有筛选时把条件说清楚——
    * `暂无「未读」邮件` / `「发件」中暂无「星标」邮件`；「全部」不作为条件显示，
    * 只有「全部 + 无筛选」才回到 `暂无邮件`。搜索词另走 emptySearch。
+   * ⚠ 垃圾视图还要说清**为什么是空的**（2026-10-08）：没有垃圾文件夹、或垃圾文件夹
+   *   还没进同步白名单——两者都不是"真的没有垃圾邮件"，不能只显示「暂无」。
    */
   const emptyText = useMemo(() => {
     // 草稿视图的空态另有文案（emptyDrafts，见渲染分支），不走邮件空态的键拼装——
     // 否则 `emptyFilter.scope.drafts` 查找落空，next-intl 会在控制台报 MISSING_MESSAGE
     if (view === "drafts") return "";
+    if (view === "junk" && junkNote === "none") return t("junkNoFolder");
+    if (view === "junk" && junkNote === "unsynced") return t("junkNotSynced");
     // ⚠ 状态键必须显式列出，勿用数组 join("And") 拼：`join` 拼出的是 `unseenAndflagged`
     //   （小写 f），与文案里的 `unseenAndFlagged` 大小写不符 → 查找落空后 next-intl
     //   会把 key 路径原样显示在页面上（2026-10-05 实测踩过，单一开关时不触发）。
@@ -618,12 +882,14 @@ export function MailClient() {
             : "none";
     if (view === "all" && statusKey === "none") return t("empty");
     return t(`emptyFilter.scope.${view}`, { status: t(`emptyFilter.status.${statusKey}`) });
-  }, [view, unseenActive, flaggedActive, t]);
+  }, [view, unseenActive, flaggedActive, junkNote, t]);
 
   // 发布到贯通底栏（5.5）：列表统计 + 账号一览 + 当前筛选，底栏挂在 MailShell
   // ⚠ 加载失败时按「加载中」发布：`已加载 0 封` 会让用户以为真的没有邮件（2026-10-04）
+  // 底栏「加载中」：草稿箱有自己的数据源（/drafts），不能一律按邮件列表判
+  const barLoading = view === "drafts" ? drafts === null : loading || !!error;
   usePublishMailBar({
-    loading: view === "drafts" ? drafts === null : loading || !!error,
+    loading: barLoading,
     loaded: view === "drafts" ? (drafts?.length ?? 0) : items.length,
     unread: view === "drafts" ? 0 : unreadTotal,
     accounts,
@@ -631,7 +897,11 @@ export function MailClient() {
   });
 
   return (
-    <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1">
+    // 整栏挂「点空白处退出多选」（见 onListBlankClick）：只读状态下这个 handler 直接返回
+    // ⚠ `data-slot="mail-list-column"` 是 E2E 的钩子：面板自己的 padding 在**这个根之外**
+    //   （点击不会冒泡到 handler），所以「点空白处」的用例必须点在根内部的空白上——
+    //   取「工具栏块与批量条之间的行间隙」，那里命中的就是这个根元素
+    <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1" data-slot="mail-list-column" onClick={onListBlankClick}>
       {/*
        * 工具栏（2026-10-05 用户定稿，方案 A：留在左侧栏）：
        *   行 1 = 账号下拉 + 搜索（收起/展开）+ 刷新 + 写邮件；
@@ -723,6 +993,20 @@ export function MailClient() {
               稳定」）。⚠ 不能放行 2：英文下 Tabs + 两个开关已占 380/384，再挤一个 28px
               图标必然换行（实测 en free = 4px；「未读」开关旁的空间中文够、英文不够）。
               无未读时禁用（title 换成原因说明，避免「点了没反应」） */}
+          {/* 「选择」（2026-10-07，多选批量）：进入后列表行变成勾选、上方出现批量条。
+              与「全部标为已读」同一簇（右端最左位），草稿视图不可用（草稿有自己的行内删除） */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={selectMode ? t("batchExit") : t("batchEnter")}
+            title={selectMode ? t("batchExit") : t("batchEnter")}
+            aria-pressed={selectMode}
+            disabled={view === "drafts"}
+            className="aria-pressed:bg-accent"
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+          >
+            <SquareCheckBigIcon data-icon="default" />
+          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -796,26 +1080,88 @@ export function MailClient() {
             ⚠ 计数在两个开关的可访问名之外：aria-hidden，E2E 按名字精确匹配；
             计数形态的取舍见下方「未读」开关的注释 */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-          <Tabs value={view} onValueChange={(v) => setView(v as ViewFilter)}>
-            <TabsList variant="line" aria-label={t("viewSwitcherLabel")}>
-              <TabsTrigger value="all">{t("filterAll")}</TabsTrigger>
-              <TabsTrigger
-                value="received"
-                className="data-active:after:bg-emerald-600 dark:data-active:after:bg-emerald-400"
-              >
-                {t("filterReceived")}
-              </TabsTrigger>
-              <TabsTrigger
-                value="sent"
-                className="data-active:after:bg-amber-600 dark:data-active:after:bg-amber-400"
-              >
-                {t("filterSent")}
-              </TabsTrigger>
-              {/* 草稿箱（2026-10-06 用户指定）：不算入「全部」——草稿是独立数据源
-                  （webmaild /drafts），不参与合并视图与未读统计 */}
-              <TabsTrigger value="drafts">{t("filterDrafts")}</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {/* ⚠ 加了「垃圾」tab 之后（2026-10-08），384px 左栏在**英文**下放不下 5 个 tab
+              + 右侧两个开关。做法（用户指定"空间不够时做成一个 V 型符号下拉"）：
+              给 tab 条套一层 `@container` 量宽盒 + 末尾一个 chevron 下拉，装放不下的视图。
+
+              ⚠ **只在 lg 及以上生效**（两条容器查询前面都挂了 `max-lg:`）：窄屏本来就走
+                「整页单栏 + 换行」那套（行上的 `flex-wrap` 是那里的安全网），tab 全部显示、
+                chevron 不出现；lg 起左栏固定 26rem、量宽盒是 `lg:flex-1`（宽度确定），
+                容器查询才有意义——否则"宽度由内容决定、内容又由宽度决定"会互相打架
+                （隐藏 tab → 内容变窄 → 更该隐藏，浏览器只保证一轮求解，结果不可预期）。
+              ⚠ 阈值按 lg 下实测的两种宽度取（留给 tab 的宽度：中文 234px / 英文 193px；
+                5 个 tab 实测占 232 / 272px）：草稿 13rem（208px）、垃圾 14rem（224px）。
+                于是中文 5 个全显示、英文自动收成 3 个 + chevron（3 个 tab + chevron = 190px）。
+                ⚠ 改 tab 或开关文案后必须重量：`node .cache/probe-junk-tabs.mjs` */}
+          {/* ⚠ `@container` 也必须挂 `lg:`：`container-type: inline-size` 自带**尺寸containment**，
+              盒子宽度从此不再由内容决定——窄屏（<lg）下它就缩成 flex 剩余宽、内容溢出到
+              右侧开关上（2026-10-08 实测 390px：「垃圾」和「未读」糊在一起）。挂上 `lg:`
+              后窄屏是一个普通 div，回到「内容撑开 + flex-wrap 换行」的老行为。 */}
+          <div className="flex items-center lg:@container lg:min-w-0 lg:flex-1">
+            <Tabs value={view} onValueChange={(v) => setView(v as ViewFilter)}>
+              <TabsList variant="line" aria-label={t("viewSwitcherLabel")}>
+                <TabsTrigger value="all">{t("filterAll")}</TabsTrigger>
+                <TabsTrigger
+                  value="received"
+                  className="data-active:after:bg-emerald-600 dark:data-active:after:bg-emerald-400"
+                >
+                  {t("filterReceived")}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="sent"
+                  className="data-active:after:bg-amber-600 dark:data-active:after:bg-amber-400"
+                >
+                  {t("filterSent")}
+                </TabsTrigger>
+                {/* 草稿箱（2026-10-06 用户指定）：不算入「全部」——草稿是独立数据源
+                    （webmaild /drafts），不参与合并视图与未读统计 */}
+                <TabsTrigger
+                  value="drafts"
+                  className="hidden max-lg:inline-flex @min-[13rem]:inline-flex"
+                >
+                  {t("filterDrafts")}
+                </TabsTrigger>
+                {/* 垃圾（2026-10-08 用户要求）：同样不算入「全部」；文件夹路径由服务端按
+                    `\Junk` 探测（见 junkFolders），不算进任何方向视图 */}
+                <TabsTrigger
+                  value="junk"
+                  className="hidden max-lg:inline-flex @min-[14rem]:inline-flex"
+                >
+                  {t("filterJunk")}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {/* 溢出下拉：只在 lg 且 tab 条放不下时出现。⚠ 宽 24px（`w-6`）——英文下
+                只剩 3px 余量，用 28px 的 `size-7` 就溢出了。触发器只放图标：带上文字标签
+                （如「草稿」）会把宽度撑到 80px 以上，英文那一档立刻放不下。
+                当前视图若正好是被收起来的那个，chevron 转成前景色 + 菜单项打勾来提示 */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    aria-label={t("moreViews")}
+                    title={t("moreViews")}
+                    aria-haspopup="menu"
+                    className={cn(
+                      "h-8 w-6 shrink-0 px-0 text-muted-foreground max-lg:hidden @min-[14rem]:hidden",
+                      (view === "drafts" || view === "junk") && "text-foreground",
+                    )}
+                  >
+                    <ChevronDownIcon className="size-4" aria-hidden />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start" className="w-auto min-w-28">
+                {(["drafts", "junk"] as const).map((v) => (
+                  <DropdownMenuItem key={v} onClick={() => setView(v)}>
+                    {v === "drafts" ? t("filterDrafts") : t("filterJunk")}
+                    {view === v && <CheckIcon className="ml-auto size-4" aria-hidden />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           {/* 开关的「状态由图标本身承担」（2026-10-05 用户定稿，勿改回纯文字 chip——
               「未读」纯文字读不出开/关；也不用勾选框/开关组件，理由见 MAIL-AGENT.md 4.9）：
               未读 = 蓝点（亮起即开启，与头像未读点同色）；星标 = 星形线框 → 实心。
@@ -871,6 +1217,22 @@ export function MailClient() {
           </ToggleGroup>
         </div>
       </div>
+
+      {/* 多选批量操作条（多选批量）：只在选择模式下出现，位于列表之上、不随列表滚动。
+          没有「退出」按钮（用户指定）——出口是：再点「选择」、点列表空白处、按 Esc */}
+      {selectMode && view !== "drafts" && (
+        <MailBatchBar
+          count={selected.size}
+          total={items.length}
+          busy={batchBusy}
+          allSeen={allSeen}
+          allUnseen={allUnseen}
+          onMarkSeen={() => void batchFlags({ seen: true })}
+          onMarkUnseen={() => void batchFlags({ seen: false })}
+          onDelete={() => setBatchDeleteOpen(true)}
+          onToggleAll={toggleAll}
+        />
+      )}
 
       {/*
        * 列表滚动区（4.12）：宽屏下**始终**填满面板剩余高度——面板高度只由视口决定，
@@ -940,7 +1302,10 @@ export function MailClient() {
                     </span>
                   </button>
                   {/* 行内操作：hover / 聚焦时显现的删除（草稿没有星标 / 已读状态） */}
-                  <span className="absolute top-2 right-3 hidden items-center gap-0.5 rounded-lg border border-border bg-background p-0.5 shadow-sm group-hover/row:flex group-focus-within/row:flex">
+                  <span
+                  data-slot="mail-row-actions"
+                  className="absolute top-2 right-3 hidden items-center gap-0.5 rounded-lg border border-border bg-background p-0.5 shadow-sm group-hover/row:flex group-focus-within/row:flex"
+                >
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -1005,12 +1370,20 @@ export function MailClient() {
                 type="button"
                 data-mail-row
                 aria-current={activeId === encodeMessageId(m.messageId) || undefined}
-                onClick={() => router.push(`/mail/message/${encodeMessageId(m.messageId)}`, mailNavOptions())}
+                aria-pressed={selectMode ? selected.has(m.messageId) : undefined}
+                onClick={() =>
+                  selectMode
+                    ? toggleSelect(m.messageId)
+                    : router.push(`/mail/message/${encodeMessageId(m.messageId)}`, mailNavOptions())
+                }
                 className={cn(
                   "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50 focus-visible:bg-accent/50 focus-visible:outline-none",
                   activeId === encodeMessageId(m.messageId) && "bg-accent/60",
                 )}
               >
+                {/* 选择模式：行首一个复选框（纯视觉，勾选由整行按钮承担——触屏上点整行
+                    比点 16px 的方框可靠得多；`aria-pressed` 在按钮上，读屏与 E2E 用它） */}
+                {selectMode && <MailRowCheckbox checked={selected.has(m.messageId)} />}
                 {/* 左列：发件人头像（每行都有，结构整齐）+ 两个角标，各占一角互不重叠：
                     - 右上 = 未读蓝点（勿改回 bg-primary 灰点、勿改回独立圆点列）
                     - 右下 = 方向角标（2026-10-04 用户定稿）：↙ 收件 / ↗ 发件，双向都标
@@ -1103,8 +1476,13 @@ export function MailClient() {
                 </span>
               </button>
               {/* 行内快捷操作（4.9）：hover / 键盘聚焦时显现（日期同时让位）；
-                  与行主按钮是兄弟节点，避免嵌套交互元素 */}
-              <span className="absolute top-2 right-3 hidden items-center gap-0.5 rounded-lg border border-border bg-background p-0.5 shadow-sm group-hover/row:flex group-focus-within/row:flex">
+                  与行主按钮是兄弟节点，避免嵌套交互元素。
+                  ⚠ 选择模式下整体不渲染（hidden）：此刻整行点击 = 勾选，再摆一排行内动作会打架 */}
+              <span
+                  hidden={selectMode}
+                  data-slot="mail-row-actions"
+                  className="absolute top-2 right-3 hidden items-center gap-0.5 rounded-lg border border-border bg-background p-0.5 shadow-sm group-hover/row:flex group-focus-within/row:flex"
+                >
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -1157,6 +1535,17 @@ export function MailClient() {
         confirmLabel={t("delete")}
         pending={deleting}
         onConfirm={doDelete}
+      />
+
+      {/* 批量删除确认：与单条删除同一套站内确认弹窗（破坏性操作不用原生 confirm） */}
+      <ConfirmDialog
+        open={batchDeleteOpen}
+        onOpenChange={setBatchDeleteOpen}
+        title={t("batchDeleteTitle", { count: selected.size })}
+        description={t("batchDeleteBody")}
+        confirmLabel={t("delete")}
+        pending={batchBusy}
+        onConfirm={() => void batchDelete()}
       />
 
       {/* 草稿删除确认（草稿箱行内删除；破坏性操作不用原生 confirm） */}

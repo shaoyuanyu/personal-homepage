@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import {
   ArrowDownLeftIcon,
@@ -11,9 +11,13 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   DownloadIcon,
+  FileCode2Icon,
+  OctagonAlertIcon,
   ForwardIcon,
   MailOpenIcon,
   MailIcon,
+  MoreHorizontalIcon,
+  PrinterIcon,
   ReplyAllIcon,
   ReplyIcon,
   SendIcon,
@@ -31,13 +35,32 @@ import { mailNavOptions } from "@/lib/mail/nav";
 import { MOTION_SIZE } from "@/components/mail/motion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { buttonVariants } from "@/components/ui/button";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
-import type { MailAddress, MailDetail, MailListItem } from "@/lib/mail/types";
+import { mailErrorText } from "@/lib/mail/error-text";
+import type {
+  MailAddress,
+  MailDetail,
+  MailListItem,
+} from "@/lib/mail/types";
 
 /**
  * 邮件状态变更广播（详情页 → 列表，2026-10-06 用户报障修复）。
@@ -84,6 +107,21 @@ function absDateTime(dateIso: string | null, localeTag: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/**
+ * 操作栏按钮的**可见标签**：外层容器（操作栏，`@container`）窄于 36rem 时整条标签隐藏、
+ * 只留图标（2026-10-07 用户指定：「空间不够就只显示图标不显示文字」）。
+ *
+ * 36rem = 576px 是算出来的：右组带文字时要 540px，加上最左端那个「更多」（28px + gap）
+ * 约 36px —— 容器一旦放不下就退成图标。实测容器宽：1024 视口 ≈ 494px（图标态）、
+ * 1152 视口 ≈ 622px、≥1230 视口 ≈ 637px（文字态）。
+ *
+ * ⚠ 与标签一起给的还有 `aria-label` / `title`——`display:none` 的文本**不进可访问名**，
+ * 没有 aria-label 的按钮在窄窗下会变成「没有名字的按钮」（读屏与 E2E 都会失明）。
+ */
+function ActionLabel({ children }: { children: ReactNode }) {
+  return <span className="hidden @min-[36rem]:inline">{children}</span>;
 }
 
 /** 收件人 / 抄送行（4.9）：超过 2 个折叠为「等 N 人」，点击展开 / 收起 */
@@ -137,6 +175,99 @@ export function MessageView({ messageId }: { messageId: string }) {
   // 都摊着一个输入框；展开后才显示输入框与发送行。状态是组件内存态，切走再回来
   // 回到收起位（有意如此，不持久化）。
   const [quickOpen, setQuickOpen] = useState(false);
+
+  /** 这封信的副本分布在哪些账号（标为垃圾邮件后按账号各催一次同步） */
+  const copyAccountIds = useMemo(
+    () => [...new Set((detail?.copies ?? []).map((c) => c.accountId))],
+    [detail?.copies],
+  );
+
+  /**
+   * 标为垃圾邮件（2026-10-07 用户定稿：详情页只保留这一个整理动作）。
+   *
+   * - 目标给的是**特殊用途记号** `\Junk`，不是路径：各家叫法不同（阿里云「垃圾邮件」、
+   *   Gmail `[Gmail]/Spam`），由 webmaild 在目标账号上探测（RFC 6154 标志位 → 常见名
+   *   回退）。前端因此不必先 LIST 一遍文件夹，也不会因为清单过期而搬错地方——
+   *   这正是原来的「移动」下拉被删掉后仍需保留的能力。
+   * - 一封邮件可能在多个账号各有一份：服务端按账号分别处理（哪个账号没有垃圾文件夹就
+   *   跳过它并记 `skipped`，不阻断其它账号）。
+   * - `affected` = 真正搬动的副本数；0 且无 skipped = 它本来就在垃圾邮件里（不该报失败）。
+   * - 成功后回列表：本地索引已把被搬走的副本按「源位置不存在」处理，目标文件夹的新副本
+   *   要等下一轮同步才被发现——顺手催一次，让手机/网页端尽快看到。
+   */
+  const markJunk = useCallback(async () => {
+    if (!detail) return;
+    setActing(true);
+    try {
+      const res = await fetch("/api/mail/move", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ copies: detail.copies, to: "\\Junk" }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `${res.status}`);
+      const data = (await res.json()) as { affected: number; skipped?: { reason: string }[] };
+      const skipped = data.skipped ?? [];
+      if (skipped.length > 0) {
+        toast.add({ title: t("junkFailed"), description: skipped[0].reason, type: "error" });
+      }
+      if (data.affected === 0) {
+        if (skipped.length === 0) toast.add({ title: t("moveSameFolder") });
+        setActing(false);
+        return;
+      }
+      broadcastItemChange({ messageId, deleted: true });
+      toast.add({ title: t("junkDone"), type: "success" });
+      for (const accountId of copyAccountIds) {
+        void fetch("/api/mail/sync", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ accountId }),
+        }).catch(() => {});
+      }
+      router.push("/mail", mailNavOptions());
+    } catch (err) {
+      toast.add({
+        title: t("junkFailed"),
+        description: err instanceof Error ? err.message : String(err),
+        type: "error",
+      });
+      setActing(false);
+    }
+  }, [detail, messageId, router, t, copyAccountIds]);
+
+  /**
+   * 原始邮件（2026-10-07，取证用）：工具栏「原始邮件」打开对话框，展示**原始头部行**
+   * （按邮件里的顺序与折行）并提供 .eml 下载。普通账号此前完全没有这条路——只有 agent
+   * 只读页能看原始邮件，而排查「这封信到底是谁发的、什么时候到的」必须看头部。
+   */
+  const [rawOpen, setRawOpen] = useState(false);
+  /**
+   * 超阈值邮件（truncated，>50MB）的按需取原文（2026-10-07）：抓取器默认不下载这类邮件
+   * 的原文（红线 12），于是站内点开是**空白**——此前连提示都没有。现在正文区上方给出
+   * 说明 + 一个显式按钮，点了才取一次（webmaild `POST /message/:id/source`）。
+   */
+  const [fetchingSource, setFetchingSource] = useState(false);
+  const fetchSourceNow = useCallback(async () => {
+    setFetchingSource(true);
+    try {
+      const res = await fetch(`/api/mail/message/${encodeURIComponent(messageId)}/source`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `${res.status}`);
+      // 取回后重新拉详情：正文、附件、头部一次到位
+      const detailRes = await fetch(`/api/mail/message/${encodeURIComponent(messageId)}`);
+      if (detailRes.ok) setDetail((await detailRes.json()) as MailDetail);
+      toast.add({ title: t("sourceFetched"), type: "success" });
+    } catch (err) {
+      toast.add({
+        title: t("sourceFailed"),
+        description: err instanceof Error ? err.message : String(err),
+        type: "error",
+      });
+    } finally {
+      setFetchingSource(false);
+    }
+  }, [messageId, t]);
 
   // ⚠ React 19 对 dangerouslySetInnerHTML 按「包装对象引用」比较（!==），
   // 每次渲染新建 {__html} 字面量都会触发 innerHTML 无条件重设，
@@ -345,6 +476,128 @@ export function MessageView({ messageId }: { messageId: string }) {
     setRemoteShown(true);
   }, []);
 
+  /**
+   * 打印前的「深底浅字」就地修正（2026-10-08）。
+   *
+   * 问题：发件人常把整块内容做成深色底 + 白字（页脚、按钮条、活动横幅），屏幕上没问题；
+   * 但浏览器**默认不打印背景色**——到了纸上就是「白纸白字」，整块内容凭空消失
+   * （勾上「背景图形」则相反：白字黑底能印出来，可它跟整页浅色不搭）。
+   *
+   * 做法：遍历正文，只挑**自己画了深色底**的元素（计算样式的 backgroundColor 亮度偏低），
+   * 打印期间就地改成浅底 + 黑字——两种情况都能读：
+   *   · 不打印背景 → 白底黑字（与全文一致）；
+   *   · 打印背景   → 浅灰底黑字（一眼还能看出"这里原本是深色块"）。
+   * ⚠ 只碰"深底"元素：发件人用颜色表达的语义（红色强调、绿色按钮文字）不受影响。
+   * ⚠ 与 `html.dark` 的摘除一样属于**临时改动**，`afterprint` 里逐条还原。
+   */
+  const normalizePrintColors = (): (() => void) => {
+    const host = bodyRef.current;
+    if (!host) return () => {};
+    /** 感知亮度（0=黑 1=白）；非不透明背景返回 null（透明 = 它自己没画底） */
+    const bgLuminance = (el: Element): number | null => {
+      const bg = window.getComputedStyle(el).backgroundColor;
+      const parts = bg.match(/^rgba?\(([^)]+)\)$/)?.[1].split(/[,\s/]+/).filter(Boolean).map(Number);
+      if (!parts || parts.length < 3) return null;
+      const [r, g, b, a = 1] = parts;
+      if (a < 0.5) return null;
+      return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    };
+    const patched: { el: HTMLElement; color: string; bg: string }[] = [];
+    for (const el of [host, ...host.querySelectorAll<HTMLElement>("*")]) {
+      const lum = bgLuminance(el);
+      if (lum === null || lum >= 0.55) continue;
+      patched.push({
+        el,
+        color: el.style.getPropertyValue("color"),
+        bg: el.style.getPropertyValue("background-color"),
+      });
+      el.style.setProperty("color", "#000", "important");
+      el.style.setProperty("background-color", "#f2f2f2", "important");
+    }
+    return () => {
+      for (const { el, color, bg } of patched) {
+        if (color) el.style.setProperty("color", color);
+        else el.style.removeProperty("color");
+        if (bg) el.style.setProperty("background-color", bg);
+        else el.style.removeProperty("background-color");
+      }
+    };
+  };
+
+  /**
+   * 打印（2026-10-08 重做）。
+   *
+   * 打印准备挂在**浏览器事件**上，而不是只挂在「打印」菜单项上：
+   * `beforeprint` / `afterprint` 对 `window.print()` 与用户直接按 Ctrl+P **都会派发**，
+   * 于是「菜单打印」和「快捷键打印」走同一份准备与还原逻辑（此前只有菜单那条路有准备，
+   * Ctrl+P 拿到的是深色主题的「白纸白字」）。
+   *
+   * 准备做三件事：
+   *  1. 摘掉 `html.dark`——深色主题下页面近黑、文字近白，而浏览器默认**不打印背景**，
+   *     印出来就是「白纸白字」（勾上「背景图形」则是一整页黑底，同样不可接受）。
+   *     摘掉标记类后 `:root` 的浅色变量与所有 `dark:` 变体同时失效。
+   *  2. 把 `document.title` 临时换成主题——浏览器打印页眉/页脚与「另存为 PDF」的默认
+   *     文件名都取自它，否则导出的文件一律叫「邮件」。
+   *  3. `normalizePrintColors()`（见上）：把邮件**自己**的深底浅字块就地改成浅底黑字。
+   *
+   * ⚠ 准备/还原都必须**幂等**：`printMessage()` 先手工准备一次（保证快照定型前 DOM 一定
+   *   已经改好），紧接着浏览器又会为这次打印派发 `beforeprint`（第二次是空转）；
+   *   `afterprint` 可能不来（部分环境），故另设 120s 兜底——用「代次」令牌防止**上一次**
+   *   打印的兜底定时器把**下一次**打印的准备状态提前还原。
+   */
+  const printStateRef = useRef<{ gen: number; restore: () => void } | null>(null);
+  const printGenRef = useRef(0);
+
+  const preparePrint = () => {
+    // 详情还没到手（加载/出错态）时没什么可准备的
+    if (printStateRef.current || !detail) return;
+    const root = document.documentElement;
+    const wasDark = root.classList.contains("dark");
+    const prevTitle = document.title;
+    const restoreColors = normalizePrintColors();
+    if (wasDark) root.classList.remove("dark");
+    document.title = detail.subject || t("noSubject");
+    printStateRef.current = {
+      gen: ++printGenRef.current,
+      restore: () => {
+        restoreColors();
+        if (wasDark) root.classList.add("dark");
+        document.title = prevTitle;
+      },
+    };
+  };
+
+  const restorePrint = () => {
+    const state = printStateRef.current;
+    if (!state) return;
+    printStateRef.current = null;
+    state.restore();
+  };
+
+  const printMessage = () => {
+    preparePrint();
+    window.print();
+    // 兜底：个别环境不派发 afterprint（打印快照在对话框打开时就已定格，晚还原无影响）
+    const gen = printGenRef.current;
+    window.setTimeout(() => {
+      if (printGenRef.current === gen) restorePrint();
+    }, 120_000);
+  };
+
+  // 监听器只注册一次；具体行为从 ref 里取最新闭包（主题/主题词变了也不会用到旧值）
+  const printHandlersRef = useRef({ prepare: () => {}, restore: () => {} });
+  printHandlersRef.current = { prepare: preparePrint, restore: restorePrint };
+  useEffect(() => {
+    const onBefore = () => printHandlersRef.current.prepare();
+    const onAfter = () => printHandlersRef.current.restore();
+    window.addEventListener("beforeprint", onBefore);
+    window.addEventListener("afterprint", onAfter);
+    return () => {
+      window.removeEventListener("beforeprint", onBefore);
+      window.removeEventListener("afterprint", onAfter);
+    };
+  }, []);
+
   if (error) {
     return (
       <div className="flex flex-col items-start gap-4">
@@ -358,7 +611,7 @@ export function MessageView({ messageId }: { messageId: string }) {
         </Link>
         <p className="flex items-center gap-2 text-sm text-destructive">
           <CircleAlertIcon className="size-4" aria-hidden />
-          {t("loadFailed")}：{error}
+          {mailErrorText(error, t)}
         </p>
       </div>
     );
@@ -377,14 +630,57 @@ export function MessageView({ messageId }: { messageId: string }) {
   // 发件邮件隐藏「回复 / 回复全部 / 快速回复 / 存入通讯录」（这是功能侧的区分），见下方各处。
   const sent = isSentItem(detail.copies);
 
+  // 两个状态化动作的文案：可见标签与 aria-label / title 共用同一个字符串
+  // （窄容器下可见标签被隐藏，名字只剩 aria-label——见 ActionLabel）
+  const seenLabel = detail.seen ? t("markUnread") : t("markRead");
+  const flagLabel = detail.flagged ? t("unflag") : t("flag");
+
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5 lg:min-h-0 lg:flex-1">
       {/* 操作栏
           ⚠ 「返回列表」仅窄屏需要：宽屏下左栏就是列表（MAIL-AGENT.md 4.12）。
           ⚠ 按钮层级（2026-10 用户指定，勿改回）：「回复」是本页最重要的动作——
           唯一带边框、且放在**最右边**（主操作位）；「删除」去边框退为安静动作
-          （有确认弹窗兜底，不需要边框强调）；其余全部 ghost。 */}
-      <div className="flex flex-wrap items-center gap-2" data-slot="message-actions">
+          （有确认弹窗兜底，不需要边框强调）；其余全部 ghost。
+          ⚠ **这一行只放「对信的动作」、且必须一行放下（2026-10-07 用户验收反馈）**：
+          低频的「原始邮件 / 打印」收进最左端的「更多」菜单（见下）、「回复全部」并进
+          「回复」的下拉（见行末）。再往这里加按钮前先量宽度——右组可用宽只有 ~620px
+          （容器 max-w-6xl 下的详情栏），加一个四字按钮就把「转发 / 回复」顶到第二行。 */}
+      <div className="@container flex flex-wrap items-center gap-2" data-slot="message-actions" data-print="hide">
+        {/* 更多（原始邮件 / 打印）：**第一行最左**（2026-10-07 用户指定——放主题行那种
+            「别的行」不合格）。放最左有个额外好处：宽屏下这一端本来是空的，不吃右组的
+            宽度预算 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("more")}
+                title={t("more")}
+                data-print="hide"
+                className="shrink-0"
+              >
+                <MoreHorizontalIcon />
+              </Button>
+            }
+          />
+          {/* ⚠ 菜单宽度要显式给：DropdownMenuContent 缺省是 w-(--anchor-width)，
+              锚点是个 28px 的图标按钮，不给 min-w 菜单会窄成一条 */}
+          <DropdownMenuContent align="start" className="w-auto min-w-36">
+            {/* 原始邮件（2026-10-07）：原始头部 + .eml 下载——普通账号的取证入口 */}
+            <DropdownMenuItem onClick={() => setRawOpen(true)}>
+              <FileCode2Icon />
+              {t("rawMessage")}
+            </DropdownMenuItem>
+            {/* 打印：printMessage()（浅色快照 + 临时换标题）+ globals.css 的打印规则
+                （只留邮件本体，顶栏/页脚/左栏列表/工具栏/底栏/快速回复全部隐藏） */}
+            <DropdownMenuItem onClick={printMessage}>
+              <PrinterIcon />
+              {t("print")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Link
           href="/mail"
           data-slot="button"
@@ -422,70 +718,130 @@ export function MessageView({ messageId }: { messageId: string }) {
           </span>
         )}
         {/* ⚠ 内组也要 flex-wrap + justify-end：窄屏折行后仍右对齐，
-            不折行会把 7 个按钮挤出视口造成横向滚动 */}
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" disabled={acting} onClick={() => postFlags({ seen: !detail.seen })}>
+            不折行会把按钮挤出视口造成横向滚动
+            ⚠ 每个动作都带 `aria-label` + `title` = 它的文案：容器窄到 36rem 以下时
+            可见标签被 ActionLabel 隐藏、只剩图标，名字就只能靠 aria-label（见 ActionLabel） */}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={acting}
+            aria-label={seenLabel}
+            title={seenLabel}
+            onClick={() => postFlags({ seen: !detail.seen })}
+          >
             {detail.seen ? <MailOpenIcon data-icon="default" /> : <MailIcon data-icon="default" />}
-            {detail.seen ? t("markUnread") : t("markRead")}
+            <ActionLabel>{seenLabel}</ActionLabel>
+          </Button>
+          {/* 标为垃圾（2026-10-07 用户定稿）：文件夹视图删除后，菜单式「移动」等于盲选
+              （搬过去再也看不见），只留这一个语义明确的整理动作；目标文件夹由服务端自己
+              在账号里探测（见 markJunk 注释），前端不再需要文件夹清单。
+              ⚠ 文案 2026-10-07 用户缩写为「标为垃圾」（原「标为垃圾邮件」）——
+              主栏要在一行内放下，见同文件顶部与 MAIL-AGENT.md 4.9 的动作分级。
+              ⚠ 图标 2026-10-07 用户反馈后由 `FolderInputIcon` 换成 `OctagonAlertIcon`：
+              文件夹 + 入箭头读起来就是「移进某个文件夹」（被删掉的「移动」那套语义），
+              而八边形 + 感叹号在邮件客户端里就是「垃圾邮件」（Gmail 的举报垃圾邮件同形）。
+              候选对比图见 .acceptance/12-icon-options.png 与 MAIL-AGENT.md 4.9 */}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={acting}
+            aria-label={t("moveToJunk")}
+            title={t("moveToJunk")}
+            onClick={() => void markJunk()}
+          >
+            <OctagonAlertIcon data-icon="default" />
+            <ActionLabel>{t("moveToJunk")}</ActionLabel>
           </Button>
           <Button
             variant="ghost"
             size="sm"
             disabled={acting}
             aria-pressed={detail.flagged}
+            aria-label={flagLabel}
+            title={flagLabel}
             onClick={() => postFlags({ flagged: !detail.flagged })}
           >
             <StarIcon className={cn("size-4", detail.flagged && "fill-foreground")} data-icon={detail.flagged ? undefined : "default"} />
-            {detail.flagged ? t("unflag") : t("flag")}
+            <ActionLabel>{flagLabel}</ActionLabel>
           </Button>
           <Button
             variant="ghost"
             size="sm"
             disabled={acting}
+            aria-label={t("delete")}
+            title={t("delete")}
             className="hover:text-destructive"
             onClick={() => setConfirmDelete(true)}
           >
             <Trash2Icon data-icon="default" />
-            {t("delete")}
+            <ActionLabel>{t("delete")}</ActionLabel>
           </Button>
           <Link
             href={`/mail/compose?forward=${encodeURIComponent(messageId)}`}
             data-slot="button"
+            aria-label={t("forward")}
+            title={t("forward")}
             className={buttonVariants({ variant: "ghost", size: "sm" })}
           >
             <ForwardIcon data-icon="default" />
-            {t("forward")}
+            <ActionLabel>{t("forward")}</ActionLabel>
           </Link>
           {/* 回复 / 回复全部：**仅收件邮件需要**——对已经发出的邮件回复自己没有意义
               （要补内容用「转发」），这是收件/发件的功能区分（2026-10-04 用户反馈）。
-              ⚠ 「回复全部」必须紧挨「回复」（用户 2026-10-04 指定）且在其左侧；
-              「回复」保持最右的主操作位（小范围里唯一带边框的那一个，2026-10 用户指定）。 */}
+              ⚠ **2026-10-07 用户验收后合并成一个「分裂按钮」**（原先是并排两个 ghost
+              按钮，共 166px）：左边「回复」= 主操作（一次点击直达），右边一个 28px 的
+              caret = 下拉，菜单里放「回复全部」。合并后从 166px 降到 ~96px。
+              为什么不用「点开菜单再选」的单按钮：回复是本页最频繁的动作，多一次点击
+              不值当；这正是 Gmail / Apple Mail 的分裂按钮形态。
+              ⚠ **样式 = 「写邮件」那一个（2026-10-07 用户指定：「回复」与「写邮件」同等重要）**：
+              `buttonVariants({ size: "sm" })` 不带 variant = 默认的实心 primary，与
+              `mail-client.tsx` 的写邮件按钮同一个调用形态（此前是 outline）。
+              ⚠ **形态用官方 `ButtonGroup`（vendored `components/ui/button-group.tsx`）**，
+              与 shadcn 官方的「With Dropdown」示例同构：`ButtonGroup` 内放主 `Button` +
+              一个 `DropdownMenuTrigger`。圆角合并、`border-l-0`、焦点环 `z-10` 全部由
+              ButtonGroup 自己的 CSS 负责（`[&>[data-slot]~[data-slot]]:rounded-l-none
+              border-l-0`、最后一个 `rounded-r-lg!`）——**不要再手写圆角与边框的补丁**：
+              2026-10-07 第一版手写这些补丁时漏了两侧朝内的透明边框，`bg-clip-padding` 下
+              那 1px 不画背景 → 实心黑块中间出现一条 2px 亮的竖缝，被用户当场打回（「太丑了」）。
+              ⚠ 唯一额外补的一条是 `[&>*:first-child]:border-r-0`：官方 CSS 只清后续项的
+              `border-l`，而首项那条朝内的透明右边框同样会漏出底色（实心填充才看得出来）。 */}
           {!sent && (
-            <>
-              <Link
-                href={`/mail/compose?replyTo=${encodeURIComponent(messageId)}&all=1`}
-                data-slot="button"
-                className={buttonVariants({ variant: "ghost", size: "sm" })}
-              >
-                <ReplyAllIcon data-icon="default" />
-                {t("replyAll")}
-              </Link>
-              {/*
-               * 回复（本页最重要的动作，放在最右边的主操作位，是小范围里**有边框**的那一个）：
-               * 它平时是裸 buttonVariants()，而裸字符串不经 cn 归并——基础类的
-               * border-transparent 会盖掉 outline 的 border-border，所以想要边框只能
-               * 显式补一个 border-border（勿改成 <Button render={<Link/>}>，会触发
-               * Base UI 的 nativeButton 警告，见 CLAUDE.md 入口渲染那条）。
-               */}
+            // `[&>*:first-child]:border-r-0` 见上条注释：官方 CSS 只清后续项的 border-l
+            <ButtonGroup className="[&>*:first-child]:border-r-0">
               <Link
                 href={`/mail/compose?replyTo=${encodeURIComponent(messageId)}`}
                 data-slot="button"
-                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "border-border")}
+                aria-label={t("reply")}
+                title={t("reply")}
+                className={buttonVariants({ size: "sm" })}
               >
                 <ReplyIcon data-icon="default" />
-                {t("reply")}
+                <ActionLabel>{t("reply")}</ActionLabel>
               </Link>
-            </>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button size="icon-sm" aria-label={t("replyAll")} title={t("replyAll")}>
+                      <ChevronDownIcon />
+                    </Button>
+                  }
+                />
+                {/* 菜单项用 router.push 而不是 <Link>：Base UI 的 Menu.Item 渲染成
+                    role="menuitem"，塞个 <a> 进去会让「菜单项」与「链接」两套语义打架
+                    （站内其它菜单项也都是 onClick） */}
+                <DropdownMenuContent align="end" className="w-auto min-w-36">
+                  <DropdownMenuItem
+                    onClick={() =>
+                      router.push(`/mail/compose?replyTo=${encodeURIComponent(messageId)}&all=1`)
+                    }
+                  >
+                    <ReplyAllIcon />
+                    {t("replyAll")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </ButtonGroup>
           )}
         </div>
       </div>
@@ -497,7 +853,9 @@ export function MessageView({ messageId }: { messageId: string }) {
           {detail.subject || t("noSubject")}
         </h2>
         <div className="flex items-start gap-3">
-          <span className="relative mt-0.5 shrink-0">
+          {/* data-slot="mail-avatar"：打印规则按它把头像连同方向角标一起去掉——
+              纸上没有交互也没有色彩语境，一个首字母圆圈只是噪音 */}
+          <span data-slot="mail-avatar" className="relative mt-0.5 shrink-0">
             <Avatar size="lg">
               <AvatarFallback>
                 {(detail.fromName || detail.fromAddr || "?").trim().charAt(0).toUpperCase()}
@@ -529,12 +887,14 @@ export function MessageView({ messageId }: { messageId: string }) {
                 {detail.fromAddr && !sent && (
                   detail.fromContactId ? (
                     <UserCheckIcon
+                      data-print="hide"
                       className="ml-1.5 inline-block size-3.5 align-[-2px] text-muted-foreground"
                       aria-label={t("contacts.senderSaved")}
                     />
                   ) : (
                     <button
                       type="button"
+                      data-print="hide"
                       className="ml-1.5 inline-flex align-[-2px] text-muted-foreground transition-colors hover:text-foreground"
                       aria-label={t("contacts.addSender")}
                       title={t("contacts.addSender")}
@@ -555,26 +915,66 @@ export function MessageView({ messageId }: { messageId: string }) {
         </div>
       </header>
 
-      {/* 远程内容提示（4.4：默认剥除，显式点击逐封加载一次） */}
+      {/* 远程内容提示（4.4：默认剥除，显式点击逐封加载一次）
+          ⚠ 2026-10-08：这一条**要印到纸上**——打印规则会隐藏被拦截的图片本身
+          （纸上留虚线空框只是一个个"原本有图"的空洞），读者的知情权靠这行文字。
+          屏幕上那句（含"防止被追踪已读"的原因）与纸面上那句（说明图片不在打印件里）
+          是两条文案：入口「显示图片」在纸上没有意义，用 `data-print="hide"` 去掉。 */}
       {detail.remoteBlocked > 0 && !remoteShown && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
-          <span>{t("remoteBlocked", { count: detail.remoteBlocked })}</span>
-          <Button variant="outline" size="sm" onClick={showRemoteImages}>
+        <div
+          data-slot="mail-remote-notice"
+          className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground"
+        >
+          <span className="print:hidden">{t("remoteBlocked", { count: detail.remoteBlocked })}</span>
+          <span className="hidden print:inline">
+            {t("remoteBlockedPrint", { count: detail.remoteBlocked })}
+          </span>
+          <Button data-print="hide" variant="outline" size="sm" onClick={showRemoteImages}>
             {t("showRemote")}
           </Button>
         </div>
       )}
 
-      {/* 正文 */}
+      {/* 正文
+          ⚠ 宽屏下**正文是这一列里唯一可伸缩的项**（2026-10-08 用户反馈：展开「快速回复」
+          后整个邮件窗口变成可滚动，正文却不缩）。机制：本列 `lg:min-h-0 lg:flex-1` 撑满右栏，
+          正文给 `lg:min-h-[6rem] lg:overflow-y-auto` —— 其余兄弟节点（头部 / 附件 / 会话 /
+          快速回复）的 `min-height:auto` 让它们**不会**被压到内容以下，于是需要让出的高度
+          全部由正文承担，正文内部滚动、外层不滚。`min-h-[6rem]`（96px）是下限：真到 96px
+          还不够（附件很多 + 会话很长 + 快速回复展开）时，才退回外层滚动。
+          ⚠ 下限不能取大：实测一封普通邮件（正文 236px、面板 550px）展开快速回复需要正文缩到
+          112px，取 160px 时外层就还会多出 16px 滚动——正是用户报的那个毛病。 */}
+      {/* 超阈值邮件：正文与附件都没有（只入库了索引）。给出说明与唯一的补救入口，
+          否则这一页看起来就是「一封空邮件」（2026-10-07） */}
+      {detail.truncated && (
+        <div
+          data-slot="mail-truncated-notice"
+          className="flex flex-col items-start gap-2 rounded-xl border border-amber-600/40 bg-amber-600/5 p-4 text-sm dark:border-amber-400/40 dark:bg-amber-400/10"
+        >
+          <p className="flex items-center gap-2 font-medium">
+            <CircleAlertIcon className="size-4 text-amber-600 dark:text-amber-400" aria-hidden />
+            {t("truncatedTitle")}
+          </p>
+          <p className="text-muted-foreground">{t("truncatedHint")}</p>
+          <Button data-print="hide" size="sm" variant="outline" disabled={fetchingSource} onClick={() => void fetchSourceNow()}>
+            {fetchingSource ? <Spinner /> : <DownloadIcon data-icon="default" />}
+            {fetchingSource ? t("sourceFetching") : t("sourceFetch")}
+          </Button>
+        </div>
+      )}
+
       {detail.html ? (
         <div
           ref={bodyRef}
-          className="mail-body overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-relaxed"
+          className="mail-body overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-relaxed lg:min-h-[6rem] lg:overflow-y-auto"
           // webmaild 已做过 sanitize + 远程资源剥除（4.4）
           dangerouslySetInnerHTML={bodyInnerHtml}
         />
       ) : (
-        <div className="whitespace-pre-wrap rounded-xl border border-border p-4 text-sm leading-relaxed">
+        <div
+          data-slot="mail-text-body"
+          className="whitespace-pre-wrap rounded-xl border border-border p-4 text-sm leading-relaxed lg:min-h-[6rem] lg:overflow-y-auto"
+        >
           {detail.text || detail.snippet}
         </div>
       )}
@@ -736,6 +1136,37 @@ export function MessageView({ messageId }: { messageId: string }) {
         pending={acting}
         onConfirm={doDelete}
       />
+
+      {/* 原始邮件（2026-10-07）：头部按原文顺序与折行原样展示；可下载 .eml 原件 */}
+      <Dialog open={rawOpen} onOpenChange={setRawOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t("rawMessage")}</DialogTitle>
+            <DialogDescription>{t("rawMessageHint")}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <pre
+              data-slot="mail-raw-headers"
+              className="max-h-80 overflow-auto rounded-xl border border-border bg-muted/40 p-3 text-xs leading-relaxed break-all whitespace-pre-wrap"
+            >
+              {(detail.headers ?? []).map((h) => h.line).join("\n")}
+            </pre>
+            {detail.truncated ? (
+              <p className="text-sm text-muted-foreground">{t("rawMessageTruncated")}</p>
+            ) : (
+              <a
+                href={`/api/mail/message/${encodeURIComponent(messageId)}/source`}
+                download
+                data-slot="button"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "self-start border-border")}
+              >
+                <DownloadIcon data-icon="default" />
+                {t("downloadEml")}
+              </a>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
