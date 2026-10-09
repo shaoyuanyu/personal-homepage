@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import {
   ArrowDownLeftIcon,
@@ -32,7 +32,7 @@ import { Link, useRouter } from "@/lib/i18n/navigation";
 import { encodeMessageId, MAIL_LIST_ORDER_KEY } from "@/lib/mail/id";
 import { isSentItem } from "@/lib/mail/kind";
 import { mailNavOptions } from "@/lib/mail/nav";
-import { MOTION_SIZE } from "@/components/mail/motion";
+import { MOTION_SIZE, TOOLBAR_MS } from "@/components/mail/motion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -61,6 +61,12 @@ import type {
   MailDetail,
   MailListItem,
 } from "@/lib/mail/types";
+
+/**
+ * 会话列表「一行」的高度下限（px）：行是 `py-2` × 2 + `text-sm` 行高 20 + 1px 分隔线 ≈ 37。
+ * 被压缩到不足一行时宁可整块折叠——露出半行文字的滚动条既看不清也点不准（见自动折叠）。
+ */
+const THREAD_ROW_MIN_PX = 36;
 
 /**
  * 邮件状态变更广播（详情页 → 列表，2026-10-06 用户报障修复）。
@@ -175,6 +181,37 @@ export function MessageView({ messageId }: { messageId: string }) {
   // 都摊着一个输入框；展开后才显示输入框与发送行。状态是组件内存态，切走再回来
   // 回到收起位（有意如此，不持久化）。
   const [quickOpen, setQuickOpen] = useState(false);
+  /**
+   * 会话折叠 + 内部滚动（2026-10-09 用户要求）。
+   *
+   * 用户给的三条优先级（正文永远优先）：
+   *   ① 正文装不下时，**先折叠「会话」**，而不是让正文变成滚动区；
+   *   ② 用户主动展开会话后，若正文空间不够，**先让会话自己滚**（封顶、内部滚动）；
+   *   ③ 连会话都压到下限还不够，才让正文也滚。
+   *
+   * 三条各自落在哪：
+   *   ① = 下面这个 `useLayoutEffect`：量到正文要滚（`scrollHeight > clientHeight`）
+   *       就把会话收起来（一帧都不闪，故用 layout effect）；列表被压得不足一行时
+   *       同样收起来（半行文字的滚动条不如直接折叠干净）。
+   *   ② = `lg:min-h-[7.5rem]`（仅「用户亲手展开」时挂）：给会话一个 ~3 行的下限，
+   *       压缩到 7.5rem 就停下、列表自己滚（`overflow-y-auto`）；
+   *   ③ = 会话的下限被占满后，剩余缺口才轮到正文（`lg:min-h-[6rem]` + 自身滚动），
+   *       正文也到底了才退回外层（右栏 `overflow-y-auto`）滚动。
+   *
+   * ⚠ **「谁先让位」是靠 flex 收缩权重实现的，不是靠测量**：会话 `lg:shrink-[1000]`、
+   *   正文保持默认的 1——缺口先被会话按权重吃掉（收到自己的 min-height 就冻结），
+   *   冻结之后剩下的缺口才轮到正文。这样"让位"是连续的（会话高度 = 剩余空间），
+   *   不依赖任何尺寸缓存，也不会在窗口缩放时算出过期结论。
+   *   自动折叠只量一件事：正文最终是不是真的装不下——这正是用户的原话。
+   *
+   * ⚠ 自动折叠**只收不放**（一封信只判断一次，且用户碰过开关后完全不再插手）：
+   *   若它还会自动展开，就与"用户手动展开 → 正文变挤 → 又自动收起"形成来回抖动。
+   *   换一封信时回到默认展开（见下面的 thread 请求 effect）。
+   */
+  const [threadOpen, setThreadOpen] = useState(true);
+  /** 用户是否亲手拨过会话开关；拨过之后自动折叠不再插手（用户意志优先） */
+  const [threadTouched, setThreadTouched] = useState(false);
+  const threadListRef = useRef<HTMLUListElement>(null);
 
   /** 这封信的副本分布在哪些账号（标为垃圾邮件后按账号各催一次同步） */
   const copyAccountIds = useMemo(
@@ -242,7 +279,8 @@ export function MessageView({ messageId }: { messageId: string }) {
    */
   const [rawOpen, setRawOpen] = useState(false);
   /**
-   * 超阈值邮件（truncated，>50MB）的按需取原文（2026-10-07）：抓取器默认不下载这类邮件
+   * 超阈值邮件（truncated，>MAIL_AGENT_MAX_SOURCE_BYTES，2026-10-08 起缺省 1MB）的按需取原文：
+   * 抓取器默认不下载这类邮件的原文（正文与附件都留到点开时再取）
    * 的原文（红线 12），于是站内点开是**空白**——此前连提示都没有。现在正文区上方给出
    * 说明 + 一个显式按钮，点了才取一次（webmaild `POST /message/:id/source`）。
    */
@@ -315,6 +353,10 @@ export function MessageView({ messageId }: { messageId: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    // 换一封信：会话回到「默认展开」，由下面的自动折叠按这封信的空间重新判断
+    // （用户上一次拨动开关的意志不跨邮件延续）
+    setThreadOpen(true);
+    setThreadTouched(false);
     fetch(`/api/mail/message/${encodeURIComponent(messageId)}/thread`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { items: MailListItem[] } | null) => {
@@ -325,6 +367,58 @@ export function MessageView({ messageId }: { messageId: string }) {
       cancelled = true;
     };
   }, [messageId]);
+
+  /**
+   * 自动折叠「会话」（优先级 ①，见 threadOpen 的说明）。
+   *
+   * 判据就是用户的原话：**正文自己装不下**（`scrollHeight > clientHeight`，即正文
+   * 正在滚动）→ 把会话收起来让位。外加一条：列表被压得不足一行时同样收起来。
+   *
+   * ⚠ 用 `useLayoutEffect`：测量必须在**绘制前**完成，否则用户会看见"正文先被挤扁、
+   *   一帧后才折叠"的闪动。`setThreadOpen(false)` 只在真的需要时调用（值不变时
+   *   React 直接跳过），不存在"收起 → 变宽 → 又展开"的循环。
+   * ⚠ 门控 `detail.messageId !== messageId`：换邮件时详情是异步到的，那一刻 DOM 里
+   *   可能还是上一封的正文/会话——量错了就会把新邮件的会话误折叠，而自动折叠只收不放，
+   *   错了就再也回不来。
+   */
+  useLayoutEffect(() => {
+    if (threadTouched || !detail || detail.messageId !== messageId) return;
+    // 窄屏没有"右栏高度"这回事：整页是文档流，正文本来就不会被挤成滚动区
+    if (!window.matchMedia("(min-width: 64rem)").matches) return;
+    const decide = () => {
+      const body = bodyRef.current;
+      const list = threadListRef.current;
+      const bodyOverflows = body ? body.scrollHeight - body.clientHeight > 1 : false;
+      const listSqueezed = list ? list.clientHeight < THREAD_ROW_MIN_PX : false;
+      if (bodyOverflows || listSqueezed) setThreadOpen(false);
+    };
+    decide();
+    /**
+     * ⚠ **必须再量一次**（动效落地后）：让出空间的常常是「快速回复」的 grid 轨道动画，
+     *   而动画开始时那一刻量到的还是展开前的布局（正文没被挤、列表也没被压）——
+     *   只量第一次会漏判，留下"开关说已展开、列表只剩两像素"的夹缝状态。
+     *   用户在这 360ms 内自己拨了开关 → 依赖变化触发 cleanup，定时器被清掉（不会打架）。
+     */
+    const timer = window.setTimeout(decide, TOOLBAR_MS + 60);
+    /**
+     * ⚠ **窗口尺寸变化也要重判**（2026-10-09 补）：本体只靠 deps 触发，而拉小窗口不改任何
+     *   deps——于是"正文已经在滚、会话却还说自己展开着"（列表被 flex 压成 0，开关是死的）。
+     *   只监听 `resize` 而不上 `ResizeObserver`：观察正文盒子会在回调里改布局，浏览器会报
+     *   「ResizeObserver loop」错误事件，而 E2E 有"整页加载零 console 错误"的守卫。
+     *   仍然只收不放：把窗口拉回去不会自动展开（那会与"用户拨过开关"的语义打架）。
+     */
+    window.addEventListener("resize", decide);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", decide);
+    };
+  }, [detail, thread, quickOpen, threadTouched, messageId]);
+
+  /** 会话开关：用户拨过之后自动折叠不再插手，且展开时给会话预留高度（优先级 ②） */
+  const toggleThread = useCallback(() => {
+    setThreadTouched(true);
+    setThreadOpen((v) => !v);
+  }, []);
 
   useEffect(() => {
     try {
@@ -944,9 +1038,19 @@ export function MessageView({ messageId }: { messageId: string }) {
           还不够（附件很多 + 会话很长 + 快速回复展开）时，才退回外层滚动。
           ⚠ 下限不能取大：实测一封普通邮件（正文 236px、面板 550px）展开快速回复需要正文缩到
           112px，取 160px 时外层就还会多出 16px 滚动——正是用户报的那个毛病。 */}
-      {/* 超阈值邮件：正文与附件都没有（只入库了索引）。给出说明与唯一的补救入口，
-          否则这一页看起来就是「一封空邮件」（2026-10-07） */}
-      {detail.truncated && (
+      {/* 精简原文（附件门控，2026-10-08）：正文与内嵌图都在，只是附件没下载——
+          一句话说明 + 取回入口（点单个附件也会各取各的） */}
+      {detail.partial && (
+        <p
+          data-slot="mail-partial-notice"
+          className="rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+        >
+          {t("partialHint")}
+        </p>
+      )}
+      {/* 只入库了索引（超大邮件 / 结构解析失败的兜底）：正文与附件都没有。给出说明与
+          唯一的补救入口，否则这一页看起来就是「一封空邮件」（2026-10-07） */}
+      {detail.truncated && !detail.partial && (
         <div
           data-slot="mail-truncated-notice"
           className="flex flex-col items-start gap-2 rounded-xl border border-amber-600/40 bg-amber-600/5 p-4 text-sm dark:border-amber-400/40 dark:bg-amber-400/10"
@@ -972,6 +1076,7 @@ export function MessageView({ messageId }: { messageId: string }) {
         />
       ) : (
         <div
+          ref={bodyRef}
           data-slot="mail-text-body"
           className="whitespace-pre-wrap rounded-xl border border-border p-4 text-sm leading-relaxed lg:min-h-[6rem] lg:overflow-y-auto"
         >
@@ -994,11 +1099,21 @@ export function MessageView({ messageId }: { messageId: string }) {
                     href={`/api/mail/message/${encodeURIComponent(messageId)}/attachment/${a.index}`}
                     download={a.filename}
                     data-slot="button"
+                    // 推迟的附件：点下去服务端会先向邮箱取这一个部件（几秒），再回传
+                    title={a.deferred ? t("attachmentDeferred") : undefined}
                     className={buttonVariants({ variant: "outline", size: "sm" })}
                   >
                     <DownloadIcon data-icon="default" />
                     {a.filename}
                     <span className="text-xs text-muted-foreground tabular-nums">{fmtSize(a.size)}</span>
+                    {a.deferred && (
+                      <span
+                        data-slot="attachment-deferred"
+                        className="text-xs text-muted-foreground"
+                      >
+                        {t("attachmentDeferred")}
+                      </span>
+                    )}
                   </a>
                 </li>
               ))}
@@ -1006,44 +1121,107 @@ export function MessageView({ messageId }: { messageId: string }) {
         </section>
       )}
 
-      {/* 会话（4.7）：同一会话的其它邮件，按时间升序；当前封高亮不跳转 */}
+      {/* 会话（4.7）：同一会话的其它邮件，按时间升序；当前封高亮不跳转。
+          可折叠 + 可滚动（2026-10-09 用户要求）——优先级规则与实现见 `threadOpen` 的注释。
+          ⚠ `data-slot="mail-thread"` 挂在**外层 section** 上（此前挂在里面的 ul）：
+            打印规则按它整块隐藏（纸面上「会话」只是导航、没有内容），折叠态也由这个
+            section 承载，E2E 的 `data-open` 与开关都在这一层读。
+          ⚠ 折叠用 grid 轨道 1fr↔0fr（与「快速回复」同一套做法与曲线），收起时内容
+            保持挂载但 `inert`：列表里没有输入态要保全，但这样键盘焦点不会落进
+            一个高度为 0 的滚动容器里。 */}
       {thread && thread.length > 1 && (
-        <section className="flex flex-col gap-2">
+        <section
+          data-slot="mail-thread"
+          data-open={threadOpen ? "true" : "false"}
+          className={cn(
+            // 让位顺序：会话先被压缩（shrink 权重 1000 vs 正文 1），压到 min-height 冻结，
+            // 之后剩下的缺口才轮到正文。`overflow-hidden` 保证压缩时列表被裁而不是顶开。
+            "flex flex-col gap-2 lg:shrink-[1000] lg:overflow-hidden",
+            // min-height = 折叠态的「一行标题」：压缩到底就只剩标题行（= 视觉上的折叠），
+            // 且标题不会被 overflow-hidden 裁掉。用户亲手展开时抬到 7.5rem（≈3 行），
+            // 让「我要看会话」这个意志真的看得见——代价是正文让出这些高度（优先级 ②）。
+            threadOpen && threadTouched ? "lg:min-h-[7.5rem]" : "lg:min-h-7",
+          )}
+        >
           <h2 className="text-sm font-medium text-muted-foreground">
-            {t("threadTitle", { count: thread.length })}
+            <button
+              type="button"
+              onClick={toggleThread}
+              aria-expanded={threadOpen}
+              aria-controls="mail-thread-panel"
+              data-slot="mail-thread-toggle"
+              className="group/thread flex w-full items-center justify-between gap-2 rounded-md text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <span className="truncate">{t("threadTitle", { count: thread.length })}</span>
+              <ChevronDownIcon
+                className={cn(
+                  "size-4 shrink-0 transition-[color,transform] group-hover/thread:text-foreground",
+                  MOTION_SIZE,
+                  threadOpen && "rotate-180",
+                )}
+                aria-hidden
+              />
+            </button>
           </h2>
-          <ul className="divide-y divide-border rounded-xl border border-border" data-slot="mail-thread">
-            {thread.map((m) => {
-              const current = m.messageId === messageId;
-              return (
-                <li key={m.messageId}>
-                  <button
-                    type="button"
-                    disabled={current}
-                    aria-current={current || undefined}
-                    onClick={() => router.push(`/mail/message/${encodeMessageId(m.messageId)}`, mailNavOptions())}
-                    className={cn(
-                      "flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm transition-colors",
-                      current ? "bg-accent/50" : "hover:bg-accent/50",
-                    )}
-                  >
-                    <span className={cn("shrink-0", !m.seen && !current && "font-semibold")}>
-                      {m.fromName || m.fromAddr}
-                    </span>
-                    {current && (
-                      <Badge variant="outline" className="shrink-0">
-                        {t("threadThis")}
-                      </Badge>
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">{m.snippet}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                      {absDateTime(m.date, t("localeTag"))}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div
+            id="mail-thread-panel"
+            className={cn(
+              "grid lg:min-h-0",
+              // 轨道动画与「快速回复」同规格（MOTION_SIZE = 300ms ease-out）
+              "transition-[grid-template-rows]",
+              MOTION_SIZE,
+              threadOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+            )}
+            inert={threadOpen ? undefined : true}
+          >
+            {/* `-mx-1 px-1`：滚动容器的裁剪边界就在列表左右边框上，行按钮的聚焦光圈
+                会往左右各扩 3px 而被剪掉（与「快速回复」同一个坑）。负外边距把裁剪框
+                向外扩 4px、内边距再放回原位——列表位置与宽度分毫不动 */}
+            <div className="-mx-1 min-h-0 overflow-hidden px-1">
+              <ul
+                ref={threadListRef}
+                data-slot="mail-thread-list"
+                // 列表自己滚（优先级 ②）：高度由外层 flex 缺口决定，`max-h-full` 只做封顶，
+                // 超过就内部滚动而不是把正文继续顶小。`lg:` 前缀与正文同一处理——
+                // 窄屏是整页文档流，那里不需要嵌套滚动区。
+                className="divide-y divide-border rounded-xl border border-border lg:max-h-full lg:overflow-y-auto"
+              >
+                {thread.map((m) => {
+                  const current = m.messageId === messageId;
+                  return (
+                    <li key={m.messageId}>
+                      <button
+                        type="button"
+                        disabled={current}
+                        aria-current={current || undefined}
+                        onClick={() => router.push(`/mail/message/${encodeMessageId(m.messageId)}`, mailNavOptions())}
+                        className={cn(
+                          // 聚焦反馈用底色而不是描边（与左栏列表行同一套）：列表现在是
+                          // 滚动容器，行上的外扩光圈会被它裁掉上下两边
+                          "flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm transition-colors",
+                          "focus-visible:bg-accent/50 focus-visible:outline-none",
+                          current ? "bg-accent/50" : "hover:bg-accent/50",
+                        )}
+                      >
+                        <span className={cn("shrink-0", !m.seen && !current && "font-semibold")}>
+                          {m.fromName || m.fromAddr}
+                        </span>
+                        {current && (
+                          <Badge variant="outline" className="shrink-0">
+                            {t("threadThis")}
+                          </Badge>
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground">{m.snippet}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                          {absDateTime(m.date, t("localeTag"))}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
         </section>
       )}
 

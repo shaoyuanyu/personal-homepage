@@ -21,6 +21,8 @@ export interface MailAccount {
   username?: string;
   /** INBOX 未读数（4.2 / 4.8；webmaild /accounts 返回） */
   unread?: number;
+  /** 本地已同步的邮件副本数（删除账号的确认弹窗用它说明会清掉多少；webmaild /accounts 返回） */
+  localMessages?: number;
 }
 
 export interface MailCopyRef {
@@ -59,6 +61,11 @@ export interface MailAttachmentMeta {
   size: number;
   cid: string | null;
   inline: boolean;
+  /**
+   * 「附件没随同步下载」（2026-10-08 附件门控）：本地只留了正文与内嵌图，
+   * 点这个附件时才向服务器取那一个部件（几秒）。⚠ 序号以清单为准，补取整封后也不变。
+   */
+  deferred?: boolean;
 }
 
 /** 发信时的附件输入（base64），与 webmail 包的 SendAttachment 对应 */
@@ -89,6 +96,11 @@ export interface MailDetail extends MailListItem {
   html: string;
   remoteBlocked: number;
   attachments: MailAttachmentMeta[];
+  /**
+   * 本地留存的是**精简原文**（正文 + 内嵌图，附件按需）——见 webmail/src/mime.ts。
+   * 与 `truncated` 的区别：truncated 且**非** partial = 连正文都没有（只存了索引）。
+   */
+  partial?: boolean;
   /** 引用链（库键 mid:<normalized> 形式，4.7）；回复时续链用 */
   refs?: string[];
   /** 发件人已存进通讯录时的联系人 id；null = 未保存（「存入通讯录」按钮态） */

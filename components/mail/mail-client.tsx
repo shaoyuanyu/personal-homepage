@@ -56,6 +56,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SearchInput } from "@/components/ui/search-input";
+import { type BackfillState } from "@/components/mail/sync-status";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -135,8 +136,21 @@ function ListSkeleton() {
   );
 }
 
-/** 邮件合并视图：默认全部账号合并，工具栏可筛选账号与状态（4.2） */
-export function MailClient() {
+/**
+ * 邮件合并视图：默认全部账号合并，工具栏可筛选账号与状态（4.2）。
+ *
+ * `backfill` / `firstSync`（2026-10-08）：由 MailShell 的同步状态轮询传下来——有新账号
+ * 的**历史回填**（有 x/y 数字）或**首轮还没跑完**（数字还出不来）在跑时，列表每 15 秒
+ * 静默重取一次（不带 loading，不闪），于是「最新优先」抓到的邮件会自己冒出来，
+ * 用户不必反复手动刷新等结果。
+ */
+export function MailClient({
+  backfill,
+  firstSync,
+}: {
+  backfill?: BackfillState | null;
+  firstSync?: boolean;
+}) {
   const t = useTranslations("mail");
   const router = useRouter();
   const pathname = usePathname();
@@ -276,7 +290,11 @@ export function MailClient() {
   // 首次加载完成前显示骨架屏；之后重载保持旧内容（避免每次点筛选都闪一下骨架）
   const hasLoadedRef = useRef(false);
   const listRef = useRef<HTMLUListElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  /** 底部哨兵节点：用 **state** 而不是 `useRef` —— 节点被 React 重建时观察器必须重挂，
+   *  见下方「无限滚动」的注释（旧实现用 ref、effect 依赖里看不见节点变化，无限滚动静默失效） */
+  const [sentinelNode, setSentinelNode] = useState<HTMLDivElement | null>(null);
+  /** 哨兵是否落在（含 300px 余量的）视口里 —— 自动续页由它驱动 */
+  const [sentinelInView, setSentinelInView] = useState(false);
 
   const load = useCallback(
     async (opts: {
@@ -480,11 +498,29 @@ export function MailClient() {
     reload();
   }, [reload]);
 
+  /**
+   * 手动刷新（工具栏按钮）。
+   *
+   * 2026-10-08 修：`POST /sync` 以前会**阻塞到整轮跑完**才返回——新加账号的首轮
+   * 抓取要十几分钟到几十分钟，按钮上的 spinner 就跟着转那么久（用户看到的
+   * 「加载要很久」就是这个）。现在后端一次只吃一块（见 webmail 仓库 fetcher.ts），
+   * 一轮几秒就回来了；同时这里用 AbortController 给它一个上限：无论后端多慢，
+   * 按钮最多转 15 秒，之后照常重取列表——刷新按钮的职责是「催一下 + 看到最新」，
+   * 不是「等后台干完」。
+   */
   const refresh = useCallback(async () => {
     setRefreshing(true);
     setError(null);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 15_000);
     try {
-      await fetch("/api/mail/sync", { method: "POST" });
+      await fetch("/api/mail/sync", { method: "POST", signal: controller.signal });
+    } catch {
+      // 超时/中断不算失败：后台还在跑，进度由底栏状态条显示（不弹错误）
+    } finally {
+      window.clearTimeout(timer);
+    }
+    try {
       await loadCurrent();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -492,6 +528,26 @@ export function MailClient() {
       setRefreshing(false);
     }
   }, [loadCurrent]);
+
+  /**
+   * 抓取期间的列表自动刷新（2026-10-08）。
+   *
+   * 新账号的首轮是「最新优先、按块推进」的倒序回填：邮件是一批批冒出来的，
+   * 不刷新就只能看见点进来那一刻已有的那些。这里在抓取期间每 15 秒**静默**重取
+   * 当前列表（`loadCurrent` 不置 loading，不闪骨架、不打断滚动），抓完就停。
+   * 两种「在跑」都算：有回填数字（`backfill`）与首轮刚起步、数字还没出来（`firstSync`）。
+   * ⚠ 依赖用 boolean 而不是 `backfill` 对象：状态轮询每 5 秒给一个新对象，
+   *   直接依赖它会让定时器每 5 秒重建一次（永远等不到 15 秒）。
+   * ⚠ 搜索态不自动刷新：正在看搜索结果时列表自己变会让人困惑。
+   */
+  const syncing = !!backfill || !!firstSync;
+  useEffect(() => {
+    if (!syncing || view === "drafts" || q.trim()) return;
+    const timer = window.setInterval(() => {
+      void loadCurrent().catch(() => {});
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [syncing, view, q, loadCurrent]);
 
   /**
    * 「全部标为已读」（2026-10-05 用户定稿）：范围 = 当前账号筛选（「全部账号」= 全部账号）；
@@ -622,28 +678,69 @@ export function MailClient() {
   }, [selectedItems, reload, loadAccounts, t]);
 
   const loadMore = useCallback(async () => {
-    if (!next || loadingMore) return;
+    // ⚠ `loading`（整体重载）也要拦：重载在飞时续页会把**旧游标**的下一页追加到即将被
+    //   替换的列表上（新列表到货后再被覆盖，白下一次请求）
+    if (!next || loadingMore || loading) return;
     setLoadingMore(true);
     try {
       await loadCurrent({ before: next, append: true });
     } finally {
       setLoadingMore(false);
     }
-  }, [next, loadingMore, loadCurrent]);
+  }, [next, loadingMore, loading, loadCurrent]);
 
-  // 无限滚动（4.9）：底部哨兵进入视口即取下一页，「加载更多」按钮保留兜底
+  /**
+   * 无限滚动（4.9）：底部哨兵进入（扩展）视口即取下一页，「加载更多」按钮保留兜底。
+   *
+   * ⚠ **2026-10-09 修：这一版必须用「state 驱动」而不是「回调里直接 loadMore」**。
+   *   旧实现有两个静默失效点，实测（dev 1440×900）滚轮滑到列表底部 30 次、行数一次都
+   *   没涨——**自动续页实际是坏的**，只能手点按钮：
+   *   ① 观察目标会**换节点**：哨兵原先挂在 `{next && !loading && …}` 里，`loading` 每次
+   *      变化都把哨兵卸载重建；而 effect 依赖是 `[next, loadMore]`，节点换了不会重跑 →
+   *      观察器一直盯着**已脱离文档**的旧节点，永不回调（自建 IO 在同一个哨兵上报
+   *      `intersecting=true ratio=1.00`，本组件的 IO 一次回调都没有 = 就是这个）；
+   *   ② 若 effect 恰好跑在 `loading===true` 那一刻，`sentinelRef.current` 是 null，
+   *      旧实现的 `if (!el) return` 直接放弃观察、之后也不会补挂。
+   *   现在：哨兵**常驻**（只跟 `next` 走，不再受 `loading` 影响）+ ref 用 callback ref
+   *   存进 state（节点变了 effect 必然重挂）+ 交集状态进 state。
+   *   用 state 而不是「回调里直接取页」还有第二个好处：IO 只在**交集变化**时回调，
+   *   「刷新期间滚到底、刷新完成后视口里还停着哨兵」这种情形回调式会漏（哨兵一直在视口
+   *   里、没有新的交集变化），state 驱动会在 `loading` 落回 false 时补上这一次。
+   */
+  /**
+   * 哨兵是否落在「视口 + 300px 余量」内。
+   * ⚠ 这是给自动续页做**同步复查**用的：IntersectionObserver 的回调要等下一帧，而
+   *   刚追加完一页时 `sentinelInView` 还是旧值（true）——只信 state 会在一瞬间连拉
+   *   好几页（实测：把按钮滚进视野那一下连拉了 3 页）。落库前同步量一次 rect 即可
+   *   精确判断"哨兵是不是真被上一页推出了余量"。判据与 IO 的 `rootMargin` 保持一致。
+   */
+  const sentinelNear = useCallback(() => {
+    if (!sentinelNode) return false;
+    const r = sentinelNode.getBoundingClientRect();
+    const margin = 300;
+    return r.top <= window.innerHeight + margin && r.bottom >= -margin;
+  }, [sentinelNode]);
+
   useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el || !next) return;
+    if (!sentinelNode || !next) return;
     const ob = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) void loadMore();
-      },
+      (entries) => setSentinelInView(entries.some((e) => e.isIntersecting)),
       { rootMargin: "300px" },
     );
-    ob.observe(el);
-    return () => ob.disconnect();
-  }, [next, loadMore]);
+    ob.observe(sentinelNode);
+    return () => {
+      ob.disconnect();
+      setSentinelInView(false);
+    };
+    // `sentinelNode` 是 state（不是 ref 对象）：节点换了这个 effect 会重跑
+  }, [next, sentinelNode]);
+
+  // 哨兵在视口里 + 还有下一页 + 没有任何加载在跑 → 自动续页（同步复查，见 `sentinelNear`）
+  useEffect(() => {
+    if (!sentinelInView || !next || loading || loadingMore) return;
+    if (!sentinelNear()) return;
+    void loadMore();
+  }, [sentinelInView, next, loading, loadingMore, loadMore, sentinelNear]);
 
   /**
    * 点**空白处**退出选择模式（2026-10-07 用户指定：不设专门的「退出」按钮）。
@@ -1533,14 +1630,51 @@ export function MailClient() {
           </ul>
         )}
 
-        {/* 无限滚动哨兵 + 「加载更多」兜底：随列表一起滚（不再固定在外壳底部） */}
-        {next && !loading && (
+        {/* 无限滚动哨兵 + 「加载更多」兜底：随列表一起滚（不再固定在外壳底部）。
+            ⚠ **哨兵常驻**（外层只判 `next`，**不判 `loading`**）：它一旦被 `loading` 卸载重建，
+              IntersectionObserver 就会盯着旧节点失效（→ 无限滚动静默死掉，见上方「无限滚动」）。
+              只有「加载更多」按钮跟随 `loading` 隐藏（重载期间列表在换，按钮没有意义）。 */}
+        {next && (
           <div className="flex shrink-0 flex-col items-center gap-2">
-            <div ref={sentinelRef} className="h-px w-full" aria-hidden />
-            <Button variant="ghost" size="sm" onClick={loadMore} disabled={loadingMore}>
-              {loadingMore ? <Spinner /> : null}
-              {t("loadMore")}
-            </Button>
+            <div ref={setSentinelNode} className="h-px w-full" aria-hidden />
+            {!loading && (
+              /*
+               * ⚠ 这一枚的观感有两条硬约束（2026-10-09 用户在真实浏览器里报「滚动到底弹出加载提示
+               *   时先是深黑、再变浅灰，还叠影/卡顿」）：
+               *   ① **不许用基类的 `disabled:opacity-50` 渐隐**：基类还带 `transition-all`，于是
+               *      「1 → 0.5」的渐隐会被真的画出来（实测 opacity 1 → 0.82 → 0.5）——ghost 按钮
+               *      本是透明底 + 近黑文字，看起来就是「深黑转浅灰」；`transition-colors` 只留
+               *      颜色过渡，`disabled:opacity-100` 保住不透明度（禁用语义仍由 `disabled` 给）。
+               *   ② **图标槽必须常驻、尺寸固定，但空闲时里面什么都不放**：旧写法
+               *      `{loadingMore ? <Spinner/> : null}` 是条件插入第一个子节点 → 按钮宽度
+               *      78 → 98px，又因 `items-center` 居中，x 跟着左跳 10px（实测 330.5 → 320.5）。
+               *      续页快时 150ms 过渡被反复打断，深色图标与浅灰中间态同屏 = 用户说的
+               *      「相互叠加」。现在槽位（14px）**永远在布局里**：空闲留白、加载时原地换成
+               *      `Spinner` → 按钮盒子与文案位置**一格都不动**。
+               *      ⚠ 空闲槽里**不要放任何图标**（2026-10-09 用户实测）：先放过一枚 `ChevronDownIcon`
+               *      表示"下面还有"，用户看到的就是「加载完了这枚 ⌄ 怎么还在」——它会被当成
+               *      "卡住的加载指示"。留白虽然让按钮比原来宽 34px，但按钮是 ghost（无底色边框），
+               *      看不出盒子，只有文案的位置要紧。
+               *   ③ **`pr-7`（28px）不是随手写的**：左侧固定开销 = `pl-2.5`(10) + 槽(14) + `gap-1`(4)
+               *      = 28px。右内边距给同样的 28px，文案才真正居中（否则会偏右 9px，实测
+               *      「文案中心 − 列中心 = +9px」）。且槽位永远占位、只换内容 → 空闲/加载两态
+               *      文案位置**逐像素相同**（实测两态 rect 完全一致）。
+               */
+              <Button
+                variant="ghost"
+                size="sm"
+                data-slot="mail-load-more"
+                aria-busy={loadingMore || undefined}
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="pr-7 transition-colors disabled:opacity-100"
+              >
+                <span className="flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
+                  {loadingMore && <Spinner className="size-3.5" />}
+                </span>
+                {t("loadMore")}
+              </Button>
+            )}
           </div>
         )}
       </div>

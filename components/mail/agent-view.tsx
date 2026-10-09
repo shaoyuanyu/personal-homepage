@@ -392,12 +392,21 @@ function TimelineTab() {
           <Button
             variant="outline"
             size="sm"
+            data-slot="mail-load-more"
+            aria-busy={loadingMore || undefined}
             disabled={loadingMore}
+            /* 与邮件列表底部那枚同一套规则（2026-10-09）：图标槽常驻、只换内容（空闲留白），
+               不用基类的 `disabled:opacity-50` 渐隐（它配合 `transition-all` 会画出深黑→浅灰）；
+               `pr-7` 与左侧固定开销（pl-2.5 + 槽 14 + gap 4 = 28px）对称，文案才居中 */
+            className="pr-7 transition-colors disabled:opacity-100"
             onClick={() => {
               setLoadingMore(true);
               load(next).finally(() => setLoadingMore(false));
             }}
           >
+            <span className="flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
+              {loadingMore && <Spinner className="size-3.5" />}
+            </span>
             {t("loadMore")}
           </Button>
         </div>

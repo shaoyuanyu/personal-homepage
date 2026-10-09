@@ -47,7 +47,7 @@ export function MailShell({ children }: { children: ReactNode }) {
   const isCompose = pathname.startsWith("/mail/compose");
   // 邮件详情路由（窄屏整页详情、底栏没有位置）
   const isMessage = pathname.startsWith("/mail/message/");
-  const { status, rel } = useSyncStatus();
+  const { status, rel, backfill, firstSync } = useSyncStatus();
 
   return (
     <MailBarProvider>
@@ -65,7 +65,7 @@ export function MailShell({ children }: { children: ReactNode }) {
             滚动位置 / 筛选 / 搜索词都留着，写完回来不用重来。
             ⚠ compose 时整个包装 div 用 `hidden`：它没有 lg:flex，任何宽度都不显示。 */}
         <div className={cn(isCompose ? "hidden" : "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col")}>
-          <MailClient />
+          <MailClient backfill={backfill} firstSync={firstSync} />
         </div>
         {isCompose && <MailContactsPane />}
       </div>
@@ -84,7 +84,13 @@ export function MailShell({ children }: { children: ReactNode }) {
           </div>
           {/* 底栏显示规则（2026-10-05 定稿）：邮件详情（窄屏整页）隐藏；/mail 与撰写页都显示
               ——撰写页的底栏承载草稿状态（已自动保存 / 保存失败），见 MailStatusbar 与 ComposeForm */}
-          <MailStatusbar status={status} rel={rel} className={isMessage ? "hidden lg:block" : undefined} />
+          <MailStatusbar
+            status={status}
+            rel={rel}
+            backfill={backfill}
+            firstSync={firstSync}
+            className={isMessage ? "hidden lg:block" : undefined}
+          />
         </div>
       </div>
     </MailBarProvider>

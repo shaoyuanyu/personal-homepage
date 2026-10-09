@@ -2939,6 +2939,8 @@ const MAIL_ACCOUNTS = [
     folders: ["INBOX", "Sent"],
     enabled: true,
     unread: 3,
+    // 本地副本数（删除账号弹窗据此说明会清掉多少；2026-10-08）
+    localMessages: 128,
     // 连接字段（账号管理编辑表单回填用；GET /accounts 返回，无密码）
     imapHost: "imap.example.cn",
     imapPort: 993,
@@ -2958,6 +2960,7 @@ const MAIL_ACCOUNTS = [
     folders: ["INBOX", "Sent"],
     enabled: true,
     unread: 0,
+    localMessages: 6,
     imapHost: "imap.edu.example.cn",
     imapPort: 993,
     imapSecure: true,
@@ -3101,6 +3104,11 @@ function stubMailApi(
     source?: unknown[];
     /** 这些消息的详情按「只入库索引」（truncated）返回：正文/附件为空（4.15 的按需取原文） */
     truncatedIds?: string[];
+    /**
+     * 这些消息的详情按**精简原文**返回（2026-10-08 附件门控）：正文可读、附件标成
+     * deferred（点了才去取）。与 truncatedIds 的区别正是「正文有没有」。
+     */
+    partialIds?: string[];
     /** 详情请求返回该状态码 + `{error:"webmaild_unreachable"}`（验证内部错误码不回显） */
     detailError?: number;
     /** 账号内存桩的实时引用（用例可改写 unread 等字段模拟新邮件 / 新账号） */
@@ -3112,6 +3120,16 @@ function stubMailApi(
     junkSynced?: boolean;
     /** 「垃圾」tab 用例：带 folder 参数的列表请求返回一封落在「垃圾邮件」里的桩邮件 */
     junkFolderItems?: boolean;
+    /** 列表桩的实时引用（用例可往里追加，验证「历史回填期间列表自动刷新」，2026-10-08） */
+    listStore?: unknown[];
+    /**
+     * 列表分页（2026-10-09）：设了就按此页大小切片并给出游标（游标 = 数字偏移量），
+     * 让「无限滚动自动续页 + 加载更多按钮」在 E2E 里真的能跑——此前恒 `next: null`，
+     * 那枚按钮与哨兵**没有任何用例覆盖**，自动续页坏掉时全绿（2026-10-09 实测确曾如此）。
+     */
+    pageSize?: number;
+    /** 列表响应延迟（毫秒）：让 `loadingMore` 的中间态可观测（按钮盒子稳定性断言用） */
+    listDelayMs?: number;
   },
   // 状态条（5.5）的健康端点覆盖：默认全部健康；传 {status, body} 模拟告警/不可达
   health?: { mailagentd?: { status: number; body: unknown }; webmail?: { status: number; body: unknown } },
@@ -3126,6 +3144,9 @@ function stubMailApi(
   // 账号内存桩：POST/DELETE 真实增删，GET 反映最新状态（账号管理弹窗用）
   const accountStore: Record<string, unknown>[] = MAIL_ACCOUNTS.map((a) => ({ ...a }));
   calls.accountStore = accountStore;
+  // 列表桩：默认是 MAIL_LIST 本身（不变）；用例要模拟「后台又抓进来一批」时
+  // 把它换成自己的数组（见「历史回填」用例）
+  calls.listStore = MAIL_LIST;
   // 「上次收到新邮件」桩（2026-10-06）：/health 的 lastNewMail。**默认固定值**（历次
   // 轮询不前进 → 不误报）；用例要模拟新邮件时改这个对象再触发 visibilitychange。
   // ⚠ 曾用「请求时刻」作值：每个轮询周期都会「前进」，提醒器会每 30s 弹一条假提醒。
@@ -3143,7 +3164,7 @@ function stubMailApi(
       route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
 
     if (path === "/accounts" && route.request().method() === "POST") {
-      const body = route.request().postDataJSON() as { displayName?: string; email?: string };
+      const body = route.request().postDataJSON() as { displayName?: string; email?: string; color?: string };
       calls.accounts?.push({ method: "POST", body });
       if (!body?.email?.includes("@")) {
         return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "邮箱地址非法" }) });
@@ -3153,7 +3174,8 @@ function stubMailApi(
         displayName: body.displayName ?? "",
         email: body.email!,
         provider: "test",
-        color: "#0ea5e9",
+        // 颜色随请求落桩（与 webmail 一致：不传时才由服务端避让分配）
+        color: body.color ?? "cyan",
         folders: ["INBOX"],
         enabled: true,
         unread: 0,
@@ -3238,14 +3260,16 @@ function stubMailApi(
     }
     // 健康端点（5.5）：状态条每 60s 轮询这两个；默认全部健康（时间取请求时刻 → 显示「刚刚」）
     // lastNewMail = 上次抓进新邮件的时刻：acc1 用可控桩（见 healthStore，提醒器只认它前进）、acc2 从未收到（null）
+    // ⚠ 账号列表取自 `accountStore`（真后端就是这样）：**刚添加的账号 `lastSync` 为 null**
+    //   =「首轮同步还没跑完」——底栏据此显示「正在首次同步邮件…」（2026-10-08 用例用）
     if (path === "/health") {
       const now = new Date().toISOString();
       const body = health?.webmail?.body ?? {
         ok: true,
-        accounts: MAIL_ACCOUNTS.map((a) => ({
-          id: a.id,
+        accounts: accountStore.map((a) => ({
+          id: a.id as string,
           enabled: true,
-          lastSync: now,
+          lastSync: MAIL_ACCOUNTS.some((m) => m.id === a.id) ? now : null,
           lastError: null,
           lastNewMail: a.id === "acc1" ? healthStore.lastNewMail : null,
         })),
@@ -3296,7 +3320,8 @@ function stubMailApi(
         const sep = v.indexOf("|");
         return sep <= 0 ? { account: "", path: v } : { account: v.slice(0, sep), path: v.slice(sep + 1) };
       });
-      let items = MAIL_LIST;
+      // 列表桩的实时引用（用例追加条目 = 后台又抓进来一批）
+      let items = (calls.listStore as typeof MAIL_LIST | undefined) ?? MAIL_LIST;
       if (account) items = items.filter((m) => m.accounts.includes(account));
       if (folderParams.length && calls.junkFolderItems) {
         // 「垃圾」tab 的桩：带 folder 参数的请求直接给这封（真实服务端会按副本路径匹配）
@@ -3334,7 +3359,19 @@ function stubMailApi(
         items = items.filter((m) => m.copies.some((c) => c.folder.toUpperCase() === "INBOX"));
       if (direction === "sent")
         items = items.filter((m) => m.copies.every((c) => SENT_FOLDERS.has(c.folder.trim().toLowerCase())));
-      return json({ items, next: null });
+      // 分页桩（2026-10-09）：游标 = 「从第几条开始」的数字偏移（真实服务端是 IMAP 游标，
+      // 这里只要契约形状对得上：`next` 非空 ⟹ 带上 `before=<next>` 能续下一页）
+      const reply = async () => {
+        if (calls.listDelayMs) await new Promise((r) => setTimeout(r, calls.listDelayMs));
+        if (typeof calls.pageSize === "number") {
+          const start = Number(url.searchParams.get("before") ?? 0) || 0;
+          const slice = items.slice(start, start + calls.pageSize);
+          const nextStart = start + calls.pageSize;
+          return json({ items: slice, next: nextStart < items.length ? String(nextStart) : null });
+        }
+        return json({ items, next: null });
+      };
+      return reply();
     }
     if (path === "/flags") {
       calls.flags.push(route.request().postDataJSON());
@@ -3426,6 +3463,34 @@ function stubMailApi(
           status: calls.detailError,
           contentType: "application/json",
           body: JSON.stringify({ error: "webmaild_unreachable" }),
+        });
+      }
+      // 精简原文（附件门控）：正文在、附件 delayed（2026-10-08）
+      const partialHit = (calls.partialIds ?? []).find(
+        (id) => path.includes(encodeURIComponent(id)) || path.includes(id),
+      );
+      if (partialHit && !path.endsWith("/thread") && !path.endsWith("/source")) {
+        return json({
+          ...mailItem({
+            messageId: partialHit,
+            subject: "带大附件的简报",
+            fromAddr: "news@example.com",
+            snippet: "本周要闻",
+            copies: [{ accountId: "acc1", folder: "INBOX", uid: 9 }],
+            accounts: ["acc1"],
+          }),
+          truncated: true,
+          partial: true,
+          text: "本周要闻：正文照常可读。",
+          html: "<p>本周要闻：正文照常可读。</p>",
+          cc: [],
+          refs: [],
+          remoteBlocked: 0,
+          headers: [],
+          attachments: [
+            { index: 0, filename: "logo.png", contentType: "image/png", size: 2048, cid: "logo@x", inline: true, deferred: false },
+            { index: 1, filename: "report.pdf", contentType: "application/pdf", size: 3145728, cid: null, inline: false, deferred: true },
+          ],
         });
       }
       // 超大邮件（truncated）：只入库索引 → 正文/附件为空（详情页应给出提示与补取入口）
@@ -4025,6 +4090,70 @@ test.describe("站内邮件（/mail）", () => {
     });
 
     /**
+     * 无限滚动续页 + 「加载更多」兜底按钮（4.9，2026-10-09）。
+     *
+     * 此前列表桩恒 `next: null`，这枚按钮与底部哨兵**一条用例都没覆盖**——而我实测把
+     * 「后台又抓进来一批」的自动刷新改坏时，行数一次都不涨、界面全绿（哨兵观察的是被
+     * 卸载重建的旧节点）。故这里给桩加**分页能力**，锁两条：
+     *   ① 哨兵进视口 → 自动续页（不点按钮行数就涨）；
+     *   ② 加载中那枚按钮的**盒子一格不动**（旧实现条件插入 Spinner：78 → 98px、居中后
+     *      x 左跳 10px，配上 `transition-all` + `disabled:opacity-50` 就是用户报的
+     *      「深黑与浅灰同屏叠加」）。
+     * ⚠ 不断言具体页数/行数：视口高度决定自动续几页，那是布局的函数，不是契约。
+     */
+    test("列表：哨兵自动续页 + 「加载更多」按钮盒子在加载态不动", async ({ page }) => {
+      const many = [
+        ...MAIL_LIST,
+        ...Array.from({ length: 25 }, (_, i) =>
+          mailItem({
+            messageId: `mid:page${i}@test.local`,
+            date: `2026-09-2${i % 9}T0${i % 9}:00:00.000Z`,
+            subject: `分页样本 ${i + 1}`,
+            fromAddr: "page@example.com",
+            fromName: "分页",
+          }),
+        ),
+      ];
+      const calls = {
+        flags: [] as unknown[],
+        send: [] as unknown[],
+        delete: [] as unknown[],
+        listStore: many,
+        pageSize: 3,
+        listDelayMs: 400,
+      };
+      await stubMailApi(page, calls);
+      // ⚠ 必须在打桩**之后**换：`stubMailApi` 自己会把 `calls.listStore` 重置成 MAIL_LIST
+      calls.listStore = many;
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      const rows = page.locator('[data-slot="mail-list"] > li');
+      const more = page.locator('[data-slot="mail-load-more"]');
+      await expect(rows.first()).toBeVisible();
+
+      // ① 自动续页：首屏只取一页（3 条），哨兵落在视口余量里 → 行数自己涨过第一页
+      const pageOne = 3;
+      await expect
+        .poll(async () => rows.count(), { message: "哨兵进视口应自动续页（不点按钮）" })
+        .toBeGreaterThan(pageOne);
+      // 30 条 ÷ 3 一页，自动续页永远吃不完（哨兵会被新行推出余量）→ 兜底按钮必须在
+      await expect(more).toBeVisible();
+
+      // ② 按钮盒子稳定：加载态与空闲态逐像素同框
+      const idleBox = (await more.boundingBox())!;
+      const before = await rows.count();
+      await more.click();
+      await expect(more).toHaveAttribute("aria-busy", "true");
+      const busyBox = (await more.boundingBox())!;
+      expect(Math.abs(busyBox.x - idleBox.x), "加载态按钮不许位移（旧实现 x 左跳 10px）").toBeLessThanOrEqual(1);
+      expect(Math.abs(busyBox.width - idleBox.width), "加载态按钮不许变形（旧实现宽 78→98px）").toBeLessThanOrEqual(1);
+      await expect(more).not.toHaveAttribute("aria-busy", "true");
+      await expect.poll(async () => rows.count(), { message: "点按钮必须真的续上一页" }).toBeGreaterThan(before);
+    });
+
+    /**
      * 「垃圾」tab（2026-10-08 用户要求新增）。
      * 契约：① 文件夹路径**由服务端探测**（`GET /folders` 的 `specialUse = \Junk`），前端
      * 只按账号拼 `folder=<账号>|<路径>`；② 只有**在同步白名单里**的垃圾文件夹才查得到，
@@ -4138,13 +4267,36 @@ test.describe("站内邮件（/mail）", () => {
       await expect(page).toHaveURL(/\/mail\/message\//);
 
       // 会话区块（4.7）：2 封，当前封带「当前」徽章且不跳转
+      // ⚠ 2026-10-09 起 `data-slot="mail-thread"` 挂在**外层 section**（可折叠），行在
+      //   `[data-slot="mail-thread-list"]` 里；且正文装不下时会话默认折叠 → 断言行之前先展开
       const thread = page.locator('[data-slot="mail-thread"]');
+      const threadToggle = thread.locator('[data-slot="mail-thread-toggle"]');
+      const threadList = thread.locator('[data-slot="mail-thread-list"]');
       await expect(thread).toBeVisible();
-      await expect(thread.locator("> li")).toHaveCount(2);
+      if ((await thread.getAttribute("data-open")) === "false") await threadToggle.click();
+      await expect(thread).toHaveAttribute("data-open", "true");
+      await expect(threadToggle).toHaveAttribute("aria-expanded", "true");
+      await expect(threadList.locator("> li")).toHaveCount(2);
       await expect(thread.getByText("This week in research")).toBeVisible();
       const currentRow = thread.locator('[aria-current="true"]');
       await expect(currentRow).toContainText("当前");
       await expect(currentRow).toBeDisabled();
+
+      // 折叠/滚动的契约（4.7，2026-10-09）：手动展开保底 ~3 行（120px）、列表自己滚；
+      // 收起只剩标题行（28px）、列表被网格轨道压成 0
+      await expect(threadToggle).toHaveAttribute("aria-expanded", "true");
+      expect(
+        (await thread.boundingBox())!.height,
+        "手动展开后会话要保底 ~3 行（否则在空间紧张时点了像没反应）",
+      ).toBeGreaterThanOrEqual(118);
+      expect(await threadList.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
+      await threadToggle.click();
+      await expect(thread).toHaveAttribute("data-open", "false");
+      await expect(threadToggle).toHaveAttribute("aria-expanded", "false");
+      expect((await thread.boundingBox())!.height, "收起态只剩标题行").toBeLessThanOrEqual(40);
+      expect(await threadList.evaluate((el) => el.clientHeight), "收起后列表不占高度").toBe(0);
+      await threadToggle.click();
+      await expect(thread).toHaveAttribute("data-open", "true");
 
       // 上一封 / 下一封（按列表序：w04 ← w03 → w02）：**仅窄屏可见**——
       // 宽屏左栏就是列表，这两个按钮多余又占空间（2026-10-04 用户反馈），与「返回列表」同规则
@@ -4174,6 +4326,59 @@ test.describe("站内邮件（/mail）", () => {
       expect(sent.subject).toBe("Re: HTML Newsletter");
       expect(sent.inReplyTo).toBe("<w03@test.local>");
       expect(sent.references).toContain("<w03@test.local>");
+    });
+
+    /**
+     * 会话折叠的**空间优先级**（4.7，2026-10-09 用户要求）：
+     *   ① 正文装不下 → 优先自动折叠会话（而不是让正文变滚动）；
+     *   ② 展开会话后正文不够 → 先让会话收缩、列表内部滚；
+     *   ③ 会话压到底还不够 → 才让正文也滚。
+     *
+     * 这里只锁**两端**（装得下必须展开 / 装不下必须折叠）与「窄屏不参与」——
+     * 中间态（②）的连续收缩量测起来依赖字体与桩内容的像素，属于易碎断言，写在
+     * MAIL-AGENT.md 4.7 里由人工取证（真实邮箱 940/1000/1060/1120 四档已量过）。
+     */
+    test("详情页：会话折叠优先于正文滚动（空间不够时先收会话）", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [] as unknown[], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      // 视口在导航**之前**定好：自动折叠只收不放，先在大视口加载才能观察到"装得下就展开"
+      await page.setViewportSize({ width: 1280, height: 1400 });
+      await gotoReady(page, "/mail");
+      await page.locator('[data-slot="mail-list"] > li').nth(1).locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+
+      const thread = page.locator('[data-slot="mail-thread"]');
+      const threadToggle = thread.locator('[data-slot="mail-thread-toggle"]');
+      const threadList = thread.locator('[data-slot="mail-thread-list"]');
+      const body = page.locator(".mail-body");
+      const bodyScrolls = () => body.evaluate((el) => el.scrollHeight - el.clientHeight);
+
+      // ① 空间充裕：会话保持展开，正文完整（没有滚动条被让出来）
+      await expect(thread).toHaveAttribute("data-open", "true");
+      await expect(threadToggle).toHaveAttribute("aria-expanded", "true");
+      expect(await bodyScrolls(), "展开态下正文不该在滚（规则①：会话优先折叠）").toBeLessThanOrEqual(1);
+
+      // ①（触发）：把窗口压到正文无论如何装不下 → 会话自动折叠，正文拿回空间
+      await page.setViewportSize({ width: 1280, height: 480 });
+      await expect(thread).toHaveAttribute("data-open", "false");
+      await expect(threadToggle).toHaveAttribute("aria-expanded", "false");
+      expect((await thread.boundingBox())!.height, "自动折叠后只剩标题行").toBeLessThanOrEqual(40);
+
+      // ②/③ 用户自己点开：会话保底 ~3 行、列表内部滚（正文是否还滚取决于窗口有多小）
+      await threadToggle.click();
+      await expect(thread).toHaveAttribute("data-open", "true");
+      expect((await thread.boundingBox())!.height, "手动展开要保底 ~3 行").toBeGreaterThanOrEqual(118);
+      expect(await threadList.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
+
+      // 窄屏（<lg）：整页是文档流，没有"右栏高度"可让——不参与自动折叠，也不做嵌套滚动
+      await page.setViewportSize({ width: 420, height: 900 });
+      await page.reload();
+      await page.waitForSelector('[data-slot="mail-thread"]');
+      await expect(thread).toHaveAttribute("data-open", "true");
+      expect(await threadList.evaluate((el) => getComputedStyle(el).overflowY)).toBe("visible");
     });
 
     test("回复/回复全部/转发：预填收件人、引用链、附件与「回复」的款式（同「写邮件」）", async ({ page }) => {
@@ -4369,6 +4574,17 @@ test.describe("站内邮件（/mail）", () => {
       await expect(page.locator("#acct-username")).toHaveValue("me@mail.example.cn");
       await expect(page.locator("#acct-password")).toHaveValue("");
 
+      // 账号颜色（2026-10-09）：色板反映账号当前色（acc1 = cyan），且**自己**的色不算撞色
+      const swatch = (name: string) =>
+        page.locator(`[data-slot="account-color-swatch"][data-color="${name}"]`);
+      await expect(swatch("cyan")).toHaveAttribute("aria-pressed", "true");
+      await expect(swatch("violet")).toHaveAttribute("aria-pressed", "false");
+      await expect(page.locator('[data-slot="account-color-taken"]')).toHaveCount(0);
+      // 选到另一个账号在用的色 → 提示（只提示不拦）
+      await swatch("violet").click();
+      await expect(swatch("violet")).toHaveAttribute("aria-pressed", "true");
+      await expect(page.locator('[data-slot="account-color-taken"]')).toBeVisible();
+
       // 改发件人姓名 → 保存（PUT；密码留空 = 不改，不下发）
       await page.locator("#acct-sender-name").fill("Shaoyuan Yu");
       await page.getByRole("button", { name: "保存", exact: true }).click();
@@ -4382,6 +4598,7 @@ test.describe("站内邮件（/mail）", () => {
       expect(put.id).toBe("acc1");
       expect(put.body.senderName).toBe("Shaoyuan Yu");
       expect(put.body.displayName).toBe("主账号");
+      expect(put.body.color, "颜色要随账号一起提交（旧实现根本不发这个字段）").toBe("violet");
       expect(put.body.password).toBeUndefined();
     });
 
@@ -5058,12 +5275,47 @@ test.describe("站内邮件（/mail）", () => {
       await page.locator('[data-slot="mail-list"] > li').nth(2).locator("[data-mail-row]").click();
       const notice = page.locator('[data-slot="mail-truncated-notice"]');
       await expect(notice).toBeVisible();
-      await expect(notice).toContainText("站内只存了索引");
-      await expect(notice).toContainText("50MB");
+      await expect(notice).toContainText("正文与附件还没下载");
+      // 文案不再写死阈值（2026-10-08 起缺省 1MB，可由 MAIL_AGENT_MAX_SOURCE_BYTES 调）
+      await expect(notice).toContainText("正文与附件等点开再取");
       await notice.getByRole("button", { name: "取回原文" }).click();
       await expect.poll(() => calls.source?.length ?? 0).toBe(1);
       expect(String(calls.source?.[0])).toContain("/message/");
       await expect(page.getByText("已取回原文")).toBeVisible();
+    });
+
+    /**
+     * 精简原文（附件门控，2026-10-08）：**正文照常可读**，只有附件没随同步下载；
+     * 附件列表照常列出（标「未下载，点击取回」），点它由服务端按需取那一个部件。
+     *
+     * 与「超大邮件只存索引」的区别就在这里：那种情况正文也是空的（上一块提示管那个）。
+     */
+    test("精简原文：正文可读、附件标成按需取回（不是空邮件）", async ({ page }) => {
+      const calls = { flags: [], send: [], delete: [], partialIds: ["mid:w02@test.local"] as string[] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+      await gotoReady(page, "/mail");
+
+      await page.locator('[data-slot="mail-list"] > li').nth(2).locator("[data-mail-row]").click();
+      // 正文可读（这正是这个功能的要点）
+      await expect(page.getByText("本周要闻：正文照常可读。")).toBeVisible();
+      // 不是那块「正文与附件都没下载」的空态告警，而是一句轻提示
+      await expect(page.locator('[data-slot="mail-truncated-notice"]')).toHaveCount(0);
+      await expect(page.locator('[data-slot="mail-partial-notice"]')).toContainText("附件没有随同步下载");
+
+      // 附件照常列出；未下载的那个带标记与悬浮说明
+      const items = page.locator('[data-slot="mail-pane-detail"] a[download]');
+      await expect(items).toHaveCount(1);
+      await expect(items.first()).toContainText("report.pdf");
+      await expect(items.first().locator('[data-slot="attachment-deferred"]')).toHaveText(
+        "未下载，点击取回",
+      );
+      await expect(items.first()).toHaveAttribute("title", "未下载，点击取回");
+      await expect(items.first()).toHaveAttribute(
+        "href",
+        /\/api\/mail\/message\/.+\/attachment\/1$/,
+      );
     });
 
     test("通讯录：空态 → 新增 → 编辑 → 自动收录一键存入 → 删除", async ({ page }) => {
@@ -5175,6 +5427,16 @@ test.describe("站内邮件（/mail）", () => {
 
       // 新增：展开表单 → 填写 → 提交（未填密码时后端 400 的分支不在此覆盖，由 webmail 单测锁定）
       await dialog.getByRole("button", { name: "添加账号" }).click();
+      // 账号颜色（2026-10-09）：预选 = 第一个**没人用过**的色板色（acc1=cyan、acc2=violet → orange），
+      // 这样从界面加进来的账号不会一进来就与既有账号撞成同一个色点
+      const swatch = (name: string) =>
+        dialog.locator(`[data-slot="account-color-swatch"][data-color="${name}"]`);
+      await expect(swatch("orange")).toHaveAttribute("aria-pressed", "true");
+      // 选到别人在用的色 → 有提示（不拦）；换回一个没被占用的色 → 提示消失
+      await swatch("cyan").click();
+      await expect(dialog.locator('[data-slot="account-color-taken"]')).toBeVisible();
+      await swatch("pink").click();
+      await expect(dialog.locator('[data-slot="account-color-taken"]')).toHaveCount(0);
       await dialog.getByLabel("备注名").fill("镜像");
       await dialog.getByLabel("邮箱地址").fill("mirror@example.com");
       await dialog.getByLabel("密码 / 授权码").fill("secret");
@@ -5184,7 +5446,7 @@ test.describe("站内邮件（/mail）", () => {
       await expect.poll(() => calls.accounts?.length).toBe(1);
       expect(calls.accounts?.[0]).toMatchObject({
         method: "POST",
-        body: { displayName: "镜像", email: "mirror@example.com" },
+        body: { displayName: "镜像", email: "mirror@example.com", color: "pink" },
       });
       await expect(rows).toHaveCount(3);
       await expect(rows.nth(2)).toContainText("mirror@example.com");
@@ -5205,6 +5467,8 @@ test.describe("站内邮件（/mail）", () => {
 
       // 只剩一个账号时删除按钮禁用（后端 409「至少保留一个」的前置拦截，避免点了才报错）
       await rows.nth(1).getByRole("button", { name: "删除账号 ysy@edu.example.cn" }).click();
+      // 确认弹窗要说明会清掉多少本地副本（2026-10-08：删除曾卡 41 秒且无任何说明）
+      await expect(page.getByText("及其已同步的 6 封邮件副本")).toBeVisible();
       await page.locator('[data-slot="confirm-dialog"]').getByRole("button", { name: "确定" }).click();
       await expect(rows).toHaveCount(1);
       await expect(rows.nth(0).getByRole("button", { name: /^删除账号/ })).toBeDisabled();
@@ -5417,7 +5681,7 @@ test.describe("站内邮件（/mail）", () => {
       await page.setViewportSize({ width: 1280, height: 720 });
     });
 
-    test("同步状态指示：抓取连续失败与同步错误进入告警态（5.5）", async ({ page }) => {
+    test("同步状态指示：同步连续失败与同步错误进入告警态（5.5）", async ({ page }) => {
       const calls = { flags: [], send: [], delete: [] };
       await stubMailApi(page, calls, {
         mailagentd: {
@@ -5454,22 +5718,319 @@ test.describe("站内邮件（/mail）", () => {
       await loginWithCode(page, code);
 
       await gotoReady(page, "/mail");
-      // 告警显示在底栏右侧的状态指示里：mailagentd 连续失败达阈值（且从未成功）
-      // + webmaild acc1 同步报错 → 两条告警；acc2 正常不计。
-      // 显示第一条（最严重）+ 「+1」，完整列表在 title（2026-10-04 用户指定：
-      // 底栏是状态唯一显示位置，不再有独立的展开告警条）
+      // 两类问题一起出现：mailagentd 连续失败达阈值（agent 子系统）+ webmaild acc1 同步报错
+      // （邮件同步本身）。
+      // 底栏右侧**只完整显示一条**（2026-10-08 用户定稿），且优先级刻意把 agent 排在最后：
+      // **邮件同步自身的问题占文案位**（用户 2026-10-08 指定「agent 服务不可达」只做图标，
+      // 它不阻塞收信；而同步真的坏了必须一眼看见）。
       const status = page.locator('[data-slot="mail-sync-status"]');
+      const primary = status.locator('[data-slot="mail-sync-primary"]');
       const alertText = status.locator('[data-slot="mail-sync-alert-text"]');
-      await expect(alertText).toContainText("Agent 信箱 连续 3 次抓取失败");
-      await expect(alertText).toContainText("从未成功");
-      await expect(alertText).toContainText("+1");
-      // 告警文案视觉：琥珀文字
-      await expect(alertText).toHaveClass(/text-amber-700/);
-      const title = await alertText.getAttribute("title");
-      expect(title, "完整告警列表在 title 里").toContain("Agent 信箱 连续 3 次抓取失败");
-      expect(title).toContain("acc1 合并视图同步失败：IMAP 连接被重置");
+      await expect(alertText).toHaveText("acc1 合并视图同步失败：IMAP 连接被重置");
+      // 邮件同步的告警是主状态时视觉：琥珀（色调在主状态容器上）
+      await expect(primary).toHaveClass(/text-amber-700/);
+      // agent 的问题缩成一枚图标，文案在 aria-label / 悬浮弹窗里
+      const issue = status.locator('[data-slot="mail-sync-issue"]');
+      await expect(issue).toHaveCount(1);
+      const label = await issue.getAttribute("aria-label");
+      expect(label).toContain("Agent 信箱 连续 3 次同步失败");
+      expect(label).toContain("从未成功");
+      // 悬浮文字走**原生 title**（站内邮件界面通行的做法，2026-10-08 第二轮用户反馈）
+      expect(await issue.getAttribute("title")).toContain("从未成功");
       // 不再有独立的展开告警条（顶部/上方都不该有）
       await expect(page.locator('[data-slot="mail-sync-alerts"]')).toHaveCount(0);
+    });
+
+    /**
+     * 「邮件同步正常 + agent 后台不可达」——这是**最常见**的一屏（mailagentd 还没部署时
+     * dev/生产都是这个样子，用户 2026-10-08 的截图就是它）。
+     * 契约：文字位留给同步状态（绿点 + 上次收到新邮件），agent 只占一枚感叹号图标。
+     */
+    test("同步正常 + agent 告警：文字位留给同步状态，agent 只做图标", async ({ page }) => {
+      const calls = { flags: [], send: [], delete: [] };
+      await stubMailApi(page, calls, {
+        mailagentd: {
+          status: 200,
+          body: {
+            ok: false,
+            threshold: 3,
+            accounts: [
+              {
+                id: "agent",
+                displayName: "Agent 信箱",
+                email: "agent@mail.example.cn",
+                lastOk: null,
+                failures: 3,
+                lastError: "AUTH failed",
+                connected: false,
+                alert: true,
+              },
+            ],
+          },
+        },
+      });
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+      await gotoReady(page, "/mail");
+
+      const status = page.locator('[data-slot="mail-sync-status"]');
+      // 主状态 = 同步正常（绿点 + 上次收到新邮件），**不是** agent 告警
+      const primary = status.locator('[data-slot="mail-sync-primary"]');
+      await expect(primary.locator('[data-slot="mail-sync-latest"]')).toContainText("上次收到新邮件");
+      await expect(status.locator('[data-slot="mail-sync-alert-text"]')).toHaveCount(0);
+      // agent 告警仍在（一枚琥珀感叹号），悬浮可看文案 —— 没有静默消失
+      const issue = status.locator('[data-slot="mail-sync-issue"]');
+      await expect(issue).toHaveCount(1);
+      await expect(issue).toHaveClass(/text-amber-700/);
+      await expect(issue).toHaveAttribute("aria-label", /Agent 信箱 连续 3 次同步失败/);
+      // 主状态在前、图标在右
+      const primaryBox = (await primary.boundingBox())!;
+      const issueBox = (await issue.boundingBox())!;
+      expect(primaryBox.x).toBeLessThan(issueBox.x);
+    });
+
+    /**
+     * 历史回填的进度显示与自动刷新（2026-10-08）。
+     *
+     * 背景：新加一个邮箱时，首轮同步以前是「从小到大逐封抓、整箱抓完才可见」，界面
+     * 上完全看不出在干活（用户报「加载很久、看不到新邮箱的邮件」）。现在首轮是
+     * 「最新优先、按块推进」，并且：
+     * 1. `/health` 带 `backfill` 进度 → 底栏显示「正在同步历史邮件 x/y」（而不是把
+     *    首次同步误报成「从未成功」的告警）；
+     * 2. 回填期间列表每 15 秒静默重取，新抓到的邮件自己冒出来。
+     * 这里锁定这两条契约（文案 key `mail.sync.backfilling` 的取值形态 + 静默刷新）。
+     */
+    test("历史回填：底栏显示进度、不误报告警，且列表自动刷新", async ({ page }) => {
+      const calls = {
+        flags: [],
+        send: [],
+        delete: [],
+        listStore: undefined as unknown[] | undefined,
+      };
+      // acc1 正在回填（lastSync 仍是 null——首轮还没跑完），acc2 正常
+      await stubMailApi(page, calls, {
+        webmail: {
+          status: 200,
+          body: {
+            ok: true,
+            accounts: [
+              {
+                id: "acc1",
+                enabled: true,
+                lastSync: null,
+                lastError: null,
+                lastNewMail: null,
+                backfill: {
+                  remaining: 400,
+                  total: 500,
+                  done: 100,
+                  folder: "INBOX",
+                  folders: [{ path: "INBOX", remaining: 400, total: 500 }],
+                },
+              },
+              {
+                id: "acc2",
+                enabled: true,
+                lastSync: new Date().toISOString(),
+                lastError: null,
+                lastNewMail: null,
+                backfill: null,
+              },
+            ],
+          },
+        },
+      });
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+      await gotoReady(page, "/mail");
+
+      // 进度显示在底栏右侧（状态唯一显示位置）
+      const status = page.locator('[data-slot="mail-sync-status"]');
+      await expect(status.locator('[data-slot="mail-sync-backfill"]')).toHaveText(
+        "正在同步历史邮件 100/500",
+      );
+      // 首次同步没跑完 ≠ 告警：`lastSync === null` 不再被判成「从未成功」
+      await expect(page.locator('[data-slot="mail-sync-alert-text"]')).toHaveCount(0);
+
+      // ---- 回填期间列表自动刷新（15s 一拍）----
+      const rows = page.locator('[data-slot="mail-list"] > li');
+      const before = await rows.count();
+      // 模拟「后台又抓进来一封」：换掉列表桩的实时引用（⚠ 不能原地改 MAIL_LIST——
+      // 它是模块级常量，被同一文件里其它用例共享）
+      calls.listStore = [
+        mailItem({
+          messageId: "mid:backfilled@test.local",
+          date: "2026-10-08T02:00:00.000Z",
+          subject: "回填进来的旧邮件",
+          fromAddr: "old@example.net",
+          snippet: "历史回填",
+          copies: [{ accountId: "acc1", folder: "INBOX", uid: 9001 }],
+        }),
+        ...MAIL_LIST,
+      ];
+      // 不手动刷新、不点任何按钮：等自动刷新把它带进来
+      await expect(rows).toHaveCount(before + 1, { timeout: 25_000 });
+      await expect(page.getByText("回填进来的旧邮件")).toBeVisible();
+    });
+
+    /**
+     * 底栏右侧**只完整显示一条**、其余状态缩成图标（2026-10-08 用户定稿）。
+     *
+     * 用户当时的截图是：「⟳ 正在同步历史邮件 382/6520　⚠ agent 服务不可达」两段完整文案
+     * 并排，又长又吵。要求：只完整显示一条、用绿色；其余状态缩成一枚图标（悬浮看文字）。
+     * 第二轮又定：主状态排在**最左**（第一条），图标排它**右边**——反过来的话右边那枚
+     * 感叹号像是「在修饰」同步文案，容易被读成「同步出问题了」。
+     * 这里锁定：主状态 = 同步进度（绿色、第一条）、告警只剩一枚图标（文案在 title/aria-label）。
+     */
+    test("同步进行中：主状态在前（绿）、次级告警缩成一枚图标（文案在 title）", async ({ page }) => {
+      const calls = { flags: [], send: [], delete: [] };
+      await stubMailApi(page, calls, {
+        mailagentd: {
+          status: 200,
+          body: {
+            ok: false,
+            threshold: 3,
+            accounts: [
+              {
+                id: "agent",
+                displayName: "Agent 信箱",
+                email: "agent@mail.example.cn",
+                lastOk: null,
+                failures: 3,
+                lastError: "AUTH failed",
+                connected: false,
+                alert: true,
+              },
+            ],
+          },
+        },
+        webmail: {
+          status: 200,
+          body: {
+            ok: true,
+            accounts: [
+              {
+                id: "acc1",
+                enabled: true,
+                lastSync: null,
+                lastError: null,
+                lastNewMail: null,
+                backfill: {
+                  remaining: 400,
+                  total: 500,
+                  done: 100,
+                  folder: "INBOX",
+                  folders: [{ path: "INBOX", remaining: 400, total: 500 }],
+                },
+              },
+              { id: "acc2", enabled: true, lastSync: new Date().toISOString(), lastError: null },
+            ],
+          },
+        },
+      });
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+      await gotoReady(page, "/mail");
+
+      const status = page.locator('[data-slot="mail-sync-status"]');
+      const primary = status.locator('[data-slot="mail-sync-primary"]');
+      // 主状态 = 同步进度（完整文案），绿色
+      await expect(primary.locator('[data-slot="mail-sync-backfill"]')).toHaveText(
+        "正在同步历史邮件 100/500",
+      );
+      await expect(primary).toHaveClass(/text-emerald-700/);
+      // 告警不再占一整行文字（缩成图标了）
+      await expect(status.locator('[data-slot="mail-sync-alert-text"]')).toHaveCount(0);
+
+      // 告警图标：文案在 title / aria-label 里（悬浮即可看到，站内通行做法）
+      const issue = status.locator('[data-slot="mail-sync-issue"]');
+      await expect(issue).toHaveCount(1);
+      expect(await issue.getAttribute("aria-label"), "图标悬浮文案 = 完整告警").toContain(
+        "Agent 信箱 连续 3 次同步失败",
+      );
+      expect(await issue.getAttribute("title")).toContain("Agent 信箱 连续 3 次同步失败");
+
+      // 顺序：主状态在**最左**（第一条），图标在它右边——否则感叹号读起来像在修饰同步文案
+      const issueBox = (await issue.boundingBox())!;
+      const primaryBox = (await primary.boundingBox())!;
+      expect(primaryBox.x, "主状态在次级图标左边").toBeLessThan(issueBox.x);
+      // 整组仍然贴底栏右端（图标是最右的那个元素）
+      const barBox = (await page.locator('[data-slot="mail-statusbar"]').boundingBox())!;
+      expect(
+        barBox.x + barBox.width - (issueBox.x + issueBox.width),
+        "状态指示器贴住底栏右端",
+      ).toBeLessThan(24);
+    });
+
+    /**
+     * 新增账号后底栏**当场**显示「正在首次同步邮件…」（2026-10-08 用户要求）。
+     *
+     * 背景：加完邮箱，后端立刻起一轮同步（先钉水位线、再按块倒序回填），但这段时间
+     * `/health` 的 `backfill` 还没有 x/y 数字（第一块还没落库）——旧实现下这一段在界面上
+     * 完全不可见：① 平静期的状态轮询是 60s 一拍，加完账号最多要等一分钟才刷新；
+     * ② `lastSync === null` 时底栏显示的是「上次收到新邮件 x 前」，与真相正好相反
+     * （邮箱正在下载，界面却在说上一封信是什么时候到的）。
+     * 这里锁定两条契约：加完账号立刻切到首次同步态，且抓取期间列表照常静默自动刷新。
+     */
+    test("新增账号：底栏立刻显示首次同步进度，列表自动刷新", async ({ page }) => {
+      const calls = {
+        flags: [],
+        send: [],
+        delete: [],
+        accounts: [] as unknown[],
+        listStore: undefined as unknown[] | undefined,
+      };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+      await gotoReady(page, "/mail");
+
+      const status = page.locator('[data-slot="mail-sync-status"]');
+      // 加账号之前：两个账号都同步过 → 正常态（绿点 + 上次收到新邮件）
+      await expect(status.locator('[data-slot="mail-sync-latest"]')).toBeVisible();
+      await expect(status.locator('[data-slot="mail-sync-first-sync"]')).toHaveCount(0);
+
+      // 添加账号（与「账号管理」用例同一套操作）
+      await page.getByRole("button", { name: "账号", exact: true }).click();
+      const dialog = page.locator('[data-slot="dialog-content"]');
+      await dialog.getByRole("button", { name: "添加账号" }).click();
+      await dialog.getByLabel("备注名").fill("镜像");
+      await dialog.getByLabel("邮箱地址").fill("mirror@example.com");
+      await dialog.getByLabel("密码 / 授权码").fill("secret");
+      await dialog.getByLabel("主机").first().fill("imap.example.com");
+      await dialog.getByLabel("主机").nth(1).fill("smtp.example.com");
+      await dialog.getByRole("button", { name: "测试并保存" }).click();
+      await expect.poll(() => calls.accounts?.length).toBe(1);
+      // 关掉弹窗腾出底栏（无需手动刷新页面、也不点任何同步按钮）
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+
+      // ⚠ 关键断言：不等 60s 轮询，加完账号底栏立刻切到首次同步态
+      await expect(status.locator('[data-slot="mail-sync-first-sync"]')).toHaveText(
+        "正在首次同步邮件…",
+      );
+      // 首轮没跑完 ≠ 告警：不能显示「从未成功」那类故障文案
+      await expect(status.locator('[data-slot="mail-sync-alert-text"]')).toHaveCount(0);
+      // 也别再显示「上次收到新邮件 x 前」（此刻它读起来正好是反的）
+      await expect(status.locator('[data-slot="mail-sync-latest"]')).toHaveCount(0);
+
+      // ---- 抓取期间列表自动刷新（15s 一拍）----
+      const rows = page.locator('[data-slot="mail-list"] > li');
+      const before = await rows.count();
+      calls.listStore = [
+        mailItem({
+          messageId: "mid:first-sync@test.local",
+          date: "2026-10-08T03:00:00.000Z",
+          subject: "新账号抓下来的第一封",
+          fromAddr: "fresh@example.net",
+          snippet: "首次同步",
+          copies: [{ accountId: "mirror", folder: "INBOX", uid: 1 }],
+        }),
+        ...MAIL_LIST,
+      ];
+      // 不手动刷新、不点任何按钮：等自动刷新把它带进来
+      await expect(rows).toHaveCount(before + 1, { timeout: 25_000 });
+      await expect(page.getByText("新账号抓下来的第一封")).toBeVisible();
     });
 
     test("同步状态指示：两个后台服务都不可达时显示总告警（5.5）", async ({ page }) => {
@@ -5483,14 +6044,14 @@ test.describe("站内邮件（/mail）", () => {
 
       await gotoReady(page, "/mail");
       // 底栏右侧直接显示具体文案（2026-10-04 用户指定：把「同步异常」短标签换成
-      // 「邮件后台服务不可达，新邮件抓取已暂停」，底栏就是状态条、不再另开告警栏）
+      // 「邮件后台服务不可达，新邮件同步已暂停」，底栏就是状态条、不再另开告警栏）
       const status = page.locator('[data-slot="mail-sync-status"]');
       await expect(status.locator('[data-slot="mail-sync-alert-text"]')).toHaveText(
-        "邮件后台服务不可达，新邮件抓取已暂停",
+        "邮件后台服务不可达，新邮件同步已暂停",
       );
       // 状态只在底栏：没有额外的告警条，也没有别处重复这句文案
       await expect(page.locator('[data-slot="mail-sync-alerts"]')).toHaveCount(0);
-      await expect(page.getByText("邮件后台服务不可达，新邮件抓取已暂停")).toHaveCount(1);
+      await expect(page.getByText("邮件后台服务不可达，新邮件同步已暂停")).toHaveCount(1);
     });
 
     /**

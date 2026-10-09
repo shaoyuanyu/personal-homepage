@@ -6,7 +6,11 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { accountDotProps } from "@/components/mail/account-dot";
 import { accountLabel } from "@/components/mail/account-label";
-import { SyncStatusIndicator, type SyncStatus } from "@/components/mail/sync-status";
+import {
+  SyncStatusIndicator,
+  type BackfillState,
+  type SyncStatus,
+} from "@/components/mail/sync-status";
 import type { MailAccount } from "@/lib/mail/types";
 
 /**
@@ -21,7 +25,7 @@ import type { MailAccount } from "@/lib/mail/types";
  *   中 = 账号指示（**只读**，2026-10-05 用户定稿）：选「全部账号」时列出正在合并哪些账号
  *        （色点 + 名称）；选具体账号时不显示（工具栏行 1 的账号下拉已表明当前账号）。
  *        **不再承担筛选功能**——筛选在工具栏的账号下拉里（底栏只负责「说明现状」）
- *   右 = 同步状态指示（圆点 + 上次抓取时间；异常时琥珀图标 + 第一条告警的完整文案）——
+ *   右 = 同步状态指示（见 sync-status.tsx：只完整显示一条，其余状态缩成图标+悬浮说明）——
  *        全局服务健康，与列表无关，放最右；这里是状态**唯一**的显示位置
  *        （2026-10-04 用户指定：底栏已有状态条，不再另开一条顶部告警栏）
  *
@@ -111,10 +115,16 @@ function useNowTick(active: boolean): number {
 export function MailStatusbar({
   status,
   rel,
+  backfill,
+  firstSync,
   className,
 }: {
   status: SyncStatus;
   rel: (iso: string) => string;
+  /** 历史回填进度（2026-10-08）：有值时底栏显示「正在同步历史邮件 x/y」 */
+  backfill?: BackfillState | null;
+  /** 有账号首轮同步还没跑完（2026-10-08）：底栏显示「正在首次同步邮件…」 */
+  firstSync?: boolean;
   className?: string;
 }) {
   const t = useTranslations("mail");
@@ -228,7 +238,13 @@ export function MailStatusbar({
             </span>
           )
         ) : (
-          <SyncStatusIndicator status={status} rel={rel} className="ml-auto" />
+          <SyncStatusIndicator
+            status={status}
+            rel={rel}
+            backfill={backfill}
+            firstSync={firstSync}
+            className="ml-auto"
+          />
         )}
       </div>
     </div>

@@ -25,6 +25,13 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import {
+  ACCOUNT_COLOR_NAMES,
+  accountColorKey,
+  accountDotProps,
+  nextAccountColor,
+} from "@/components/mail/account-dot";
+import { cn } from "@/lib/utils";
 import { mailErrorText } from "@/lib/mail/error-text";
 import { folderSpecialKey } from "@/lib/mail/folder-special";
 import type { MailAccount, MailFolder } from "@/lib/mail/types";
@@ -38,6 +45,11 @@ interface AddForm {
   /** 发件人姓名（随邮件发出的 From 显示名；空 = 只发邮箱地址） */
   senderName: string;
   email: string;
+  /**
+   * 账号色（用于底栏账号一览 / 账号下拉 / 列表行的账号标识）。
+   * 色板名字（`cyan` 等，见 account-dot.ts）或任意 CSS 色；新增时预填「下一个没被占用的色」。
+   */
+  color: string;
   username: string;
   /** 新增必填；编辑留空 = 不改 */
   password: string;
@@ -54,6 +66,7 @@ const EMPTY_FORM: AddForm = {
   displayName: "",
   senderName: "",
   email: "",
+  color: "",
   username: "",
   password: "",
   imapHost: "",
@@ -71,6 +84,7 @@ function accountToForm(a: MailAccount): AddForm {
     displayName: a.displayName,
     senderName: a.senderName ?? "",
     email: a.email,
+    color: a.color,
     username: a.username ?? "",
     password: "",
     imapHost: a.imapHost ?? "",
@@ -235,6 +249,18 @@ export function AccountsDialog() {
     setForm((prev) => ({ ...prev, ...change }));
   }, []);
 
+  /** 选中的颜色是否已被**别的**账号占用（只提示、不拦——同色本身不是错误） */
+  const colorTaken =
+    !!form.color &&
+    (accounts ?? []).some(
+      (a) => a.id !== editing?.id && accountColorKey(a.color) === accountColorKey(form.color),
+    );
+  /** 不在色板里的颜色（hex 等手写值）：渲染成一枚额外的「当前颜色」圆钮 */
+  const customColor =
+    form.color && !(ACCOUNT_COLOR_NAMES as readonly string[]).includes(accountColorKey(form.color))
+      ? form.color
+      : null;
+
   /** 上一次「按域名自动填」写进表单的主机名——用来判断某个字段是否还归自动填管 */
   const autoHostsRef = useRef<{ imap: string; smtp: string }>({ imap: "", smtp: "" });
 
@@ -273,11 +299,12 @@ export function AccountsDialog() {
 
   const openAdd = useCallback(() => {
     setEditing(null);
-    setForm(EMPTY_FORM);
+    // 预选「下一个没被占用的色」：色板顺序固定，账号多起来才不会出现两个同色色点
+    setForm({ ...EMPTY_FORM, color: nextAccountColor((accounts ?? []).map((a) => a.color)) });
     setSaveError(null);
     autoHostsRef.current = { imap: "", smtp: "" };
     setAdding(true);
-  }, []);
+  }, [accounts]);
 
   const openEdit = useCallback((a: MailAccount) => {
     setEditing(a);
@@ -374,6 +401,8 @@ export function AccountsDialog() {
         displayName: form.displayName,
         senderName: form.senderName,
         email: form.email,
+        // 颜色随账号保存（后端缺省时会自己避让已占用的色，这里显式带上用户在色板上的选择）
+        color: form.color || undefined,
         username: form.username || undefined,
         imapHost: form.imapHost,
         imapPort: Number(form.imapPort),
@@ -458,7 +487,12 @@ export function AccountsDialog() {
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
+        {/* ⚠ `max-h` + `overflow-y-auto` 是必需的（2026-10-09 由 E2E 暴露）：共享的
+            `DialogContent` 只有 `fixed top-1/2 -translate-y-1/2`、**没有 max-height 也没有
+            滚动**——表单展开后弹窗实测高 1198px，在 720 高的视口里上下各被裁掉（top = −239），
+            标题、关闭按钮与底部「保存」全在视口外且**滚不到**。同款写法见 `calendar-view`
+            与 `agent-view` 的弹窗（`max-h-[85vh] overflow-y-auto`）。 */}
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("title")}</DialogTitle>
             <DialogDescription>{t("description")}</DialogDescription>
@@ -550,6 +584,46 @@ export function AccountsDialog() {
                     />
                   </Field>
                   <p className="text-xs text-muted-foreground sm:col-span-2">{t("nameFieldsHint")}</p>
+                  {/* 账号颜色：底栏账号一览 / 账号下拉 / 列表行的账号标识都用它。
+                      ⚠ 必须让用户能改：两个账号同色时色点就没有信息了（2026-10-09 用户报
+                      「账号指示器中多个账号之间的颜色没有区别」——此前这个弹窗根本不提交
+                      color，后端给每个新账号填同一个默认色，属于必然撞色）。 */}
+                  <Field className="sm:col-span-2">
+                    <FieldLabel>{t("fieldColor")}</FieldLabel>
+                    <div
+                      data-slot="account-color-picker"
+                      role="group"
+                      aria-label={t("fieldColor")}
+                      className="flex flex-wrap items-center gap-1.5"
+                    >
+                      {ACCOUNT_COLOR_NAMES.map((name) => (
+                        <ColorSwatch
+                          key={name}
+                          color={name}
+                          label={t(`colorNames.${name}`)}
+                          // 比较走 accountColorKey：历史缺省色 #0ea5e9 要落在「青色」这一格上
+                          selected={accountColorKey(form.color) === name}
+                          onSelect={() => patch({ color: name })}
+                        />
+                      ))}
+                      {/* 手改过配置/历史遗留的 hex 色不在色板里：给它一枚「当前颜色」圆钮，
+                          否则面板上没有一项处于选中态，看起来像「这个账号没有颜色」 */}
+                      {customColor && (
+                        <ColorSwatch
+                          color={customColor}
+                          label={t("colorCustom")}
+                          selected
+                          onSelect={() => patch({ color: customColor })}
+                        />
+                      )}
+                    </div>
+                    <FieldDescription>{t("colorHint")}</FieldDescription>
+                    {colorTaken && (
+                      <p data-slot="account-color-taken" className="text-xs text-amber-600 dark:text-amber-400">
+                        {t("colorTaken")}
+                      </p>
+                    )}
+                  </Field>
                   <Field>
                     <FieldLabel htmlFor="acct-email">{t("fieldEmail")}</FieldLabel>
                     <Input
@@ -823,10 +897,59 @@ export function AccountsDialog() {
           if (!o) setPendingDelete(null);
         }}
         title={t("deleteTitle")}
-        description={t("deleteBody", { email: pendingDelete?.email ?? "" })}
+        // 删除期间（pending）换成「正在删除本地 N 封副本与全文索引…」——这一步是同步 SQL，
+        // 数量级大时要让用户知道在等什么（2026-10-08：6516 封的账号曾卡 41 秒且无任何说明）
+        description={
+          deleting
+            ? t("deletePending", { count: pendingDelete?.localMessages ?? 0 })
+            : t("deleteBody", {
+                email: pendingDelete?.email ?? "",
+                count: pendingDelete?.localMessages ?? 0,
+              })
+        }
         pending={deleting}
         onConfirm={doDelete}
       />
     </>
+  );
+}
+
+/**
+ * 色板圆钮（账号颜色）。
+ *
+ * ⚠ 选中态**不能只靠颜色本身**表达——五个圆钮本来就是五种颜色，选中与否都是个色点。
+ *   这里用「外描边 + 未选中略淡」两种非颜色线索：`aria-pressed` + `data-color` 供 E2E 断言，
+ *   颜色类名（`bg-cyan-600` 这类）不进断言（CLAUDE.md：锁契约不锁像素）。
+ */
+function ColorSwatch({
+  color,
+  label,
+  selected,
+  onSelect,
+}: {
+  color: string;
+  label: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const d = accountDotProps(color);
+  return (
+    <button
+      type="button"
+      data-slot="account-color-swatch"
+      data-color={color}
+      aria-pressed={selected}
+      aria-label={label}
+      title={label}
+      onClick={onSelect}
+      className={cn(
+        "size-6 shrink-0 rounded-full transition-[opacity,outline-color] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        d.className,
+        selected
+          ? "outline-2 outline-offset-2 outline-foreground"
+          : "opacity-60 hover:opacity-100",
+      )}
+      style={d.style}
+    />
   );
 }

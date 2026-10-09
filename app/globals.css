@@ -799,14 +799,13 @@ section[id^="ccf-field"] {
   [data-slot="mail-statusbar"],
   [data-slot="mail-batch-bar"],
   [data-slot="mail-quick-reply"],
+  /* 会话区块：纸面上它只是导航、没有内容，整块隐藏。
+     ⚠ 2026-10-09 起 `mail-thread` 从里面的 ul 移到**外层 section**（可折叠改造），
+     所以这条规则本身就盖住标题了——原来那条靠 `:has()` 追到 section 的补丁已删；
+     若将来把槽位挪回内层，记得把标题一起藏掉，否则纸上会剩一个孤零零的小标题 */
   [data-slot="mail-thread"],
   [data-slot="mail-avatar"],
   [data-print="hide"] {
-    display: none !important;
-  }
-  /* 会话区块的标题挂在 section 上（`mail-thread` 是里面的 ul）：只藏 ul 会留下
-     一个孤零零的「会话」小标题，整块一起去掉 */
-  [data-slot="mail-pane-detail"] section:has(> [data-slot="mail-thread"]) {
     display: none !important;
   }
   /* 右栏（详情）撑满整页：解除锁高与内部滚动（锁高是给屏幕上的两栏滚动用的），
