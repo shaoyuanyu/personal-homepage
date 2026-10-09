@@ -3086,6 +3086,12 @@ const KNOWN_SENDERS = [
 
 /** 按 path 分发 /api/mail/** 的桩；写操作（flags/send/delete/contacts/accounts/whitelist）记录请求体供断言 */
 const SENT_FOLDERS = new Set(["sent", "sent items", "sent messages", "已发送邮件", "已发送"]);
+/**
+ * 垃圾文件夹名（与服务端 `webmail/src/write.ts` 的 `JUNK_FOLDER_NAMES` 同一份名单）。
+ * 详情桩据此判定「这封有没有可承载已读状态的副本」——详情页没有视图上下文，服务端按
+ * 「收件箱优先、否则垃圾副本」兜底（`readCopiesOf` ③，2026-10-10 第九轮）。
+ */
+const JUNK_FOLDERS = new Set(["junk", "junk e-mail", "spam", "bulk mail", "垃圾邮件", "垃圾箱"]);
 
 function stubMailApi(
   page: Page,
@@ -3130,6 +3136,8 @@ function stubMailApi(
     junkFolderItems?: boolean;
     /** 列表桩的实时引用（用例可往里追加，验证「历史回填期间列表自动刷新」，2026-10-08） */
     listStore?: unknown[];
+    /** `POST /mark-all-read` 的请求体（验证「全部标为已读」的作用域跟着 tab 走，第九轮） */
+    markAllRead?: unknown[];
     /**
      * 列表分页（2026-10-09）：设了就按此页大小切片并给出游标（游标 = 数字偏移量），
      * 让「无限滚动自动续页 + 加载更多按钮」在 E2E 里真的能跑——此前恒 `next: null`，
@@ -3351,49 +3359,60 @@ function stubMailApi(
         const sep = v.indexOf("|");
         return sep <= 0 ? { account: "", path: v } : { account: v.slice(0, sep), path: v.slice(sep + 1) };
       });
+      /** 这封有没有落在本次 `folder` 参数范围内（服务端 folderClause 的同口径） */
+      const inReadScope = (m: (typeof MAIL_LIST)[number]) =>
+        m.copies.some((c) =>
+          folderParams.some((f) => c.folder === f.path && (!f.account || c.accountId === f.account)),
+        );
+      /**
+       * `hasReadState`：与服务端同口径（2026-10-10 第九轮用户定稿「对齐协议」）——
+       * **收件箱副本优先**，没有收件箱副本时才认本次查询的文件夹范围（「垃圾」tab 的垃圾
+       * 副本）；发件 / 归档 / 回收站既不是收件箱、也不在范围内 → 不给「标为已读/未读」。
+       * ⚠ 「垃圾 tab 直给一封」那条分支也要过这道映射（漏过一次：垃圾行的悬浮条因此多出
+       *   或少掉一枚「标为已读」——两轮反向验证都是这样红的）。
+       */
+      const withReadState = (list: typeof MAIL_LIST) =>
+        list.map((m) => ({
+          ...m,
+          hasReadState: m.copies.some((c) => c.folder.toUpperCase() === "INBOX") || inReadScope(m),
+        }));
       // 列表桩的实时引用（用例追加条目 = 后台又抓进来一批）
-      let items = (calls.listStore as typeof MAIL_LIST | undefined) ?? MAIL_LIST;
+      let items = withReadState((calls.listStore as typeof MAIL_LIST | undefined) ?? MAIL_LIST);
       if (account) items = items.filter((m) => m.accounts.includes(account));
       if (folderParams.length && calls.junkFolderItems) {
-        // 「垃圾」tab 的桩：带 folder 参数的请求直接给这封（真实服务端会按副本路径匹配）
-        return json({
-          items: [
-            mailItem({
-              messageId: "mid:junk1@test.local",
-              date: "2026-09-25T06:00:00.000Z",
-              subject: "中奖通知",
-              fromAddr: "spam@example.net",
-              snippet: "恭喜您中奖",
-              copies: [{ accountId: "acc1", folder: "垃圾邮件", uid: 42 }],
-            }),
-          ],
-          next: null,
-        });
-      }
-      if (folderParams.length) {
-        items = items.filter((m) =>
-          m.copies.some((c) =>
-            folderParams.some(
-              (f) => c.folder === f.path && (!f.account || c.accountId === f.account),
-            ),
-          ),
-        );
+        // 「垃圾」tab 的桩：带 folder 参数的请求直接给这封（真实服务端会按副本路径匹配）。
+        // ⚠ 不早退：下面的状态筛选（未读 / 星标）与方向筛选必须照样生效——否则
+        //   「垃圾 tab 就地筛未读」这条契约在桩上恒真，等于没测。
+        items = withReadState([
+          mailItem({
+            messageId: "mid:junk1@test.local",
+            date: "2026-09-25T06:00:00.000Z",
+            subject: "中奖通知",
+            fromAddr: "spam@example.net",
+            snippet: "恭喜您中奖",
+            copies: [{ accountId: "acc1", folder: "垃圾邮件", uid: 42 }],
+          }),
+        ]);
+      } else if (folderParams.length) {
+        items = items.filter(inReadScope);
       }
       if (q) items = items.filter((m) => m.subject.includes(q) || m.snippet.includes(q));
       // 状态筛选（4.2）：与服务端 filter 参数同口径（2026-10-04 起支持逗号多值取交集）
-      // ⚠ 「未读」= **收件箱未读**（2026-10-10 第六轮起）：有 INBOX 副本且该封未读，
-      //   不是「任一副本无 \Seen」——后者会把垃圾文件夹里的未读也算进来（用户报障：
-      //   开关写 2、点开列出 7 封）。服务端口径在 webmail/test/folders.test.ts 锁定，
-      //   这里让桩跟着同口径，好让「开关数字 == 列出条数」这条契约在 E2E 里成立。
+      // ⚠ 「未读」= 存在一份**未读的、承载已读状态的副本**（第九轮）：不给 `folder` 时
+      //   = 收件箱未读（第六轮定稿的「全站一个数」，不是「任一副本无 \Seen」——后者会把
+      //   垃圾箱里的未读算进来，用户报障过「开关写 2、点开列出 7 封」）；给了 `folder`
+      //   （「垃圾」tab）时 = 收件箱优先、否则该范围内的副本。服务端口径在
+      //   webmail/test/folders.test.ts 锁定，这里让桩跟着同口径，
+      //   好让「开关数字 == 列出条数」这条契约在 E2E 里成立。
       const filters = new Set((filter ?? "").split(",").filter(Boolean));
       if (filters.has("unseen"))
-        items = items.filter(
-          (m) =>
-            !m.seen &&
-            m.copies.some(
-              (c) => c.folder.toUpperCase() === "INBOX" && (!account || c.accountId === account),
-            ),
-        );
+        items = items.filter((m) => {
+          if (m.seen) return false;
+          const inbox = m.copies.filter(
+            (c) => c.folder.toUpperCase() === "INBOX" && (!account || c.accountId === account),
+          );
+          return inbox.length > 0 || (folderParams.length > 0 && inReadScope(m));
+        });
       if (filters.has("flagged")) items = items.filter((m) => m.flagged);
       // 方向筛选（4.9）：与服务端 direction 参数同口径，与状态互相独立可叠加
       //（判定与 lib/mail/kind.ts 的 isSentItem 一致：副本全在「已发送」类文件夹）
@@ -3414,6 +3433,11 @@ function stubMailApi(
         return json({ items, next: null });
       };
       return reply();
+    }
+    if (path === "/mark-all-read") {
+      // 「全部标为已读」的作用域（`folders`）在请求体里，用例据此核对它跟着 tab 走
+      calls.markAllRead?.push(route.request().postDataJSON());
+      return json({ updated: 0, messages: 0, skipped: [] });
     }
     if (path === "/flags") {
       calls.flags.push(route.request().postDataJSON());
@@ -3499,6 +3523,20 @@ function stubMailApi(
       });
     }
     if (path.startsWith("/message/")) {
+      /**
+       * 详情桩统一出口：补 `hasReadState`（与服务端同口径）——详情页工具栏据此隐藏
+       * 「标为已读/未读」。第九轮起 = **收件箱副本优先、否则垃圾副本**（详情没有视图上下文，
+       * 按"这封信唯一可能承载已读状态的地方"兜底）：垃圾邮件在站内打开时也能标已读。
+       */
+      const detailJson = (obj: Record<string, unknown>) => {
+        const copies = (obj.copies ?? []) as { folder: string }[];
+        return json({
+          ...obj,
+          hasReadState:
+            copies.some((c) => c.folder.toUpperCase() === "INBOX") ||
+            copies.some((c) => JUNK_FOLDERS.has(c.folder.trim().toLowerCase())),
+        });
+      };
       // 详情加载失败：代理层给的内部错误码（webmaild_unreachable）——UI 必须换成友好文案
       if (calls.detailError && !path.endsWith("/thread") && !path.endsWith("/source")) {
         return route.fulfill({
@@ -3512,7 +3550,7 @@ function stubMailApi(
         (id) => path.includes(encodeURIComponent(id)) || path.includes(id),
       );
       if (partialHit && !path.endsWith("/thread") && !path.endsWith("/source")) {
-        return json({
+        return detailJson({
           ...mailItem({
             messageId: partialHit,
             subject: "带大附件的简报",
@@ -3538,7 +3576,7 @@ function stubMailApi(
       // 超大邮件（truncated）：只入库索引 → 正文/附件为空（详情页应给出提示与补取入口）
       const truncatedHit = (calls.truncatedIds ?? []).find((id) => path.includes(encodeURIComponent(id)) || path.includes(id));
       if (truncatedHit && !path.endsWith("/thread") && !path.endsWith("/source")) {
-        return json({
+        return detailJson({
           ...mailItem({
             messageId: truncatedHit,
             subject: "大附件邮件",
@@ -3562,7 +3600,7 @@ function stubMailApi(
       // 按请求的消息 id 分发：w01 是多副本（删除用例）、s01 是发件样本
       //（「收件 / 发件区分」用例打开它，副本只在「已发送」），其余返回 w03 详情
       if (path.includes("s01")) {
-        return json(
+        return detailJson(
           mailItem({
             messageId: "mid:s01@test.local",
             date: "2026-09-25T01:00:00.000Z",
@@ -3584,7 +3622,7 @@ function stubMailApi(
       }
       const isShared = path.includes("w01");
       if (isShared) {
-        return json(
+        return detailJson(
           mailItem({
             messageId: "mid:w01@test.local",
             seen: false,
@@ -3602,7 +3640,7 @@ function stubMailApi(
           }),
         );
       }
-      return json(
+      return detailJson(
         mailItem({
           messageId: "mid:w03@test.local",
           subject: "HTML Newsletter",
@@ -3745,7 +3783,8 @@ test.describe("站内邮件（/mail）", () => {
       await expect(detailPane.getByText("从左侧列表选择一封邮件")).toBeVisible();
 
       const rows = page.locator('[data-slot="mail-list"] > li');
-      await expect(rows).toHaveCount(4); // 默认视图 = 收件（s01 发件不在其中）
+      // ⚠ 2026-10-10 第七轮起默认 tab = 全部（含 s01 那封发件）→ 5 行
+      await expect(rows).toHaveCount(5);
 
       // 给列表打标记 → 点开一封 → 标记必须还在（证明 layout 未重新挂载）
       await page.evaluate(() => {
@@ -3838,7 +3877,10 @@ test.describe("站内邮件（/mail）", () => {
       // 各视图 / 筛选的条数各不相同（收件 16 / 收件∩未读 12 / 收件∩星标 4 / 全部 20），能真正区分
       // 「高度是否随内容变」。2026-10-05 微调后：全部 / 收件 / 发件是视图 tab（role=tab），
       // 「未读」「星标」是 tab 行右侧的独立开关（role=button）——不再有同名「全部」撞车的歧义。
-      await expect(rows).toHaveCount(16); // 默认视图 = 收件
+      // ⚠ 2026-10-10 第七轮起默认 tab = 全部（20 条）；本用例的基线是「收件 16」，
+      //   故先显式切回收件（下面 16 / 12 / 4 / 20 四组数字都建立在这条基线上）
+      await page.getByRole("tab", { name: "收件", exact: true }).click();
+      await expect(rows).toHaveCount(16);
       const base = await snap();
       expect(base.overflowY, "长列表必须由面板内部滚动承接").toBe("auto");
       expect(base.pageOverflow, "页面本身不该被撑出滚动条（页脚收在折线处）").toBeLessThanOrEqual(1);
@@ -3958,7 +4000,7 @@ test.describe("站内邮件（/mail）", () => {
 
       await gotoReady(page, "/mail");
       const rows = page.locator('[data-slot="mail-list"] > li');
-      await expect(rows).toHaveCount(4); // 默认视图 = 收件（s01 发件不在其中）
+      await expect(rows).toHaveCount(5); // 默认 tab = 全部（2026-10-10 第七轮起）
       // 多副本消息：账号色点 2 个，title 标注两个账号
       const shared = rows.nth(3).locator("span[title]");
       await expect(shared).toHaveAttribute("title", "主账号、学校");
@@ -3990,7 +4032,10 @@ test.describe("站内邮件（/mail）", () => {
 
       await gotoReady(page, "/mail");
       const rows = page.locator('[data-slot="mail-list"] > li');
-      await expect(rows).toHaveCount(4); // 默认视图 = 收件
+      // ⚠ 默认 tab 已于 2026-10-10 第七轮改为「全部」（默认值本身另有专门用例锁定）；
+      //   本用例的其余断言都建立在「收件 4 行」上，故先切过去
+      await page.getByRole("tab", { name: "收件", exact: true }).click();
+      await expect(rows).toHaveCount(4);
 
       // 未读计数挂在「未读」开关上、不在「收件」tab（2026-10-05 用户定稿：发件不可能有
       // 未读，计数挂在方向 tab 上语义刻意）——acc1=3 + acc2=0，账号未读口径 = INBOX 未读。
@@ -4210,6 +4255,165 @@ test.describe("站内邮件（/mail）", () => {
     });
 
     /**
+     * 默认 tab = 全部，且 tab 落进 URL（2026-10-10 第七轮用户定稿）。
+     *
+     * 用户原话：①「进入『邮件』页面时显示的默认 tab 应该是『全部』」；
+     * ②「刷新页面后不应该将 tab 重置为默认 tab」。
+     * 实现：`view` 状态从 `?view=` 读初值、切换时用原生 `history.replaceState` 写回
+     * （不用 `router.replace`——那会让 App Router 为一个只差查询串的 URL 去取一次 RSC）。
+     */
+    test("默认 tab = 全部；切 tab 写进 URL，刷新后不回到默认", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      const rows = page.locator('[data-slot="mail-list"] > li');
+      const activeTab = () =>
+        page.locator('[aria-label="切换邮件视图"] [role="tab"][aria-selected="true"]');
+
+      await gotoReady(page, "/mail");
+      // ① 默认 = 全部（5 行，含 s01 那封发件），URL 不带 view 参数
+      await expect(rows).toHaveCount(5);
+      await expect(activeTab()).toHaveText("全部");
+      expect(new URL(page.url()).searchParams.get("view")).toBeNull();
+
+      // ② 切到「发件」：URL 变成 ?view=sent（地址栏可分享、可刷新）
+      await page.getByRole("tab", { name: "发件", exact: true }).click();
+      await expect(rows).toHaveCount(1);
+      await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("sent");
+      await expect(activeTab()).toHaveText("发件");
+
+      // ③ 刷新：仍是「发件」（不被重置回默认）
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(rows).toHaveCount(1);
+      await expect(activeTab()).toHaveText("发件");
+
+      // ④ 手改 URL 成非法值：回落到默认「全部」而不是空白列表
+      await gotoReady(page, "/mail?view=nonsense");
+      await expect(rows).toHaveCount(5);
+      await expect(activeTab()).toHaveText("全部");
+
+      // ⑤ 切回「全部」时参数清掉（默认 tab 不进 URL，地址栏保持干净）
+      await page.getByRole("tab", { name: "发件", exact: true }).click();
+      await page.getByRole("tab", { name: "全部", exact: true }).click();
+      await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBeNull();
+    });
+
+    /**
+     * 两个「本行操作」入口的**形状契约**（2026-10-10 第七轮用户定稿）：
+     * ① 列表悬浮操作条里也要有「标为垃圾」（此前只有详情页有）；
+     * ② 两处的四个整理动作**顺序一致**：加星标 → 标为未读/已读 → 标为垃圾 → 删除；
+     * ③ 没有 INBOX 副本的行（发件 / 垃圾）不渲染「标为已读/未读」——「未读」只针对
+     *    正常收件箱（用户定稿：「垃圾邮件不需要已读/未读的概念」）。
+     * 断言取 `aria-label` 序列（行为契约），不锁图标与像素。
+     */
+    test("列表悬浮条与详情工具栏：动作齐全、顺序一致、无已读语义的行不给已读动作", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      const rows = page.locator('[data-slot="mail-list"] > li');
+      const labels = (loc: ReturnType<typeof page.locator>) =>
+        loc.evaluateAll((els) =>
+          els
+            .map((el) => el.getAttribute("aria-label") ?? "")
+            // 「选择」是模式开关、不属于四个整理动作；分隔线不是按钮
+            .filter((l) => l && l !== "选择"),
+        );
+
+      // ① 有 INBOX 副本的**已读**行（w03「HTML Newsletter」，索引 1）：四个动作，
+      //    顺序 = 加星标 / 标为未读 / 标为垃圾 / 删除。
+      //    ⚠ 按钮文案是**要做的动作**：已读行显示「标为未读」。这里刻意用已读那封——
+      //    未读的邮件一打开就会被「打开即标已读」改写状态，不适合做顺序断言。
+      const inboxRow = rows.nth(1);
+      await inboxRow.locator("[data-mail-row]").hover();
+      await expect(inboxRow.locator('[data-slot="mail-row-actions"]')).toBeVisible();
+      expect(await labels(inboxRow.locator('[data-slot="mail-row-actions"] button'))).toEqual([
+        "加星标",
+        "标为未读",
+        "标为垃圾",
+        "删除",
+      ]);
+
+      // ② 详情页工具栏：同样四个动作、同样顺序（后面还跟着转发 / 回复，不在本断言范围）
+      await inboxRow.locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+      const detailBar = page.locator('[data-slot="message-actions"]');
+      const detailLabels = await labels(detailBar.locator("button"));
+      expect(
+        detailLabels.filter((l) => ["加星标", "取消星标", "标为未读", "标为已读", "标为垃圾", "删除"].includes(l)),
+      ).toEqual(["加星标", "标为未读", "标为垃圾", "删除"]);
+
+      // ③ 发件行（副本只在「已发送」= 没有 INBOX 副本）：不给「标为已读/未读」
+      await gotoReady(page, "/mail");
+      const sentRow = page.locator('[data-slot="mail-list"] > li').nth(4); // s01
+      await expect(sentRow).toContainText("张老师");
+      await sentRow.locator("[data-mail-row]").hover();
+      expect(await labels(sentRow.locator('[data-slot="mail-row-actions"] button'))).toEqual([
+        "加星标",
+        "标为垃圾",
+        "删除",
+      ]);
+      // 详情页同样不给
+      await sentRow.locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+      const sentDetailLabels = await labels(page.locator('[data-slot="message-actions"] button'));
+      expect(sentDetailLabels).not.toContain("标为未读");
+      expect(sentDetailLabels).not.toContain("标为已读");
+    });
+
+    /**
+     * 列表 ↔ 详情**双向**状态同步（2026-10-10 第七轮用户报障）。
+     *
+     * 用户原话：「在邮件列表的悬浮操作条中点击『标为未读』后，悬浮操作条中的『标为未读』会
+     * 转变成『标为已读』，但是邮件查看页面的工具栏中并没有同步变化。其他几个操作也存在同样
+     * 问题」——根因是列表行内操作只改自己的 state、从不广播（详情 → 列表那条早已有）。
+     */
+    test("状态互相同步：列表悬浮条改状态，右侧详情工具栏立即跟随（反之亦然）", async ({ page }) => {
+      const calls = { flags: [] as unknown[], send: [], delete: [] };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      const rows = page.locator('[data-slot="mail-list"] > li');
+      const detailBar = page.locator('[data-slot="message-actions"]');
+      // 打开 w03（已读那封，索引 1）——宽屏下左右两栏同时可见。
+      // ⚠ 用已读那封：未读的邮件一打开就被「打开即标已读」写掉，状态断言会打架
+      const row = rows.nth(1);
+      await row.locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/message\//);
+      // 按钮文案是**要做的动作**：已读 → 「标为未读」（两侧此时一致）
+      await expect(detailBar).toBeVisible();
+      await expect(detailBar.getByRole("button", { name: "标为未读", exact: true })).toBeVisible();
+      await expect(row.getByRole("button", { name: "标为未读", exact: true })).toBeVisible();
+
+      // ① 列表悬浮条点「标为未读」→ 该封变未读，**详情工具栏必须跟着翻成「标为已读」**
+      //    （用户报障的正是这一半：以前只有悬浮条自己在变）
+      await row.getByRole("button", { name: "标为未读", exact: true }).click();
+      await expect(detailBar.getByRole("button", { name: "标为已读", exact: true })).toBeVisible();
+      await expect(row.getByRole("button", { name: "标为已读", exact: true })).toBeVisible();
+
+      // ② 列表悬浮条加星标 → 详情工具栏的星标按钮进入按下态、文案变「取消星标」
+      await row.getByRole("button", { name: "加星标", exact: true }).click();
+      await expect(detailBar.getByRole("button", { name: "取消星标", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+
+      // ③ 反方向：详情页点「取消星标」→ 列表悬浮条跟着回到「加星标」（未按下）
+      await detailBar.getByRole("button", { name: "取消星标", exact: true }).click();
+      await row.locator("[data-mail-row]").hover();
+      await expect(row.getByRole("button", { name: "加星标", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+
+    /**
      * 「垃圾」tab（2026-10-08 用户要求新增）。
      * 契约：① 文件夹路径**由服务端探测**（`GET /folders` 的 `specialUse = \Junk`），前端
      * 只按账号拼 `folder=<账号>|<路径>`；② 只有**在同步白名单里**的垃圾文件夹才查得到，
@@ -4240,12 +4444,26 @@ test.describe("站内邮件（/mail）", () => {
       // 请求带上了「账号|路径」——账号维度不能丢（多账号下各自探测各自的垃圾文件夹）
       expect(listRequests.some((u) => u.includes("folder=acc1|垃圾邮件"))).toBe(true);
 
+      // 垃圾行**也有**已读/未读（2026-10-10 第九轮用户定稿「对齐协议」：协议上 `\Seen` 属于
+      // **副本**，垃圾箱里那份也有自己的状态）——行内动作与收件行**逐字同序**，只多不少：
+      // 选择 | 加星标 | 标为已读 | 标为垃圾 | 删除
+      await rows.first().locator("[data-mail-row]").hover();
+      await expect(rows.first().locator('[data-slot="mail-row-actions"]')).toBeVisible();
+      expect(
+        await rows
+          .first()
+          .locator('[data-slot="mail-row-actions"] button')
+          .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label"))),
+      ).toEqual(["选择", "加星标", "标为已读", "标为垃圾", "删除"]);
+
       /**
-       * 「未读」在「垃圾」tab 里**禁用 + 显示为关 + 查询不携带**（2026-10-10 第六轮）。
-       * 未读 = 收件箱未读，垃圾箱里的未读不算它——若这里还允许打开，就会得到
-       * 「开关上写着收件箱未读 3、列表却空白（垃圾里没有收件箱副本）」的自相矛盾。
-       * 判据取「先在收件里打开 → 进垃圾看生效值」这条链：只有生效值真的参与查询与显示，
-       * 三个断言才会同时成立（开关状态本身保留 = 与「发件 / 草稿」同一套规则）。
+       * 「未读」在「垃圾」tab 里是**就地筛选**（2026-10-10 第九轮用户定稿）：筛的是垃圾箱里
+       * 未读的那几封，而**开关上不显示数字**——那个数字永远是收件箱未读，摆在旁边就又成了
+       * 第六轮那个「数字说 2、点开列出别的」的自相矛盾。
+       * 判据取「先在收件里打开 → 进垃圾看生效值」这条链（开关状态本身保留 = 与「发件 /
+       * 草稿」同一套规则）：只有生效值真的参与查询，「带 filter=unseen 且仍有 1 行」才成立。
+       * ⚠ 结果集本身由服务端判（webmail/test/folders.test.ts 锁定），这里锁的是前端把请求
+       *   发对了没有 + 数字该不显示。
        */
       const unseenChip = page.getByRole("button", { name: "未读", exact: true });
       await page.getByRole("tab", { name: "收件", exact: true }).click();
@@ -4254,12 +4472,16 @@ test.describe("站内邮件（/mail）", () => {
       listRequests.length = 0; // 只看进「垃圾」之后发出的请求
       await page.getByRole("tab", { name: "垃圾", exact: true }).click();
       await expect(rows).toHaveCount(1);
-      await expect(unseenChip).toBeDisabled();
-      await expect(unseenChip).toHaveAttribute("aria-pressed", "false");
+      await expect(unseenChip).toBeEnabled();
+      await expect(unseenChip).toHaveAttribute("aria-pressed", "true");
       expect(
         listRequests.some((u) => u.includes("filter=unseen")),
-        "「垃圾」tab 不该带 filter=unseen（会把列表压空，与开关上的数字矛盾）",
-      ).toBe(false);
+        "「垃圾」tab 的就地筛选必须带上 filter=unseen",
+      ).toBe(true);
+      await expect(
+        page.locator('[data-slot="unseen-count"]'),
+        "「垃圾」tab 不显示收件箱未读数字（那里筛的不是它）",
+      ).toHaveCount(0);
       // 切回「收件」：开关状态本身保留（仍是开的），只是刚才那一次不生效
       await page.getByRole("tab", { name: "收件", exact: true }).click();
       await expect(unseenChip).toBeEnabled();
@@ -4276,6 +4498,97 @@ test.describe("站内邮件（/mail）", () => {
       await page.getByRole("tab", { name: "垃圾", exact: true }).click();
       await expect(page.getByText(/「垃圾邮件」还不在同步范围里/)).toBeVisible();
       await expect(page.getByText("「垃圾」中暂无邮件")).toHaveCount(0);
+    });
+
+    /**
+     * 「未读」按钮的两条新口径（2026-10-10 第九轮用户定稿）：
+     * - 在「全部」里点它 → **落到「收件」tab** 再筛未读（结果集与「全部 ∩ 未读」完全相同——
+     *   未读必然有收件箱副本，跳过去只是把 tab 名字说对）；
+     * - 它的数字永远是**收件箱未读**：收件 / 全部 / 发件都显示，唯独「垃圾」tab 不显示。
+     */
+    test("「未读」按钮：在「全部」里落到「收件」tab；数字不在垃圾 tab 显示", async ({ page }) => {
+      const calls = {
+        flags: [] as unknown[],
+        send: [],
+        delete: [] as unknown[],
+        junkSynced: true,
+        junkFolderItems: true,
+      };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+      await gotoReady(page, "/mail");
+
+      const rows = page.locator('[data-slot="mail-list"] > li');
+      await expect(
+        page.getByRole("tab", { name: "全部", exact: true }),
+        "默认仍是「全部」",
+      ).toHaveAttribute("aria-selected", "true");
+      await expect(rows).toHaveCount(5);
+      await expect(page.locator('[data-slot="unseen-count"]')).toHaveText("3");
+
+      const unseenChip = page.getByRole("button", { name: "未读", exact: true });
+      await unseenChip.click();
+      // 落到「收件」：tab 选中 + URL 跟上 + 列表 = 收件 ∩ 未读 = 3（数字仍是那个数）
+      await expect(page.getByRole("tab", { name: "收件", exact: true })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await expect(rows).toHaveCount(3);
+      expect(new URL(page.url()).searchParams.get("view")).toBe("received");
+      await expect(page.locator('[data-slot="unseen-count"]')).toHaveText("3");
+
+      // 「垃圾」tab：开关状态保留（仍是开的）但不显示数字——那里筛的是垃圾未读，不是这个数
+      await page.getByRole("tab", { name: "垃圾", exact: true }).click();
+      await expect(unseenChip).toBeEnabled();
+      await expect(unseenChip).toHaveAttribute("aria-pressed", "true");
+      await expect(page.locator('[data-slot="unseen-count"]')).toHaveCount(0);
+    });
+
+    /**
+     * 「全部标为已读」的**作用域跟着 tab 走**（2026-10-10 第九轮用户定稿）：收件 / 全部 /
+     * 发件只清收件箱，参数里不带 `folders`；「垃圾」tab 只清自己那批垃圾文件夹，把探测到的
+     * `账号|路径` 一起发过去。
+     *
+     * ⚠ 服务端若忽略 `folders`，在「垃圾」tab 里点它就会把**整个收件箱**清掉——那条由
+     * `webmail/test/write.test.ts` 的同名断言锁定（并已反向验证：忽略 folders 立刻变红）。
+     * 这里锁的是前端把参数发对了没有。
+     */
+    test("「全部标为已读」：作用域跟着 tab（垃圾 tab 带上垃圾文件夹，其余不带）", async ({ page }) => {
+      const calls = {
+        flags: [] as unknown[],
+        send: [],
+        delete: [] as unknown[],
+        markAllRead: [] as unknown[],
+        junkSynced: true,
+        junkFolderItems: true,
+      };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+      await gotoReady(page, "/mail");
+
+      const markAll = page.getByRole("button", { name: "全部标为已读" });
+      await page.getByRole("tab", { name: "收件", exact: true }).click();
+      await expect(markAll, "收件箱有 3 封未读 → 可点").toBeEnabled();
+      await markAll.click();
+      await expect.poll(() => calls.markAllRead!.length).toBe(1);
+      expect(
+        (calls.markAllRead![0] as { folders?: string[] }).folders,
+        "收件 / 全部只清收件箱 → 不带 folders",
+      ).toEqual([]);
+
+      await page.getByRole("tab", { name: "垃圾", exact: true }).click();
+      await expect(
+        markAll,
+        "垃圾 tab 的启用判据是「当前列表里有未读行」（那封桩垃圾邮件正是未读的）",
+      ).toBeEnabled();
+      await markAll.click();
+      await expect.poll(() => calls.markAllRead!.length).toBe(2);
+      expect(
+        (calls.markAllRead![1] as { folders?: string[] }).folders,
+        "垃圾 tab 只清自己那批垃圾文件夹",
+      ).toEqual(["acc1|垃圾邮件"]);
     });
 
     /**
@@ -4617,7 +4930,7 @@ test.describe("站内邮件（/mail）", () => {
       // 发送时带上草稿 id（webmaild 发送成功后删除草稿）
       await page.locator("#mail-body").fill("草稿正文");
       await page.getByRole("button", { name: "发送" }).click();
-      await expect(page).toHaveURL(/\/mail$/);
+      await expect(page).toHaveURL(/\/mail(\?[^/]*)?$/); // ⚠ tab 落进 URL 后可能带 ?view=…
       await expect.poll(() => calls.send.length).toBe(1);
       expect((calls.send[0] as { draftId?: string }).draftId).toBe("draft-1");
     });
@@ -4659,7 +4972,7 @@ test.describe("站内邮件（/mail）", () => {
 
       // 返回邮箱 → 草稿箱 → 行内删除（ConfirmDialog 确认；不用原生 confirm）
       await page.getByRole("link", { name: "返回邮箱" }).click();
-      await expect(page).toHaveURL(/\/mail$/);
+      await expect(page).toHaveURL(/\/mail(\?[^/]*)?$/); // ⚠ tab 落进 URL 后可能带 ?view=…
       await page.getByRole("tab", { name: "草稿", exact: true }).click();
       await rows.first().hover();
       await page.getByRole("button", { name: "删除草稿" }).click();
@@ -5109,7 +5422,7 @@ test.describe("站内邮件（/mail）", () => {
       expect(sent.to).toEqual(["someone@example.org"]);
       expect(sent.subject).toBe("测试主题");
       expect(sent.text).toBe("正文内容");
-      await expect(page).toHaveURL(/\/mail$/);
+      await expect(page).toHaveURL(/\/mail(\?[^/]*)?$/); // ⚠ tab 落进 URL 后可能带 ?view=…
     });
 
     test("删除：确认弹窗后对该消息的全部副本发出删除", async ({ page }) => {
@@ -5132,7 +5445,7 @@ test.describe("站内邮件（/mail）", () => {
       await expect.poll(() => calls.delete.length).toBe(1);
       const body = calls.delete[0] as { copies: { accountId: string; folder: string; uid: number }[] };
       expect(body.copies.length).toBe(2);
-      await expect(page).toHaveURL(/\/mail$/);
+      await expect(page).toHaveURL(/\/mail(\?[^/]*)?$/); // ⚠ tab 落进 URL 后可能带 ?view=…
     });
 
     /**
@@ -5154,7 +5467,9 @@ test.describe("站内邮件（/mail）", () => {
 
       // 「移动」下拉已删（连同它的菜单项）；工具栏只有这一枚按钮
       await expect(page.getByRole("button", { name: "移动", exact: true })).toHaveCount(0);
-      await page.getByRole("button", { name: "标为垃圾", exact: true }).click();
+      // ⚠ 限定在详情动作栏里点：列表悬浮操作条现在**也有**一枚「标为垃圾」
+      //   （2026-10-10 第七轮用户要求），不限定会撞到 strict mode
+      await page.locator('[data-slot="message-actions"]').getByRole("button", { name: "标为垃圾", exact: true }).click();
 
       await expect.poll(() => calls.move.length).toBe(1);
       const body = calls.move[0] as { copies: { accountId: string; folder: string }[]; to: string };
@@ -5163,7 +5478,7 @@ test.describe("站内邮件（/mail）", () => {
       // 一封邮件的**所有副本**原样交给后端（红线 8）——哪个账号没有垃圾文件夹，
       // 由服务端跳过并在 `skipped` 里回报 reason，不阻断另一个账号
       expect(body.copies.map((c) => c.accountId).sort()).toEqual(["acc1", "acc2"]);
-      await expect(page).toHaveURL(/\/mail$/);
+      await expect(page).toHaveURL(/\/mail(\?[^/]*)?$/); // ⚠ tab 落进 URL 后可能带 ?view=…
     });
 
     /**
@@ -5201,6 +5516,9 @@ test.describe("站内邮件（/mail）", () => {
       // 未进入选择模式：没有复选框、批量条不出现、气泡栏里是「选择」
       await expect(page.locator('[data-slot="mail-row-checkbox"]')).toHaveCount(0);
       await expect(page.locator('[data-slot="mail-batch-bar"]')).toHaveCount(0);
+      // ⚠ 默认 tab = 全部（5 行）；本用例的计数都以「收件 4 行」为准，先切过去
+      await page.getByRole("tab", { name: "收件", exact: true }).click();
+      await expect(page.locator('[data-slot="mail-list"] > li')).toHaveCount(4);
       await rows.first().locator("[data-mail-row]").hover();
       await expect(
         rows.first().getByRole("button", { name: "选择", exact: true }),
@@ -5226,7 +5544,7 @@ test.describe("站内邮件（/mail）", () => {
       // 点两行 = 勾选两行（不跳转），计数与 aria-pressed 同步
       await unreadRow.click();
       await readRow.click();
-      await expect(page).toHaveURL(/\/mail$/);
+      await expect(page).toHaveURL(/\/mail(\?[^/]*)?$/); // ⚠ tab 落进 URL 后可能带 ?view=…
       await expect(bar).toContainText("已选 2 封");
       await expect(unreadRow).toHaveAttribute("aria-pressed", "true");
       await expect(rows.nth(2).locator("[data-mail-row]")).toHaveAttribute("aria-pressed", "false");
@@ -6099,8 +6417,8 @@ test.describe("站内邮件（/mail）", () => {
       const status = statusbar.locator('[data-slot="mail-sync-status"]');
       await expect(status.locator('[data-slot="mail-sync-dot"]')).toHaveClass(/bg-emerald-600/);
       await expect(status.locator('[data-slot="mail-sync-latest"]')).toContainText("上次收到新邮件");
-      // 左侧统计：桩数据已加载 4 封（默认视图 = 收件，s01 发件不在其中）、未读共 3（acc1=3 + acc2=0）
-      await expect(statusbar.locator('[data-slot="mail-list-stats"]')).toHaveText("已加载 4 封 · 未读 3");
+      // 左侧统计：桩数据已加载 5 封（默认 tab = 全部，含 s01 那封发件）、未读共 3（acc1=3 + acc2=0）
+      await expect(statusbar.locator('[data-slot="mail-list-stats"]')).toHaveText("已加载 5 封 · 未读 3");
       // 状态指示收在底栏（全页仅此一处，工具栏不承载）
       await expect(page.locator('[data-slot="mail-sync-status"]')).toHaveCount(1);
       // 正常态没有告警文案（底栏右侧只有圆点 + 上次收到新邮件）
@@ -6128,7 +6446,7 @@ test.describe("站内邮件（/mail）", () => {
       // ---- 账号指示（只读，2026-10-05 定稿）：选「全部账号」时列出正在合并的账号 ----
       const indicator = statusbar.locator('[data-slot="mail-statusbar-accounts"]');
       const rows = page.locator('[data-slot="mail-list"] > li');
-      await expect(rows).toHaveCount(4); // 默认视图 = 收件
+      await expect(rows).toHaveCount(5); // 默认 tab = 全部（2026-10-10 第七轮起）
       await expect(indicator).toBeVisible();
       await expect(indicator).toContainText("主账号");
       await expect(indicator).toContainText("学校");
@@ -6145,7 +6463,7 @@ test.describe("站内邮件（/mail）", () => {
       // 回到「全部账号」→ 指示恢复
       await accountTrigger.click();
       await page.getByRole("menuitem", { name: /全部账号/ }).click();
-      await expect(rows).toHaveCount(4); // 收件视图下的合并
+      await expect(rows).toHaveCount(5); // 全部视图下的合并
       await expect(indicator).toBeVisible();
 
       // ---- 窄屏：账号指示让位（<40rem 隐藏；当前账号由工具栏触发器常显），底栏仍在 ----
@@ -6565,11 +6883,11 @@ test.describe("站内邮件（/mail）", () => {
       // 卸载会让居中的账号指示横向抖动；断言「不可见」而非「不存在」）
       await expect(page.locator('[data-slot="mail-list-stats"]')).toBeHidden();
 
-      // 重试：接口恢复后点「重试」→ 列表出现、统计回来（默认视图 = 收件，4 封）
+      // 重试：接口恢复后点「重试」→ 列表出现、统计回来（默认 tab = 全部，5 封）
       fail = false;
       await empty.getByRole("button", { name: "重试" }).click();
-      await expect(page.locator('[data-slot="mail-list"] > li')).toHaveCount(4);
-      await expect(page.locator('[data-slot="mail-list-stats"]')).toHaveText("已加载 4 封 · 未读 3");
+      await expect(page.locator('[data-slot="mail-list"] > li')).toHaveCount(5);
+      await expect(page.locator('[data-slot="mail-list-stats"]')).toHaveText("已加载 5 封 · 未读 3");
     });
 
     /**
@@ -6589,11 +6907,10 @@ test.describe("站内邮件（/mail）", () => {
 
       await gotoReady(page, "/mail");
       const rows = page.locator('[data-slot="mail-list"] > li');
-      await expect(rows).toHaveCount(4); // 默认视图 = 收件（s01 发件不在其中）
-      // 切到「全部」视图看发件行：末行（s01，副本只在「已发送」）名字位显示纯名字「张老师」、
-      // 无「发给」前缀，角标 data-direction=sent；收件行角标 = received
-      await page.getByRole("tab", { name: "全部", exact: true }).click();
+      // ⚠ 2026-10-10 第七轮起默认 tab = 全部（含 s01 那封发件），不必再手动切
       await expect(rows).toHaveCount(5);
+      // 末行（s01，副本只在「已发送」）名字位显示纯名字「张老师」、无「发给」前缀，
+      // 角标 data-direction=sent；收件行角标 = received
       await expect(rows.nth(4)).toContainText("张老师");
       await expect(rows.nth(4)).not.toContainText("发给");
       await expect(rows.nth(4).locator('[data-slot="mail-direction-badge"]')).toHaveAttribute("data-direction", "sent");

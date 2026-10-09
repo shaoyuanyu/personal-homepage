@@ -42,7 +42,19 @@ export interface MailListItem {
   snippet: string;
   size: number;
   truncated: boolean;
+  /**
+   * 已读/未读（2026-10-10 第九轮用户定稿「对齐协议」）：已读是**每份副本自己**的属性，
+   * 但站内收敛成一封邮件一个态——**收件箱副本优先**，没有收件箱副本时才认当前视图里的
+   * 副本（「垃圾」tab = 垃圾副本）。发件 / 归档 / 自定义文件夹没有已读语义，恒为 true。
+   * 服务端口径见 webmail `api.ts` 的 `readCopiesOf`（行的加粗与 `filter=unseen` 同判据）。
+   */
   seen: boolean;
+  /**
+   * 这封邮件有没有「可承载已读状态」的副本（= `readCopiesOf` 非空）。
+   * false 时前端**不渲染**「标为已读/未读」（否则点了没反应）：发件 / 归档 / 草稿，
+   * 以及在收件 / 全部视图里那些只有垃圾副本的邮件。
+   */
+  hasReadState?: boolean;
   flagged: boolean;
   /** 是否有可下载附件（不含内嵌图，4.2） */
   hasAttach: boolean;

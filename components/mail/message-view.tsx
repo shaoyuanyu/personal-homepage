@@ -69,12 +69,17 @@ import type {
 const THREAD_ROW_MIN_PX = 36;
 
 /**
- * 邮件状态变更广播（详情页 → 列表，2026-10-06 用户报障修复）。
+ * 邮件状态变更广播（**双向**：详情页 ↔ 列表；2026-10-06 起只有「详情 → 列表」，
+ * 2026-10-10 第七轮补上反向）。
  *
- * 根因：详情页的「标为未读」等操作只写服务器与右栏自己的状态，**左栏列表行与
+ * 根因（当初）：详情页的「标为未读」等操作只写服务器与右栏自己的状态，**左栏列表行与
  * 未读计数（h1 角标 / 未读开关上标 / 底栏）完全不知道**——于是在详情里标了未读，
  * 左栏同一行仍显示已读，看起来像「操作失效，实际效果还是已读」（用户原话）。
- * MailClient 监听本事件：刷新计数 + 更新/移除对应行（生效中的筛选相关时整表重取）。
+ *
+ * ⚠ 反向为什么必须补（用户 2026-10-10 第七轮报）：「在列表悬浮操作条点『标为未读』后，
+ * 悬浮条里的文案变成了『标为已读』，但邮件查看页面的工具栏没有同步变化；其他几个操作
+ * 也一样」——列表行内操作此前只改自己的 state。现在两端都广播，且各自忽略
+ * `source === 自己` 的事件（否则自己发的事件绕回来会触发重复的计数刷新 / 整表重取）。
  */
 export const MAIL_ITEM_CHANGED_EVENT = "mail:item-changed";
 
@@ -82,11 +87,13 @@ export interface MailItemChange {
   messageId: string;
   seen?: boolean;
   flagged?: boolean;
-  /** 删除：列表直接移除该行 */
+  /** 删除 / 搬进垃圾：列表直接移除该行；详情页若正看着它则退出 */
   deleted?: boolean;
+  /** 发起方（两端各自忽略自己发的事件，见上） */
+  source?: "list" | "detail";
 }
 
-function broadcastItemChange(change: MailItemChange): void {
+export function broadcastItemChange(change: MailItemChange): void {
   window.dispatchEvent(new CustomEvent(MAIL_ITEM_CHANGED_EVENT, { detail: change }));
 }
 
@@ -252,7 +259,7 @@ export function MessageView({ messageId }: { messageId: string }) {
         setActing(false);
         return;
       }
-      broadcastItemChange({ messageId, deleted: true });
+      broadcastItemChange({ messageId, deleted: true, source: "detail" });
       toast.add({ title: t("junkDone"), type: "success" });
       for (const accountId of copyAccountIds) {
         void fetch("/api/mail/sync", {
@@ -339,7 +346,7 @@ export function MessageView({ messageId }: { messageId: string }) {
               if (res.ok && !cancelled && !seenTouchedRef.current) {
                 setDetail((d) => (d ? { ...d, seen: true } : d));
                 // 左栏该行退去加粗/蓝点、未读计数回正（否则列表停在已读前的旧态）
-                broadcastItemChange({ messageId, seen: true });
+                broadcastItemChange({ messageId, seen: true, source: "detail" });
               }
             })
             .catch(() => {});
@@ -454,7 +461,7 @@ export function MessageView({ messageId }: { messageId: string }) {
 
       setDetail((d) => (d ? { ...d, ...change } : d));
       // 左栏列表行与未读计数跟随（见 MAIL_ITEM_CHANGED_EVENT 注释）
-      broadcastItemChange({ messageId, ...change });
+      broadcastItemChange({ messageId, ...change, source: "detail" });
       /**
        * 「标为未读」后离开详情页（2026-10-06 用户指定，勿改回停留）：
        * 1) 停留在「正在查看」页面上，读信页自身的语义（打开=已读）与「刚标成
@@ -474,17 +481,50 @@ export function MessageView({ messageId }: { messageId: string }) {
         .then((res) => {
           if (!res.ok) throw new Error();
           // 服务端写成功：DB 索引此时才更新，再广播一次让计数 / 筛选视图取准
-          broadcastItemChange({ messageId, ...change });
+          broadcastItemChange({ messageId, ...change, source: "detail" });
         })
         .catch(() => {
           // 失败回滚：本地与左栏退回操作前的状态，并提示
           setDetail((d) => (d ? { ...d, ...revert } : d));
-          broadcastItemChange({ messageId, ...revert });
+          broadcastItemChange({ messageId, ...revert, source: "detail" });
           toast.add({ title: t("actionFailed"), type: "error" });
         });
     },
     [detail, messageId, t, router],
   );
+
+  /**
+   * 反向同步（2026-10-10 第七轮）：**左栏列表行的操作也广播**，这里就地打补丁。
+   *
+   * 用户报的正是反了的那一半：「在列表悬浮操作条点『标为未读』后，悬浮条里的文案变成了
+   * 『标为已读』，但邮件查看页面的工具栏没有同步变化；其他几个操作也一样」——因为列表
+   * 此前只改自己的 state、从不广播。
+   * - `deleted`（删除 / 搬进垃圾）→ 这封已经不在列表里了，退出详情（否则右栏留着一封
+   *   已删邮件的正文）；
+   * - 其余 → 只改右栏自己的态（列表那边已由发起方自己更新，不必回广播）。
+   * ⚠ `source === "detail"` 的事件必须忽略：否则自己发出的广播会绕回来重复打补丁，
+   *   `deleted` 那条还会把自己踢出详情页（刚点删除时正好会命中）。
+   */
+  useEffect(() => {
+    const onItemChanged = (e: Event) => {
+      const change = (e as CustomEvent<MailItemChange>).detail;
+      if (!change || change.messageId !== messageId) return;
+      if (change.source === "detail") return;
+      if (change.deleted) {
+        router.push("/mail");
+        return;
+      }
+      setDetail((d) => {
+        if (!d) return d;
+        const patch: Partial<typeof d> = {};
+        if (change.seen !== undefined) patch.seen = change.seen;
+        if (change.flagged !== undefined) patch.flagged = change.flagged;
+        return { ...d, ...patch };
+      });
+    };
+    window.addEventListener(MAIL_ITEM_CHANGED_EVENT, onItemChanged);
+    return () => window.removeEventListener(MAIL_ITEM_CHANGED_EVENT, onItemChanged);
+  }, [messageId, router]);
 
   const doDelete = useCallback(async () => {
     if (!detail) return;
@@ -498,7 +538,7 @@ export function MessageView({ messageId }: { messageId: string }) {
       if (!res.ok) throw new Error();
       toast.add({ title: t("deleted"), type: "success" });
       // 左栏移除该行 + 未读计数回正（此前删完回列表，已删的行还留在列表上）
-      broadcastItemChange({ messageId, deleted: true });
+      broadcastItemChange({ messageId, deleted: true, source: "detail" });
       router.push("/mail");
     } catch {
       toast.add({ title: t("actionFailed"), type: "error" });
@@ -814,19 +854,40 @@ export function MessageView({ messageId }: { messageId: string }) {
         {/* ⚠ 内组也要 flex-wrap + justify-end：窄屏折行后仍右对齐，
             不折行会把按钮挤出视口造成横向滚动
             ⚠ 每个动作都带 `aria-label` + `title` = 它的文案：容器窄到 36rem 以下时
-            可见标签被 ActionLabel 隐藏、只剩图标，名字就只能靠 aria-label（见 ActionLabel） */}
+            可见标签被 ActionLabel 隐藏、只剩图标，名字就只能靠 aria-label（见 ActionLabel）
+            ⚠ **四个整理动作的顺序与列表悬浮操作条逐字一致**（2026-10-10 第七轮用户指定）：
+            加星标 → 标为未读/已读 → 标为垃圾 → 删除。改这里必须同步改
+            `mail-client.tsx` 的 `mail-row-actions`（两处顺序不同就是用户报过的「不一致」）。 */}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
           <Button
             variant="ghost"
             size="sm"
             disabled={acting}
-            aria-label={seenLabel}
-            title={seenLabel}
-            onClick={() => postFlags({ seen: !detail.seen })}
+            aria-pressed={detail.flagged}
+            aria-label={flagLabel}
+            title={flagLabel}
+            onClick={() => postFlags({ flagged: !detail.flagged })}
           >
-            {detail.seen ? <MailOpenIcon data-icon="default" /> : <MailIcon data-icon="default" />}
-            <ActionLabel>{seenLabel}</ActionLabel>
+            <StarIcon className={cn("size-4", detail.flagged && "fill-foreground")} data-icon={detail.flagged ? undefined : "default"} />
+            <ActionLabel>{flagLabel}</ActionLabel>
           </Button>
+          {/* 已读/未读（2026-10-10 第九轮起口径见下）：**只有这封有「承载已读状态的副本」时
+              才渲染**（`hasReadState`，服务端 `readCopiesOf`）——发件 / 归档 / 草稿没有已读语义，
+              摆一个点了没有效果的按钮是骗人。垃圾邮件**有**：它在「垃圾」tab 里显示为未读，
+              点这里就必须能改（第九轮用户定稿「对齐协议」）。 */}
+          {detail.hasReadState !== false && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={acting}
+              aria-label={seenLabel}
+              title={seenLabel}
+              onClick={() => postFlags({ seen: !detail.seen })}
+            >
+              {detail.seen ? <MailOpenIcon data-icon="default" /> : <MailIcon data-icon="default" />}
+              <ActionLabel>{seenLabel}</ActionLabel>
+            </Button>
+          )}
           {/* 标为垃圾（2026-10-07 用户定稿）：文件夹视图删除后，菜单式「移动」等于盲选
               （搬过去再也看不见），只留这一个语义明确的整理动作；目标文件夹由服务端自己
               在账号里探测（见 markJunk 注释），前端不再需要文件夹清单。
@@ -846,18 +907,6 @@ export function MessageView({ messageId }: { messageId: string }) {
           >
             <OctagonAlertIcon data-icon="default" />
             <ActionLabel>{t("moveToJunk")}</ActionLabel>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={acting}
-            aria-pressed={detail.flagged}
-            aria-label={flagLabel}
-            title={flagLabel}
-            onClick={() => postFlags({ flagged: !detail.flagged })}
-          >
-            <StarIcon className={cn("size-4", detail.flagged && "fill-foreground")} data-icon={detail.flagged ? undefined : "default"} />
-            <ActionLabel>{flagLabel}</ActionLabel>
           </Button>
           <Button
             variant="ghost"

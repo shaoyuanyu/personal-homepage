@@ -10,6 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowDownLeftIcon,
   ArrowLeftRightIcon,
@@ -23,6 +24,7 @@ import {
   MailCheckIcon,
   MailIcon,
   MailOpenIcon,
+  OctagonAlertIcon,
   PaperclipIcon,
   RefreshCwIcon,
   SearchIcon,
@@ -40,7 +42,7 @@ import { mailNavOptions } from "@/lib/mail/nav";
 import { useOwnAddresses } from "@/lib/mail/use-own-addresses";
 import { MAIL_ACCOUNTS_CHANGED_EVENT } from "@/components/mail/accounts-dialog";
 import { MAIL_DRAFTS_CHANGED_EVENT } from "@/components/mail/compose-form";
-import { MAIL_ITEM_CHANGED_EVENT, type MailItemChange } from "@/components/mail/message-view";
+import { broadcastItemChange, MAIL_ITEM_CHANGED_EVENT, type MailItemChange } from "@/components/mail/message-view";
 import { MAIL_UNREAD_EVENT } from "@/components/mail/new-mail-notifier";
 import { AccountMenu } from "@/components/mail/account-menu";
 import { MailBatchBar, MailRowCheckbox } from "@/components/mail/mail-batch-bar";
@@ -107,6 +109,14 @@ function formatDate(dateIso: string | null, locale: string): string {
  */
 type ViewFilter = "all" | "received" | "sent" | "drafts" | "junk";
 
+/** tab 落进 URL 的查询参数名（见 `view` 状态的注释） */
+const VIEW_PARAM = "view";
+
+/** 查询串里的 view 是否合法（非法值一律回落到默认 tab，避免手改 URL 把列表搞成空白） */
+function isViewFilter(v: string | null): v is ViewFilter {
+  return v === "all" || v === "received" || v === "sent" || v === "drafts" || v === "junk";
+}
+
 /**
  * 行 1 的固定开销：搜索图标 28 +「全部标为已读」28 + 刷新 28，加四个间距
  * （gap-1.5 = 6px × 4，五个子项之间）。账号触发器与「写邮件」分享剩下的宽
@@ -167,7 +177,30 @@ export function MailClient({
   // 账号筛选（2026-10-05 用户定稿）：单选——"all"（全部账号）或某个账号 id；
   // 控件 = 工具栏行 1 首个下拉（完整显示名称/地址）；底栏只保留只读指示。
   const [accountFilter, setAccountFilter] = useState<string>("all");
-  const [view, setView] = useState<ViewFilter>("received");
+  /**
+   * 当前视图 tab。**默认「全部」**（2026-10-10 第七轮用户指定，此前是「收件」），
+   * 并把 tab **落进 URL**（`?view=…`）——用户同一轮提的「刷新页面后不应该把 tab 重置为
+   * 默认 tab」：刷新/书签/分享都回到同一个 tab。
+   *
+   * ⚠ 用原生 `history.replaceState` 而不是 `router.replace`：App Router 对只差查询串的
+   *   替换会去取一次 RSC（列表在 layout 里不受影响，但右侧详情页会白重取一次、切 tab 时
+   *   闪一下）。原生写法只改地址栏，`view` 由 state 驱动。
+   * ⚠ 初值从 URL 读（服务端渲染时 URL 本来就带着查询串，因此不存在水合不一致）。
+   */
+  const searchParams = useSearchParams();
+  const [view, setView] = useState<ViewFilter>(() => {
+    const fromUrl = searchParams.get(VIEW_PARAM);
+    return isViewFilter(fromUrl) ? fromUrl : "all";
+  });
+  /** 切 tab：改 state + 同步地址栏（默认 tab 不写参数，URL 保持干净） */
+  const changeView = useCallback((next: ViewFilter) => {
+    setView(next);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (next === "all") url.searchParams.delete(VIEW_PARAM);
+    else url.searchParams.set(VIEW_PARAM, next);
+    window.history.replaceState(null, "", url);
+  }, []);
   const [unseenOnly, setUnseenOnly] = useState(false);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   /**
@@ -196,19 +229,21 @@ export function MailClient({
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   /**
    * 当前视图下「真正生效」的筛选值（2026-10-06 用户定稿）：「未读」在「发件」「草稿」
-   * 「垃圾」不可用（「发件」不可能有未读——与「草稿」同规则；「星标」仅「草稿」不可用，
+   * 不可用（「发件」不可能有未读——与「草稿」同规则；「星标」仅「草稿」不可用，
    * 发件加星是真实用例）。不可用 = 按钮禁用 + **查询不携带** + 显示为关；开关状态本身
    * 保留（收件里开着「未读」切到发件再切回来，仍是开的）。
    * ⚠ 查询与显示（含空态文案）都必须用这份生效值：若查询沿用原始开关，从收件带过来的
    *   「未读」会把发件列表静默压空，而按钮此刻已禁用、用户无法取消它。
    *
-   * ⚠ 「垃圾」为什么也在列（2026-10-10 第六轮用户报障后定稿）：**未读 = 收件箱未读**
-   * （服务端 `UNSEEN_SQL`，与角标 / 底栏 /「全部标为已读」同一个数）。垃圾箱里的未读
-   * 副本不属于「收件箱未读」，所以「垃圾」tab 里带上 `filter=unseen` 只会得到一个空列表，
-   * 而开关上的数字却是收件箱那个数——又是「数字说 2、点开 0 封」的自相矛盾。
-   * 禁用 + 显示为关，与「发件」同一种处理（垃圾邮件的未读也不该在这里被清点）。
+   * ⚠ 「垃圾」第九轮从"禁用"改为"**就地筛选**"（用户定稿）：垃圾邮件也有已读/未读
+   * （协议上就是每份副本自己的 `\Seen`），所以「垃圾」tab 里打开「未读」= 只看垃圾箱里
+   * 未读的那几封；服务端 `unseenClause` 在给了 `folder` 时按「收件箱优先、否则该范围」
+   * 判定，与行的加粗同判据。
+   * ⚠ 但**数字不跟着走**：开关上的计数（以及大标题角标 / 底栏 / 账号角标）永远只数收件箱
+   *   ——「垃圾」tab 里因此**不显示**那个数字（见 ToggleGroupItem 的渲染），否则又回到
+   *   第六轮那个「数字说 2、点开列出 7 封」的自相矛盾。
    */
-  const unseenActive = unseenOnly && view !== "sent" && view !== "drafts" && view !== "junk";
+  const unseenActive = unseenOnly && view !== "sent" && view !== "drafts";
   const flaggedActive = flaggedOnly && view !== "drafts";
   /** 已提交（触发加载）的搜索词；输入框的即时值另存 qInput（300ms 防抖后提交） */
   const [q, setQ] = useState("");
@@ -593,18 +628,28 @@ export function MailClient({
 
   /**
    * 「全部标为已读」（2026-10-05 用户定稿）：范围 = 当前账号筛选（「全部账号」= 全部账号）；
-   * 方向 / 搜索 / 星标不参与——未读本质是收件箱概念（「发件」不可能有未读），清未读按
-   * 账号范围最直觉，也与「未读」开关的计数（账号未读之和）同一口径。
+   * 方向 / 搜索 / 星标不参与——清未读按账号范围最直觉，也与「未读」开关的计数（账号未读
+   * 之和）同一口径。
+   *
+   * ⚠ **作用域跟着 tab 走**（2026-10-10 第九轮用户定稿）：在「垃圾」tab 里它清的是**垃圾
+   *   副本**（把这个 tab 里那些粗体行清干净），其余 tab 清收件箱——服务端 `markAllRead`
+   *   按 `folders` 参数决定（同一套「承载已读状态的副本」判据，见 webmail `readCopiesOf`）。
+   *   垃圾 tab 且一个垃圾文件夹都没同步时直接返回：不能退化成"清收件箱"。
    * 成功后计数（账号 unread）与列表都要重取：停在「未读」筛选下时列表会被清空。
    * 部分失败（skipped）不算成功：报错并让重取的列表展示真实状态。
    */
   const markAllRead = useCallback(async () => {
     setMarkingAll(true);
     try {
+      const folders = view === "junk" ? await junkFolders() : [];
+      if (view === "junk" && folders.length === 0) return;
       const res = await fetch("/api/mail/mark-all-read", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ accounts: accountFilter === "all" ? [] : [accountFilter] }),
+        body: JSON.stringify({
+          accounts: accountFilter === "all" ? [] : [accountFilter],
+          folders: folders.map((f) => `${f.account}|${f.path}`),
+        }),
       });
       if (!res.ok) throw new Error();
       const data = (await res.json()) as { messages: number; skipped: unknown[] };
@@ -621,7 +666,7 @@ export function MailClient({
     } finally {
       setMarkingAll(false);
     }
-  }, [accountFilter, loadCurrent, loadAccounts, t]);
+  }, [accountFilter, view, junkFolders, loadCurrent, loadAccounts, t]);
 
   // 多选：选中的列表项（顺序按当前列表）
   const selectedItems = useMemo(
@@ -671,19 +716,34 @@ export function MailClient({
     async (change: { seen?: boolean; flagged?: boolean }) => {
       const ids = [...selected];
       if (ids.length === 0) return;
+      /**
+       * `seen` 只作用于**有已读状态的**消息（`hasReadState`，判据在服务端 `readCopiesOf`：
+       * 收件箱副本优先、没有收件箱副本时才认当前视图的副本）——选中项里混着发件 / 归档时，
+       * 提示里的封数要按真正会变的那些算，否则又是一次「提示说改了 N 封、刷新后有几封没变」
+       * （用户报过的不同步观感）。
+       */
+      const targets =
+        change.seen !== undefined ? selectedItems.filter((m) => m.hasReadState !== false) : selectedItems;
+      if (targets.length === 0) {
+        toast.add({ title: t("markAllReadNone") });
+        return;
+      }
+      const targetIds = targets.map((m) => m.messageId);
       setBatchBusy(true);
       try {
         const res = await fetch("/api/mail/flags", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ messageIds: ids, ...change }),
+          body: JSON.stringify({ messageIds: targetIds, ...change }),
         });
         if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `${res.status}`);
         const data = (await res.json()) as { updated: number; skipped: unknown[] };
+        // 右栏（若正看着其中一封）跟着变——批量条是列表侧的动作，详情页只能靠广播
+        for (const id of targetIds) broadcastItemChange({ messageId: id, ...change, source: "list" });
         if (Array.isArray(data.skipped) && data.skipped.length > 0) {
           toast.add({ title: t("batchPartial"), type: "error" });
         } else {
-          toast.add({ title: t("batchDone", { count: ids.length }), type: "success" });
+          toast.add({ title: t("batchDone", { count: targetIds.length }), type: "success" });
         }
         setSelected(new Set());
         await Promise.all([loadAccounts(), reload()]);
@@ -693,7 +753,7 @@ export function MailClient({
         setBatchBusy(false);
       }
     },
-    [selected, reload, loadAccounts, t],
+    [selected, selectedItems, reload, loadAccounts, t],
   );
 
   /** 批量删除：确认后对该批消息的**全部副本**一起删（与单条删除同一接口同一口径） */
@@ -709,6 +769,10 @@ export function MailClient({
       });
       if (!res.ok) throw new Error();
       toast.add({ title: t("batchDeleted", { count: selectedItems.length }), type: "success" });
+      // 右栏若正看着被删的其中一封 → 退回列表（否则会留着一封已删邮件的正文）
+      for (const m of selectedItems) {
+        broadcastItemChange({ messageId: m.messageId, deleted: true, source: "list" });
+      }
       setBatchDeleteOpen(false);
       setSelected(new Set());
       await Promise.all([loadAccounts(), reload()]);
@@ -862,36 +926,115 @@ export function MailClient({
     [unseenActive, flaggedActive, loadAccounts, reload, patchItem],
   );
 
-  // 详情页的状态操作回传（标为未读/已读、星标、删除）：没有这条链路时，左栏列表行
-  // 与计数不会跟随右栏操作（用户报障：「标为未读后仍显示已读，像操作失效」）
+  // 状态变更事件（**双向**，2026-10-10 第七轮补齐反向）：详情页 ↔ 列表互相通知。
+  // ⚠ 必须忽略 `source === "list"`——列表自己发的广播绕回来会重复刷新计数 / 整表重取
+  //   （「未读筛选下改了未读」那条路径会变成两次 reload）；
+  //   详情页发出的（source=detail 或旧版本不带 source）照旧处理。
   useEffect(() => {
     const onItemChanged = (e: Event) => {
-      const detail = (e as CustomEvent<MailItemChange>).detail;
-      if (detail?.messageId) applyItemChange(detail);
+      const change = (e as CustomEvent<MailItemChange>).detail;
+      if (!change?.messageId) return;
+      if (change.source === "list") return;
+      applyItemChange(change);
     };
     window.addEventListener(MAIL_ITEM_CHANGED_EVENT, onItemChanged);
     return () => window.removeEventListener(MAIL_ITEM_CHANGED_EVENT, onItemChanged);
   }, [applyItemChange]);
 
-  // 行内快捷操作（4.9）：星标 / 已读切换，乐观更新、失败回滚
+  /**
+   * 行内快捷操作（4.9）：星标 / 已读切换，乐观更新、失败回滚。
+   *
+   * ⚠ 两件事别漏（2026-10-10 第七轮用户报障）：
+   * ① **要广播**：列表行内操作此前只改自己的 state，右栏详情页的工具栏因此不同步
+   *    （「在列表点『标为未读』，悬浮条变成『标为已读』，查看页的工具栏没变」）；
+   * ② **只在有已读状态时才发 seen**（`hasReadState`，第九轮起垃圾也有）：对发件 / 归档的
+   *    行发 seen 会得到一个「成功但什么也没发生」的假象（服务端一次 IMAP 都不连）。
+   */
   const postFlags = useCallback(
     async (m: MailListItem, change: { seen?: boolean; flagged?: boolean }) => {
+      const payload =
+        m.hasReadState === false && change.seen !== undefined ? { ...change, seen: undefined } : change;
+      if (Object.keys(payload).every((k) => payload[k as "seen" | "flagged"] === undefined)) return;
       patchItem(m.messageId, change);
+      // 乐观广播：右栏（若正看着这封）立即跟着变
+      broadcastItemChange({ messageId: m.messageId, ...change, source: "list" });
       try {
         const res = await fetch("/api/mail/flags", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ messageId: m.messageId, ...change }),
+          body: JSON.stringify({ messageId: m.messageId, ...payload }),
         });
         if (!res.ok) throw new Error();
         // 计数与筛选跟随（此前只打补丁：h1 角标/底栏要等下个 30s 轮询才更新）
         applyItemChange({ messageId: m.messageId, ...change });
+        // 写成功后再广播一次：服务端索引此时才更新（与详情页同一套语义，见 postFlags 注释）
+        broadcastItemChange({ messageId: m.messageId, ...change, source: "list" });
       } catch {
         patchItem(m.messageId, { seen: m.seen, flagged: m.flagged });
+        broadcastItemChange({
+          messageId: m.messageId,
+          seen: m.seen,
+          flagged: m.flagged,
+          source: "list",
+        });
         toast.add({ title: t("actionFailed"), type: "error" });
       }
     },
     [patchItem, applyItemChange, t],
+  );
+
+  /**
+   * 行内「标为垃圾」（2026-10-10 第七轮用户要求：列表悬浮操作条也要有这个动作）。
+   *
+   * 与详情页的 `markJunk` 同一套：整封（全部副本）搬进该账号的 `\Junk`（目标文件夹由
+   * 服务端自己探测），成功后该行从任何非垃圾视图里消失——所以这里直接把它从列表里摘掉，
+   * 并广播 `deleted` 让右栏（若正看着它）退回列表。
+   * ⚠ `affected < copies.length`（某些账号没有垃圾文件夹 → `skipped`）时**不能摘行**：
+   *   那封邮件仍留在别的文件夹里，摘掉就成了「界面说没了、刷新又回来」（用户报过的
+   *   「刷新后不一致」）。此时整表重取，以服务端为准。
+   */
+  const markJunkFromList = useCallback(
+    async (m: MailListItem) => {
+      try {
+        const res = await fetch("/api/mail/move", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ copies: m.copies, to: "\\Junk" }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `${res.status}`);
+        const data = (await res.json()) as { affected: number; skipped?: { reason: string }[] };
+        const skipped = data.skipped ?? [];
+        if (data.affected === 0) {
+          if (skipped.length === 0) toast.add({ title: t("moveSameFolder") });
+          else toast.add({ title: t("junkFailed"), description: skipped[0].reason, type: "error" });
+          return;
+        }
+        if (skipped.length > 0) {
+          toast.add({ title: t("junkFailed"), description: skipped[0].reason, type: "error" });
+          await reload();
+          return;
+        }
+        setItems((prev) => prev.filter((x) => x.messageId !== m.messageId));
+        broadcastItemChange({ messageId: m.messageId, deleted: true, source: "list" });
+        toast.add({ title: t("junkDone"), type: "success" });
+        loadAccounts();
+        // 目标文件夹由下一轮同步发现（与详情页一致：主动催一次这些账号的同步）
+        for (const accountId of [...new Set(m.copies.map((c) => c.accountId))]) {
+          void fetch("/api/mail/sync", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ accountId }),
+          }).catch(() => {});
+        }
+      } catch (err) {
+        toast.add({
+          title: t("junkFailed"),
+          description: err instanceof Error ? err.message : String(err),
+          type: "error",
+        });
+      }
+    },
+    [loadAccounts, reload, t],
   );
 
   const doDelete = useCallback(async () => {
@@ -980,6 +1123,16 @@ export function MailClient({
         .reduce((sum, a) => sum + (a.unread ?? 0), 0),
     [accounts, accountFilter],
   );
+
+  /**
+   * 「全部标为已读」是不是无事可做（决定禁用与 title）。**范围跟着 tab 走**（第九轮用户
+   * 定稿「跟着 tab 走：清空垃圾副本」）：
+   * - 收件 / 全部 / 发件 / 搜索 → 看**收件箱**未读（`unreadTotal`，与角标同一个数）；
+   * - 「垃圾」→ 看当前列表里有没有未读行（垃圾未读不进任何数字，只能就地判）。
+   *   ⚠ 只判**已加载**的那一页：更靠后的未读行用户此刻也看不见，按钮亮着反而更奇怪。
+   */
+  const markAllNothing =
+    view === "drafts" || (view === "junk" ? !items.some((m) => !m.seen) : unreadTotal === 0);
 
   /**
    * 草稿箱**先按账号筛、再按搜索词筛**（2026-10-10 用户报「草稿不区分所属账户，
@@ -1260,9 +1413,9 @@ export function MailClient({
             variant="ghost"
             size="icon-sm"
             onClick={markAllRead}
-            disabled={markingAll || unreadTotal === 0 || view === "drafts"}
+            disabled={markingAll || markAllNothing}
             aria-label={t("markAllRead")}
-            title={view === "drafts" || unreadTotal === 0 ? t("markAllReadNone") : t("markAllRead")}
+            title={markAllNothing ? t("markAllReadNone") : t("markAllRead")}
           >
             {markingAll ? <Spinner /> : <MailCheckIcon data-icon="default" />}
           </Button>
@@ -1347,7 +1500,7 @@ export function MailClient({
               右侧开关上（2026-10-08 实测 390px：「垃圾」和「未读」糊在一起）。挂上 `lg:`
               后窄屏是一个普通 div，回到「内容撑开 + flex-wrap 换行」的老行为。 */}
           <div className="flex items-center lg:@container lg:min-w-0 lg:flex-1">
-            <Tabs value={view} onValueChange={(v) => setView(v as ViewFilter)}>
+            <Tabs value={view} onValueChange={(v) => changeView(v as ViewFilter)}>
               <TabsList variant="line" aria-label={t("viewSwitcherLabel")}>
                 <TabsTrigger value="all">{t("filterAll")}</TabsTrigger>
                 <TabsTrigger
@@ -1403,7 +1556,7 @@ export function MailClient({
               />
               <DropdownMenuContent align="start" className="w-auto min-w-28">
                 {(["drafts", "junk"] as const).map((v) => (
-                  <DropdownMenuItem key={v} onClick={() => setView(v)}>
+                  <DropdownMenuItem key={v} onClick={() => changeView(v)}>
                     {v === "drafts" ? t("filterDrafts") : t("filterJunk")}
                     {view === v && <CheckIcon className="ml-auto size-4" aria-hidden />}
                   </DropdownMenuItem>
@@ -1422,7 +1575,16 @@ export function MailClient({
             multiple
             value={[unseenActive ? "unseen" : "", flaggedActive ? "flagged" : ""].filter(Boolean)}
             onValueChange={(v) => {
-              setUnseenOnly(v.includes("unseen"));
+              const nextUnseen = v.includes("unseen");
+              /**
+               * 在「全部」里打开「未读」时**切到「收件」tab**（2026-10-10 第九轮用户定稿：
+               * 「在点击『未读』按钮后，应该跳转到『收件』tab 中筛选未读邮件」）。
+               * 结果集其实完全相同（未读必然有收件箱副本，而「收件」= 有收件箱副本），
+               * 跳过去只是把 tab 名字说对：未读是收件箱的概念，挂在「全部」下没有意义。
+               * ⚠ 「垃圾」tab 里**不跳**：那里的未读开关是就地筛垃圾未读（同一个定稿）。
+               */
+              if (nextUnseen && !unseenOnly && view === "all") changeView("received");
+              setUnseenOnly(nextUnseen);
               setFlaggedOnly(v.includes("flagged"));
             }}
             aria-label={t("filterQuickLabel")}
@@ -1430,7 +1592,7 @@ export function MailClient({
             <ToggleGroupItem
               value="unseen"
               size="sm"
-              disabled={view === "drafts" || view === "sent" || view === "junk"}
+              disabled={view === "drafts" || view === "sent"}
               className="aria-pressed:bg-blue-600/10 aria-pressed:text-blue-700 dark:aria-pressed:bg-blue-400/15 dark:aria-pressed:text-blue-400"
             >
               <span
@@ -1455,7 +1617,9 @@ export function MailClient({
                   底栏「未读 n」文本供读屏） */}
               <span className="whitespace-nowrap">
                 {t("filterUnseen")}
-                {unreadTotal > 0 && (
+                {/* 「垃圾」tab 里不显示数字（第九轮）：那个数是**收件箱**未读，而这个 tab 里
+                    筛的是垃圾未读——摆在一起就又成了第六轮那个「数字说 2、点开列出别的」 */}
+                {view !== "junk" && unreadTotal > 0 && (
                   <span
                     data-slot="unseen-count"
                     aria-hidden="true"
@@ -1755,9 +1919,12 @@ export function MailClient({
                   >
                     <SquareCheckBigIcon />
                   </Button>
-                  {/* 分隔线：把「选择」（模式的开关，作用于整张列表）与后三个**作用于本行**
-                      的动作分开——否则四枚图标并排，☑ 会被读成「第四个行内动作」。
-                      形态抄批量条里「计数 | 动作」那道分隔线（h-4 w-px bg-border） */}
+                  {/* 分隔线：把「选择」（模式的开关，作用于整张列表）与后面几个**作用于本行**
+                      的动作分开——否则图标并排，☑ 会被读成「又一个行内动作」。
+                      形态抄批量条里「计数 | 动作」那道分隔线（h-4 w-px bg-border）
+                      ⚠ 分隔线之后四个动作的顺序与详情页工具栏**逐字一致**（2026-10-10 第七轮
+                      用户指定）：加星标 → 标为未读/已读 → 标为垃圾 → 删除。
+                      改这里必须同步改 `message-view.tsx` 的详情动作栏。 */}
                   <span className="h-4 w-px shrink-0 bg-border" aria-hidden />
                   <Button
                     variant="ghost"
@@ -1768,13 +1935,28 @@ export function MailClient({
                   >
                     <StarIcon className={cn(m.flagged && "fill-foreground")} />
                   </Button>
+                  {/* 已读/未读：**只在有 INBOX 副本时才渲染**（「未读」仅针对正常收件箱，
+                      垃圾 / 发件 / 归档没有已读语义，服务端也不会写它们——用户 2026-10-10
+                      定稿：「垃圾邮件不需要已读/未读的概念」） */}
+                  {m.hasReadState !== false && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={m.seen ? t("markUnread") : t("markRead")}
+                      title={m.seen ? t("markUnread") : t("markRead")}
+                      onClick={() => postFlags(m, { seen: !m.seen })}
+                    >
+                      {m.seen ? <MailOpenIcon /> : <MailIcon />}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={m.seen ? t("markUnread") : t("markRead")}
-                    onClick={() => postFlags(m, { seen: !m.seen })}
+                    aria-label={t("moveToJunk")}
+                    title={t("moveToJunk")}
+                    onClick={() => void markJunkFromList(m)}
                   >
-                    {m.seen ? <MailOpenIcon /> : <MailIcon />}
+                    <OctagonAlertIcon />
                   </Button>
                   <Button
                     variant="ghost"
