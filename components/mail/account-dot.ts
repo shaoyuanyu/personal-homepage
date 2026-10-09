@@ -20,11 +20,12 @@ import type { CSSProperties } from "react";
  *   ⚠ 最弱的一对仍是 **cyan ↔ teal**（色相只差 33°）：这是"避开红/蓝/绿/琥珀 + 深色下不撞方向角标
  *   emerald"的代价。要拉开它只能给第 5 个色换到绿色系（撞方向角标）或暖褐色系，**换之前先问用户**。
  *
- * ⚠ 顺序（= ACCOUNT_COLOR_NAMES）只影响"第 k 个账号拿到哪个色"。旧实现里顺序很关键（贪心序能把
+ * ⚠ 顺序（= ACCOUNT_COLOR_NAMES）只影响"第 k 个账号拿到哪个色"，而这个分配现在**完全在后端**
+ *   （`webmail/src/accounts.ts` 的 `nextAccountColor()`）。旧实现里顺序很关键（贪心序能把
  *   第 2 个账号的距离从 24.5 提到 31.1）；统一明度/彩度后**任意两色的 ΔE 都 ≥0.95×2C**，顺序的影响
  *   降到 0%（脚本实测：声明顺序 7.9 = 贪心最优 7.9），所以顺序按观感定：先蓝后粉。
  */
-const ACCOUNT_DOT: Record<string, string> = {
+const ACCOUNT_DOT: Record<AccountColorName, string> = {
   cyan: "bg-[#1eafd5] dark:bg-[#47c9ef]",
   pink: "bg-[#dc7c9a] dark:bg-[#f895b3]",
   violet: "bg-[#a28fe4] dark:bg-[#baa8ff]",
@@ -33,9 +34,12 @@ const ACCOUNT_DOT: Record<string, string> = {
 };
 
 /**
- * 色板名，顺序 = 账号管理弹窗里色板的排列顺序。
- * ⚠ 与后端 `webmail/src/accounts.ts` 的 `ACCOUNT_COLOR_PALETTE` 是**同一套名字、同一顺序**，
- *   改动必须两处同步（同 SENT_FOLDER_NAMES 的约定）。
+ * 色板名与声明顺序。
+ * ⚠ 与后端 `webmail/src/accounts.ts` 的 `ACCOUNT_COLOR_PALETTE` 是**同一套名字、同一顺序**
+ *   （同 SENT_FOLDER_NAMES 的约定）——顺序决定「第 k 个账号拿哪个色」，两处不一致会让新账号
+ *   的落盘色和预期错位（不报错，属静默漂移）。
+ * ⚠ 前端**不再**据此渲染色板（2026-10-10 起账号管理弹窗没有颜色选择器）：它只剩两个用途——
+ *   给 `AccountColorName` 定类型、给 `scripts/gen-account-colors.mjs` 的漂移检查当锚点。
  */
 export const ACCOUNT_COLOR_NAMES = ["cyan", "pink", "violet", "orange", "teal"] as const;
 
@@ -62,30 +66,20 @@ export function accountColorKey(color: string): string {
 }
 
 /**
- * 下一个未被占用的账号色（`used` = 现有账号的颜色）。
- *
- * ⚠ 存在的理由同后端：缺省色若是常量，从界面加进来的账号就全是同一个颜色，色点没有信息
- *   （2026-10-09 用户报「账号指示器中多个账号之间的颜色没有区别」）。这里是**弹窗里的预选**
- *   ——真正落盘的颜色以后端为准（后端同样避让已占用的色）。
- */
-export function nextAccountColor(used: Iterable<string>): string {
-  const taken = new Set([...used].map(accountColorKey));
-  return (
-    ACCOUNT_COLOR_NAMES.find((c) => !taken.has(c)) ??
-    ACCOUNT_COLOR_NAMES[taken.size % ACCOUNT_COLOR_NAMES.length]
-  );
-}
-
-/**
  * 命名色走静态类名；hex/任意 CSS 色走内联 style（账号配置里写的是 #0ea5e9 这类值）。
  *
  * ⚠ 先过 `accountColorKey`：历史缺省色 `#0ea5e9` 要按 `cyan` 的类名渲染，不能落到内联 style
  *   ——否则它会以原本那个偏艳的天蓝画出来，与同组其它色不是一套（同一个账号在底栏与弹窗里一致，
  *   但和别的账号摆在一起显得突兀）。
+ * ⚠ 色板名**必须**命中 `ACCOUNT_DOT`：命不中就说明有人加了新色名却漏了映射，此时**不能**退到
+ *   内联 style——色板名恰好都是 CSS 具名颜色（`pink` = #FFC0CB），会静默画出另一个色，正是
+ *   2026-10-09 那次「弹窗与底栏有色差」的成因。这里退成中性灰，宁可少一个色也不画错色。
  */
 export function accountDotProps(color: string): { className: string; style?: CSSProperties } {
-  const cls = ACCOUNT_DOT[accountColorKey(color)];
-  if (cls) return { className: cls };
+  const key = accountColorKey(color);
+  if ((ACCOUNT_COLOR_NAMES as readonly string[]).includes(key)) {
+    return { className: ACCOUNT_DOT[key as AccountColorName] ?? "bg-muted-foreground" };
+  }
   if (color) return { className: "", style: { backgroundColor: color } };
   return { className: "bg-muted-foreground" };
 }

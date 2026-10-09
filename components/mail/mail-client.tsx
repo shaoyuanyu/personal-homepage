@@ -16,6 +16,7 @@ import {
   ArrowUpRightIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   CircleAlertIcon,
   FilePenLineIcon,
   InboxIcon,
@@ -195,13 +196,19 @@ export function MailClient({
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   /**
    * 当前视图下「真正生效」的筛选值（2026-10-06 用户定稿）：「未读」在「发件」「草稿」
-   * 不可用（「发件」不可能有未读——与「草稿」同规则；「星标」仅「草稿」不可用，
+   * 「垃圾」不可用（「发件」不可能有未读——与「草稿」同规则；「星标」仅「草稿」不可用，
    * 发件加星是真实用例）。不可用 = 按钮禁用 + **查询不携带** + 显示为关；开关状态本身
    * 保留（收件里开着「未读」切到发件再切回来，仍是开的）。
    * ⚠ 查询与显示（含空态文案）都必须用这份生效值：若查询沿用原始开关，从收件带过来的
    *   「未读」会把发件列表静默压空，而按钮此刻已禁用、用户无法取消它。
+   *
+   * ⚠ 「垃圾」为什么也在列（2026-10-10 第六轮用户报障后定稿）：**未读 = 收件箱未读**
+   * （服务端 `UNSEEN_SQL`，与角标 / 底栏 /「全部标为已读」同一个数）。垃圾箱里的未读
+   * 副本不属于「收件箱未读」，所以「垃圾」tab 里带上 `filter=unseen` 只会得到一个空列表，
+   * 而开关上的数字却是收件箱那个数——又是「数字说 2、点开 0 封」的自相矛盾。
+   * 禁用 + 显示为关，与「发件」同一种处理（垃圾邮件的未读也不该在这里被清点）。
    */
-  const unseenActive = unseenOnly && view !== "sent" && view !== "drafts";
+  const unseenActive = unseenOnly && view !== "sent" && view !== "drafts" && view !== "junk";
   const flaggedActive = flaggedOnly && view !== "drafts";
   /** 已提交（触发加载）的搜索词；输入框的即时值另存 qInput（300ms 防抖后提交） */
   const [q, setQ] = useState("");
@@ -273,7 +280,24 @@ export function MailClient({
   const [items, setItems] = useState<MailListItem[]>([]);
   /** 草稿列表（「草稿」tab 专用；null = 尚未加载） */
   const [drafts, setDrafts] = useState<MailDraft[] | null>(null);
+  /**
+   * 草稿箱两段式读取（2026-10-10：草稿以服务商草稿文件夹为唯一事实源）：
+   * ① 先读本地缓存（快）→ 立刻出列表；② 再 `?refresh=1` 去服务商那边对一遍（手机写的
+   * 草稿由此进来、服务端删掉的从缓存清掉），回来后原地替换。实测 QQ 那 153 封草的核对
+   * 要十几秒（跨境 IMAP），所以不能把它挡在首屏前面。
+   */
+  const [draftsSyncing, setDraftsSyncing] = useState(false);
+  /** 核对失败的账号（下面显示"当前是本地缓存"，别让用户以为草稿箱空了） */
+  const [draftErrors, setDraftErrors] = useState<string[]>([]);
+  /** 「更早的草稿」折叠区（默认收起：QQ 草稿箱里有 141 封 2014 年起的旧草稿） */
+  const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
   const [next, setNext] = useState<string | null>(null);
+  /**
+   * 列表游标（草稿箱要视而不见）——2026-10-10：草稿的数据源是 `/drafts` 全量返回、根本没有
+   * 分页，但 `next` 还留着上一个邮件视图的游标，于是**草稿列表下面会冒出一个「加载更多」**，
+   * 点它只会去拉一页邮件追加到看不见的 `items` 上（哨兵还会自动续页）。
+   */
+  const pagedNext = view === "drafts" ? null : next;
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -360,11 +384,29 @@ export function MailClient({
   }, []);
 
   /** 草稿箱加载（「草稿」tab 与写信页保存广播共用；数据量小，整表拉取） */
-  const loadDrafts = useCallback(() => {
-    fetch("/api/mail/drafts")
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((d: { items?: MailDraft[] }) => setDrafts(d.items ?? []))
-      .catch(() => setDrafts([]));
+  const loadDrafts = useCallback(async () => {
+    // ① 本地缓存先出列表（快、断网也能看）
+    try {
+      const r = await fetch("/api/mail/drafts");
+      const data = (await r.json()) as { items?: MailDraft[]; errors?: { error: string }[] };
+      setDrafts(data.items ?? []);
+      setDraftErrors((data.errors ?? []).map((e) => e.error));
+    } catch {
+      setDrafts([]);
+      return;
+    }
+    // ② 再去服务商草稿箱对一遍（手机写的草稿由此进来）。TTL 在后端，来回切 tab 不会再刷。
+    setDraftsSyncing(true);
+    try {
+      const r = await fetch("/api/mail/drafts?refresh=1");
+      const data = (await r.json()) as { items?: MailDraft[]; errors?: { error: string }[] };
+      setDrafts(data.items ?? []);
+      setDraftErrors((data.errors ?? []).map((e) => e.error));
+    } catch {
+      // 核对失败：留着缓存那份，不打扰（下面会显示"显示的是本地缓存"）
+    } finally {
+      setDraftsSyncing(false);
+    }
   }, []);
 
   // 草稿视图：进入时加载 + 监听写信页的保存/删除广播（写完回来列表是新数据）
@@ -680,14 +722,14 @@ export function MailClient({
   const loadMore = useCallback(async () => {
     // ⚠ `loading`（整体重载）也要拦：重载在飞时续页会把**旧游标**的下一页追加到即将被
     //   替换的列表上（新列表到货后再被覆盖，白下一次请求）
-    if (!next || loadingMore || loading) return;
+    if (!pagedNext || loadingMore || loading) return;
     setLoadingMore(true);
     try {
-      await loadCurrent({ before: next, append: true });
+      await loadCurrent({ before: pagedNext, append: true });
     } finally {
       setLoadingMore(false);
     }
-  }, [next, loadingMore, loading, loadCurrent]);
+  }, [pagedNext, loadingMore, loading, loadCurrent]);
 
   /**
    * 无限滚动（4.9）：底部哨兵进入（扩展）视口即取下一页，「加载更多」按钮保留兜底。
@@ -722,7 +764,7 @@ export function MailClient({
   }, [sentinelNode]);
 
   useEffect(() => {
-    if (!sentinelNode || !next) return;
+    if (!sentinelNode || !pagedNext) return;
     const ob = new IntersectionObserver(
       (entries) => setSentinelInView(entries.some((e) => e.isIntersecting)),
       { rootMargin: "300px" },
@@ -733,14 +775,14 @@ export function MailClient({
       setSentinelInView(false);
     };
     // `sentinelNode` 是 state（不是 ref 对象）：节点换了这个 effect 会重跑
-  }, [next, sentinelNode]);
+  }, [pagedNext, sentinelNode]);
 
   // 哨兵在视口里 + 还有下一页 + 没有任何加载在跑 → 自动续页（同步复查，见 `sentinelNear`）
   useEffect(() => {
-    if (!sentinelInView || !next || loading || loadingMore) return;
+    if (!sentinelInView || !pagedNext || loading || loadingMore) return;
     if (!sentinelNear()) return;
     void loadMore();
-  }, [sentinelInView, next, loading, loadingMore, loadMore, sentinelNear]);
+  }, [sentinelInView, pagedNext, loading, loadingMore, loadMore, sentinelNear]);
 
   /**
    * 点**空白处**退出选择模式（2026-10-07 用户指定：不设专门的「退出」按钮）。
@@ -922,7 +964,15 @@ export function MailClient({
     return (m.to ?? []).some((a) => !!a.address && ownEmails.has(a.address.toLowerCase()));
   };
 
-  // 底栏右侧统计：当前账号筛选范围内的未读总数（不限账号 = 各账号之和）
+  /**
+   * 底栏右侧统计 + 「未读」开关上的数字 + 大标题角标（unreadAll）：**同一个数字** =
+   * 「当前账号筛选范围内**收件箱**未读之和」（不限账号 = 各账号之和）。
+   *
+   * ⚠ 口径（2026-10-10 第六轮定稿）：未读 = 收件箱未读。数字来自 `/accounts` 的
+   *   `unread`（服务端只数 INBOX 副本），后端 `filter=unseen` 也改成同一口径——四处
+   *   （角标 / 底栏 / 开关数字 / 筛选结果）必须永远一致。曾经的 bug 就是这里数收件箱、
+   *   筛选数全部文件夹：开关写 2、点开列出 7 封（含 5 封垃圾箱里的未读）。
+   */
   const unreadTotal = useMemo(
     () =>
       accounts
@@ -931,18 +981,53 @@ export function MailClient({
     [accounts, accountFilter],
   );
 
-  /** 草稿箱的搜索过滤（本地过滤：数据量小；匹配收件人 / 主题 / 正文） */
-  const visibleDrafts = useMemo(() => {
+  /**
+   * 草稿箱**先按账号筛、再按搜索词筛**（2026-10-10 用户报「草稿不区分所属账户，
+   * 用户体验太混乱」）：其它视图都由服务端按 `account` 参数筛，草稿箱此前把两个账号的
+   * 草稿混在一起、行上也不标归属——工具栏明明选着某个账号，列表里却出现另一个账号的草稿。
+   * ⚠ 顺序很重要：账号是"数据范围"、搜索是"范围内的过滤"，底栏的「已加载 N 封」用前者
+   *   （与邮件列表同口径：搜索命中数是列表内容，不是数据范围）。
+   */
+  const accountDrafts = useMemo(
+    () => (drafts ?? []).filter((d) => accountFilter === "all" || d.accountId === accountFilter),
+    [drafts, accountFilter],
+  );
+
+  /**
+   * 「更早的草稿」分界：30 天前的旧草稿收进折叠区（默认收起）。
+   * 起因（2026-10-10）：草稿改成以服务商草稿文件夹为唯一事实源之后，用户 QQ 账号里
+   * 141 封 2014 年起的旧草稿会一次性进入列表——**数据一封都不少**，只是别拿它们糊住
+   * 当前在写的那几封。折叠是展示层的分组，不是过滤（点开就见，不是隐藏）。
+   */
+  const OLD_DRAFT_MS = 30 * 24 * 60 * 60 * 1000;
+  const recentDrafts = useMemo(() => {
+    const cutoff = Date.now() - OLD_DRAFT_MS;
+    return accountDrafts.filter((d) => Date.parse(d.updatedAt) >= cutoff);
+  }, [accountDrafts]);
+  const olderDrafts = useMemo(() => {
+    const cutoff = Date.now() - OLD_DRAFT_MS;
+    return accountDrafts.filter((d) => Date.parse(d.updatedAt) < cutoff);
+  }, [accountDrafts]);
+
+  /** 搜索命中的草稿（本地过滤：数据量小；匹配收件人 / 主题 / 正文） */
+  const matchedDrafts = useMemo(() => {
     const kw = q.trim().toLowerCase();
-    const list = drafts ?? [];
-    if (!kw) return list;
-    return list.filter(
+    if (!kw) return accountDrafts;
+    return accountDrafts.filter(
       (d) =>
         d.to.toLowerCase().includes(kw) ||
         d.subject.toLowerCase().includes(kw) ||
         d.body.toLowerCase().includes(kw),
     );
-  }, [drafts, q]);
+  }, [accountDrafts, q]);
+
+  /**
+   * 列表里真正渲染的行：**搜索时不分「更早」**（否则搜到了却看不见），平时只显示最近 30 天。
+   * 旧草稿在 `olderVisible` 里，由折叠区展示（默认收起）。
+   */
+  const draftSearching = q.trim().length > 0;
+  const visibleDrafts = draftSearching ? matchedDrafts : recentDrafts;
+  const olderVisible = draftSearching ? [] : olderDrafts;
 
   /** 全账号未读总数（与账号筛选无关）：广播给大标题的未读角标（读信后立即回正） */
   const unreadAll = useMemo(
@@ -989,11 +1074,87 @@ export function MailClient({
   const barLoading = view === "drafts" ? drafts === null : loading || !!error;
   usePublishMailBar({
     loading: barLoading,
-    loaded: view === "drafts" ? (drafts?.length ?? 0) : items.length,
+    loaded: view === "drafts" ? accountDrafts.length : items.length,
     unread: view === "drafts" ? 0 : unreadTotal,
     accounts,
     accountFilter,
   });
+
+  /**
+   * 草稿行（2026-10-10 抽出来）：最近草稿与「更早的草稿」折叠区共用同一份渲染。
+   *
+   * ⚠ 草稿改成"服务商草稿文件夹 = 唯一事实源"之后，列表只用 IMAP envelope 拼出来，
+   *   **没读过正文 ≠ 没有正文**（`contentLoaded === false`），行里必须如实区分这两件事。
+   */
+  const renderDraftRow = (d: MailDraft) => (
+    <li key={d.id} className="group/row relative">
+      <button
+        type="button"
+        data-mail-row
+        onClick={() => router.push(`/mail/compose?draft=${encodeURIComponent(d.id)}`, mailNavOptions())}
+        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50 focus-visible:bg-accent/50 focus-visible:outline-none"
+      >
+        <span className="shrink-0 self-center">
+          <Avatar>
+            <AvatarFallback>
+              <FilePenLineIcon className="size-4" aria-hidden />
+            </AvatarFallback>
+          </Avatar>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className="truncate text-sm font-semibold">{d.to || t("draftNoRecipient")}</span>
+            {/* 账号归属（多账号时）：与邮件列表行**同一套**——只给色点，账号名放 `title`
+                （悬浮可见），不写可见文本。第三轮曾在点后面明写备注名（当时为了让
+                「草稿不区分所属账户」一眼可见），结果只有这个 tab 多一截文字，用户
+                2026-10-10 报「为什么包含账号的备注名？其他 tab 都不这样」——统一回色点。
+                ⚠ 两处渲染必须同形：改这里请一并看邮件列表行的同名 marker（`m.accounts`）。 */}
+            {accounts.length > 1 && (
+              <span
+                className="flex shrink-0 items-center gap-0.5"
+                title={accountName(d.accountId)?.displayName ?? d.accountId}
+                data-slot="draft-account"
+              >
+                <span
+                  className={cn(
+                    "inline-block size-1.5 rounded-full",
+                    accountDotProps(accountName(d.accountId)?.color ?? "").className,
+                  )}
+                  style={accountDotProps(accountName(d.accountId)?.color ?? "").style}
+                />
+              </span>
+            )}
+            {(d.attachments?.length ?? 0) > 0 && (
+              <span
+                className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground"
+                title={d.attachments?.map((a) => a.filename).join("、")}
+                data-slot="draft-attachments"
+              >
+                <PaperclipIcon className="size-3.5" aria-hidden />
+                {d.attachments?.length}
+              </span>
+            )}
+            <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground group-hover/row:invisible group-focus-within/row:invisible">
+              {formatDate(d.updatedAt, t("localeTag"))}
+            </span>
+          </span>
+          <span className="block truncate text-sm">{d.subject || t("noSubject")}</span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {d.contentLoaded === false ? t("draftContentNotLoaded") : d.body || t("draftNoBody")}
+          </span>
+        </span>
+      </button>
+      {/* 行内操作：hover / 聚焦时显现的删除（草稿没有星标 / 已读状态） */}
+      <span
+        data-slot="mail-row-actions"
+        className="absolute top-2 right-3 hidden items-center gap-0.5 rounded-lg border border-border bg-background p-0.5 shadow-sm group-hover/row:flex group-focus-within/row:flex"
+      >
+        <Button variant="ghost" size="icon-sm" aria-label={t("deleteDraft")} onClick={() => setPendingDraftDelete(d)}>
+          <Trash2Icon />
+        </Button>
+      </span>
+    </li>
+  );
 
   return (
     // 整栏挂「点空白处退出多选」（见 onListBlankClick）：只读状态下这个 handler 直接返回
@@ -1254,8 +1415,9 @@ export function MailClient({
               「未读」纯文字读不出开/关；也不用勾选框/开关组件，理由见 MAIL-AGENT.md 4.9）：
               未读 = 蓝点（亮起即开启，与头像未读点同色）；星标 = 星形线框 → 实心。
               ⚠ `multiple` 必须显式传：Base UI ToggleGroup 默认单选，不传则两开关互斥。
-              ⚠ 值用「生效值」（2026-10-06 用户定稿）：「未读」在「发件」「草稿」禁用且
-              显示为关——「发件」不可能有未读，与「草稿」同规则（见 unseenActive 声明处） */}
+              ⚠ 值用「生效值」（2026-10-06 用户定稿，「垃圾」于 2026-10-10 第六轮加入）：
+              「未读」在「发件」「草稿」「垃圾」禁用且显示为关——「发件」不可能有未读、
+              「垃圾」里的未读不算收件箱未读（见 unseenActive 声明处） */}
           <ToggleGroup
             multiple
             value={[unseenActive ? "unseen" : "", flaggedActive ? "flagged" : ""].filter(Boolean)}
@@ -1268,7 +1430,7 @@ export function MailClient({
             <ToggleGroupItem
               value="unseen"
               size="sm"
-              disabled={view === "drafts" || view === "sent"}
+              disabled={view === "drafts" || view === "sent" || view === "junk"}
               className="aria-pressed:bg-blue-600/10 aria-pressed:text-blue-700 dark:aria-pressed:bg-blue-400/15 dark:aria-pressed:text-blue-400"
             >
               <span
@@ -1277,6 +1439,12 @@ export function MailClient({
               />
               {/* 未读计数（2026-10-05 用户定稿二稿「无胶囊角标」）：数量 = 当前账号
                   筛选范围内 INBOX 未读之和（与底栏统计同口径 unreadTotal）；0 不渲染。
+                  ⚠ 口径（2026-10-10 第六轮起）：**未读 = 收件箱未读**，全站只有一个「未读」
+                  数字——角标 / 底栏 / 本开关 / 后端 `filter=unseen` 四处同一口径。此前
+                  `filter=unseen` 是「任一副本无 \Seen」，把垃圾箱里的未读也算进来，于是
+                  开关写 2、点开却列出 7 封（用户 2026-10-10 报障）。搜索词生效时本数字
+                  仍是「账号范围内的收件箱未读」这个统计量（不是当前搜索结果数）——这是
+                  「全站同一个数」方案的代价，已知并接受。
                   形态：与标签同栖一个行内流，`align-super` 抬成「未读」右上角的上标角标——
                   **不带括号、不带胶囊底、不指定颜色**（继承开关文字色：未按下 = 普通前景，
                   按下 = 随标签变蓝）——继承色同时意味着对比度与标签同档（白底 ≈13:1、
@@ -1337,11 +1505,13 @@ export function MailClient({
             （与日历的更新中同一语言）——此前每次点 tab/开关都整个换成骨架、再换回来，
             用户报「列表闪烁抖动」；顺带把「加载中」的观感从「消失重来」变成「原地更新」 */}
         {view === "drafts" ? (
-          // 草稿箱（2026-10-06 用户指定）：独立数据源（webmaild /drafts），与邮件列表完全
-          // 分离——草稿不算入「全部」，也不参与未读 / 星标。行点击进写信页继续编辑。
+          // 草稿箱（2026-10-10 起：**服务商的草稿文件夹是唯一事实源**，本地表只是暂存 + 解析缓存）
+          // - 先出本地缓存、再 `?refresh=1` 去服务端对一遍（手机写的草稿由此进来，见 loadDrafts）；
+          // - 行点击进写信页继续编辑（站内打开时按需抓原文解析）；
+          // - 30 天前的旧草稿收进折叠区（数据一封不少，只是不糊住当前在写的那几封）。
           drafts === null ? (
             <ListSkeleton />
-          ) : visibleDrafts.length === 0 ? (
+          ) : visibleDrafts.length === 0 && olderVisible.length === 0 ? (
             <Empty>
               <EmptyMedia variant="icon">
                 <FilePenLineIcon aria-hidden />
@@ -1351,62 +1521,54 @@ export function MailClient({
               </EmptyHeader>
             </Empty>
           ) : (
-            <ul
-              className="divide-y divide-border rounded-xl border border-border lg:rounded-none lg:border-0"
-              data-slot="mail-draft-list"
-            >
-              {visibleDrafts.map((d) => (
-                <li key={d.id} className="group/row relative">
+            <>
+              {(draftsSyncing || draftErrors.length > 0) && (
+                <p
+                  data-slot="drafts-sync-note"
+                  className="mb-2 flex items-center gap-2 px-1 text-xs text-muted-foreground"
+                >
+                  {draftsSyncing ? (
+                    <>
+                      <Spinner /> {t("draftsSyncing")}
+                    </>
+                  ) : (
+                    t("draftsCacheNote")
+                  )}
+                </p>
+              )}
+              <ul
+                className="divide-y divide-border rounded-xl border border-border lg:rounded-none lg:border-0"
+                data-slot="mail-draft-list"
+              >
+                {visibleDrafts.map(renderDraftRow)}
+              </ul>
+              {olderVisible.length > 0 && (
+                <div className="mt-2">
                   <button
                     type="button"
-                    data-mail-row
-                    onClick={() =>
-                      router.push(
-                        `/mail/compose?draft=${encodeURIComponent(d.id)}`,
-                        mailNavOptions(),
-                      )
-                    }
-                    className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50 focus-visible:bg-accent/50 focus-visible:outline-none"
+                    data-slot="drafts-older-toggle"
+                    aria-expanded={olderDraftsOpen}
+                    onClick={() => setOlderDraftsOpen((o) => !o)}
+                    className="flex items-center gap-1 rounded-md px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
                   >
-                    <span className="shrink-0 self-center">
-                      <Avatar>
-                        <AvatarFallback>
-                          <FilePenLineIcon className="size-4" aria-hidden />
-                        </AvatarFallback>
-                      </Avatar>
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-baseline gap-2">
-                        <span className="truncate text-sm font-semibold">
-                          {d.to || t("draftNoRecipient")}
-                        </span>
-                        <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground group-hover/row:invisible group-focus-within/row:invisible">
-                          {formatDate(d.updatedAt, t("localeTag"))}
-                        </span>
-                      </span>
-                      <span className="block truncate text-sm">{d.subject || t("noSubject")}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {d.body || t("draftNoBody")}
-                      </span>
-                    </span>
+                    {olderDraftsOpen ? (
+                      <ChevronDownIcon className="size-3.5" aria-hidden />
+                    ) : (
+                      <ChevronRightIcon className="size-3.5" aria-hidden />
+                    )}
+                    {t("draftsOlder", { count: olderVisible.length })}
                   </button>
-                  {/* 行内操作：hover / 聚焦时显现的删除（草稿没有星标 / 已读状态） */}
-                  <span
-                  data-slot="mail-row-actions"
-                  className="absolute top-2 right-3 hidden items-center gap-0.5 rounded-lg border border-border bg-background p-0.5 shadow-sm group-hover/row:flex group-focus-within/row:flex"
-                >
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t("deleteDraft")}
-                      onClick={() => setPendingDraftDelete(d)}
+                  {olderDraftsOpen && (
+                    <ul
+                      className="divide-y divide-border rounded-xl border border-border lg:rounded-none lg:border-0"
+                      data-slot="mail-draft-list-older"
                     >
-                      <Trash2Icon />
-                    </Button>
-                  </span>
-                </li>
-              ))}
-            </ul>
+                      {olderVisible.map(renderDraftRow)}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </>
           )
         ) : loading && !hasLoadedRef.current ? (
           <ListSkeleton />
@@ -1634,7 +1796,7 @@ export function MailClient({
             ⚠ **哨兵常驻**（外层只判 `next`，**不判 `loading`**）：它一旦被 `loading` 卸载重建，
               IntersectionObserver 就会盯着旧节点失效（→ 无限滚动静默死掉，见上方「无限滚动」）。
               只有「加载更多」按钮跟随 `loading` 隐藏（重载期间列表在换，按钮没有意义）。 */}
-        {next && (
+        {pagedNext && (
           <div className="flex shrink-0 flex-col items-center gap-2">
             <div ref={setSentinelNode} className="h-px w-full" aria-hidden />
             {!loading && (

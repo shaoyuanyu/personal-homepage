@@ -3099,6 +3099,14 @@ function stubMailApi(
     drafts?: unknown[];
     /** 文件夹预览探测（POST /folders）与移动（POST /move）的请求体 */
     folders?: unknown[];
+    /** `GET /folders` 的 account 参数（清单必须**按账号**探测，见「不串用上一个账号的清单」用例） */
+    folderQueries?: string[];
+    /** `GET /messages` 的查询串（草稿箱用例：停在草稿箱时不该继续拉邮件列表） */
+    listQueries?: string[];
+    /** `GET /drafts` 的查询串（区分"读缓存 / 刷新 / 按归属键找"三种读法） */
+    draftQueries?: string[];
+    /** 草稿桩的实时引用（用例可塞服务器草稿） */
+    draftStore?: Record<string, unknown>[];
     move?: unknown[];
     /** 按需取原文（POST /message/:id/source）的调用记录 */
     source?: unknown[];
@@ -3155,6 +3163,8 @@ function stubMailApi(
   // 草稿内存桩（2026-10-06）：POST/PUT/DELETE 真实改数组，GET 反映最新状态
   let draftSeq = 0;
   const draftStore: Record<string, unknown>[] = [];
+  // 草稿桩的实时引用（用例可塞"别的客户端写的"服务器草稿：contentLoaded=false / 很早的日期）
+  calls.draftStore = draftStore;
   // 远程图片白名单内存桩（4.4）：PUT 全量替换，GET 反映最新状态
   let domainStore = ["edu.cn"];
   return page.route("**/api/mail/**", (route) => {
@@ -3203,7 +3213,17 @@ function stubMailApi(
     }
     // ---- 草稿（2026-10-06）：写信页自动保存 / 草稿箱 ----
     if (path === "/drafts" && route.request().method() === "GET") {
-      return json({ items: draftStore });
+      // 2026-10-10 草稿改为"服务商草稿文件夹 = 唯一事实源"之后，这个端点有三种读法：
+      // ① 纯缓存（写信页找回）；② `?refresh=1`（草稿箱打开时去服务端对一遍）；
+      // ③ `?kind=&kindRef=`（写信页只问它关心的那一封）。桩对三者都返回 items，
+      // 但把查询串记下来，供"写信页不再拉整箱"的断言用。
+      calls.draftQueries?.push(url.search);
+      const kind = url.searchParams.get("kind");
+      const kindRef = url.searchParams.get("kindRef");
+      let items = draftStore;
+      if (kind) items = items.filter((d) => (d as { kind?: string }).kind === kind);
+      if (kindRef !== null) items = items.filter((d) => ((d as { kindRef?: string }).kindRef ?? "") === kindRef);
+      return json({ items, errors: [] });
     }
     if (path === "/drafts" && route.request().method() === "POST") {
       const body = route.request().postDataJSON() as Record<string, unknown>;
@@ -3224,11 +3244,20 @@ function stubMailApi(
         references: (body.references as string[]) ?? [],
         createdAt: now,
         updatedAt: now,
+        // 站内刚写的草稿：内容就在本地（不像"从服务器读来的那种"还没解析）
+        contentLoaded: true,
+        attachments: [],
       };
       draftStore.unshift(draft);
       return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(draft) });
     }
     const draftMatch = path.match(/^\/drafts\/([^/]+)$/);
+    if (draftMatch && route.request().method() === "GET") {
+      calls.drafts?.push({ method: "GET", id: draftMatch[1] });
+      const hit = draftStore.find((d) => (d as { id?: string }).id === draftMatch[1]);
+      if (!hit) return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "草稿不存在" }) });
+      return json(hit);
+    }
     if (draftMatch && route.request().method() === "PUT") {
       const body = route.request().postDataJSON() as Record<string, unknown>;
       calls.drafts?.push({ method: "PUT", id: draftMatch[1], body });
@@ -3289,6 +3318,7 @@ function stubMailApi(
     }
     if (path === "/folders" && route.request().method() === "GET") {
       const account = url.searchParams.get("account") ?? "";
+      calls.folderQueries?.push(account);
       return json({
         folders: MAIL_FOLDERS[account] ?? [],
         suggested: ["INBOX", "已发送", "垃圾邮件"],
@@ -3309,6 +3339,7 @@ function stubMailApi(
       return json({ affected: body.copies?.length ?? 0, skipped: [] });
     }
     if (path === "/messages") {
+      calls.listQueries?.push(url.search);
       const account = url.searchParams.get("account");
       const q = url.searchParams.get("q");
       const filter = url.searchParams.get("filter");
@@ -3350,8 +3381,19 @@ function stubMailApi(
       }
       if (q) items = items.filter((m) => m.subject.includes(q) || m.snippet.includes(q));
       // 状态筛选（4.2）：与服务端 filter 参数同口径（2026-10-04 起支持逗号多值取交集）
+      // ⚠ 「未读」= **收件箱未读**（2026-10-10 第六轮起）：有 INBOX 副本且该封未读，
+      //   不是「任一副本无 \Seen」——后者会把垃圾文件夹里的未读也算进来（用户报障：
+      //   开关写 2、点开列出 7 封）。服务端口径在 webmail/test/folders.test.ts 锁定，
+      //   这里让桩跟着同口径，好让「开关数字 == 列出条数」这条契约在 E2E 里成立。
       const filters = new Set((filter ?? "").split(",").filter(Boolean));
-      if (filters.has("unseen")) items = items.filter((m) => !m.seen);
+      if (filters.has("unseen"))
+        items = items.filter(
+          (m) =>
+            !m.seen &&
+            m.copies.some(
+              (c) => c.folder.toUpperCase() === "INBOX" && (!account || c.accountId === account),
+            ),
+        );
       if (filters.has("flagged")) items = items.filter((m) => m.flagged);
       // 方向筛选（4.9）：与服务端 direction 参数同口径，与状态互相独立可叠加
       //（判定与 lib/mail/kind.ts 的 isSentItem 一致：副本全在「已发送」类文件夹）
@@ -3761,7 +3803,8 @@ test.describe("站内邮件（/mail）", () => {
         const filters = new Set((sp.get("filter") ?? "").split(",").filter(Boolean));
         const direction = sp.get("direction");
         let items = longList;
-        if (filters.has("unseen")) items = items.filter((m) => !m.seen);
+        if (filters.has("unseen"))
+          items = items.filter((m) => !m.seen && m.copies.some((c) => c.folder.toUpperCase() === "INBOX"));
         if (filters.has("flagged")) items = items.filter((m) => m.flagged);
         if (direction === "received")
           items = items.filter((m) => m.copies.some((c) => c.folder.toUpperCase() === "INBOX"));
@@ -3995,6 +4038,19 @@ test.describe("站内邮件（/mail）", () => {
       const flaggedChip = page.getByRole("button", { name: "星标", exact: true });
       await unseenChip.click();
       await expect(rows).toHaveCount(3);
+      /**
+       * **开关上的数字不随视图变、列表跟着视图变**（2026-10-10 第六轮用户报障的正面契约：
+       * 当时开关写 2、点开却列出 7 封——角标数收件箱未读、筛选数所有文件夹）。
+       * 数字来自 `/accounts` 的 `unread`（账号范围统计），条数来自 `/messages?filter=unseen`；
+       * 「数字 == 该范围内未读条数」这条**服务端口径**的不变量在
+       * `webmail/test/folders.test.ts`（未读 = 收件箱未读）与 `api.test.ts` 里锁定，
+       * 前端这里只锁「切到「全部」后筛选结果不变、数字也不被切 tab 带跑」。
+       */
+      await page.getByRole("tab", { name: "全部", exact: true }).click();
+      await expect(rows).toHaveCount(3);
+      await expect(page.locator('[data-slot="unseen-count"]')).toHaveText("3");
+      await page.getByRole("tab", { name: "收件", exact: true }).click();
+      await expect(rows).toHaveCount(3);
       // 「星标」同样是开关（2026-10-05 起不再是视图 tab）：收件 ∩ 星标 = 1 封
       await unseenChip.click();
       await flaggedChip.click();
@@ -4183,6 +4239,33 @@ test.describe("站内邮件（/mail）", () => {
       await expect(rows.first()).toContainText("中奖通知");
       // 请求带上了「账号|路径」——账号维度不能丢（多账号下各自探测各自的垃圾文件夹）
       expect(listRequests.some((u) => u.includes("folder=acc1|垃圾邮件"))).toBe(true);
+
+      /**
+       * 「未读」在「垃圾」tab 里**禁用 + 显示为关 + 查询不携带**（2026-10-10 第六轮）。
+       * 未读 = 收件箱未读，垃圾箱里的未读不算它——若这里还允许打开，就会得到
+       * 「开关上写着收件箱未读 3、列表却空白（垃圾里没有收件箱副本）」的自相矛盾。
+       * 判据取「先在收件里打开 → 进垃圾看生效值」这条链：只有生效值真的参与查询与显示，
+       * 三个断言才会同时成立（开关状态本身保留 = 与「发件 / 草稿」同一套规则）。
+       */
+      const unseenChip = page.getByRole("button", { name: "未读", exact: true });
+      await page.getByRole("tab", { name: "收件", exact: true }).click();
+      await unseenChip.click();
+      await expect(unseenChip).toHaveAttribute("aria-pressed", "true");
+      listRequests.length = 0; // 只看进「垃圾」之后发出的请求
+      await page.getByRole("tab", { name: "垃圾", exact: true }).click();
+      await expect(rows).toHaveCount(1);
+      await expect(unseenChip).toBeDisabled();
+      await expect(unseenChip).toHaveAttribute("aria-pressed", "false");
+      expect(
+        listRequests.some((u) => u.includes("filter=unseen")),
+        "「垃圾」tab 不该带 filter=unseen（会把列表压空，与开关上的数字矛盾）",
+      ).toBe(false);
+      // 切回「收件」：开关状态本身保留（仍是开的），只是刚才那一次不生效
+      await page.getByRole("tab", { name: "收件", exact: true }).click();
+      await expect(unseenChip).toBeEnabled();
+      await expect(unseenChip).toHaveAttribute("aria-pressed", "true");
+      await unseenChip.click(); // 关掉，避免影响下面的断言
+
       // 垃圾不算入任何方向视图：切回「全部」时它不在
       await page.getByRole("tab", { name: "全部", exact: true }).click();
       await expect(page.locator('[data-slot="mail-list"] > li')).toHaveCount(5);
@@ -4491,12 +4574,26 @@ test.describe("站内邮件（/mail）", () => {
     });
 
     test("写邮件：草稿自动保存到服务器（刷新恢复），发送后清除", async ({ page }) => {
-      const calls = { flags: [], send: [] as unknown[], delete: [], drafts: [] as unknown[] };
+      const calls = {
+        flags: [],
+        send: [] as unknown[],
+        delete: [],
+        drafts: [] as unknown[],
+        draftQueries: [] as string[],
+      };
       await stubMailApi(page, calls);
       const code = new TOTP({ secret: totpSecret! }).generate();
       await loginWithCode(page, code);
 
       await gotoReady(page, "/mail/compose");
+      // 找回草稿只问"归属键这一封"（2026-10-10）：写信页是高频入口，不能每次都把
+      // 整个草稿箱（实测有账号 141 封）拉一遍。契约 = 请求带 kind/kindRef。
+      await expect
+        .poll(() => calls.draftQueries.length, { message: "写信页要按归属键问一次" })
+        .toBeGreaterThan(0);
+      expect(calls.draftQueries[0]).toContain("kind=new");
+      expect(calls.draftQueries.some((q) => q.includes("kindRef="))).toBe(true);
+
       await page.locator("#mail-to").fill("draft@example.org");
       await page.locator("#mail-subject").fill("草稿主题");
       // 500ms 防抖后落盘（服务器端草稿，2026-10-06：首次保存 POST 创建，之后 PUT 整体替换）
@@ -4574,6 +4671,193 @@ test.describe("站内邮件（/mail）", () => {
       await expect(page.getByText("暂无草稿")).toBeVisible();
     });
 
+    /**
+     * 草稿箱的**账号归属与账号筛选**（2026-10-10 用户报：「『邮件列表』中选择『草稿』，
+     * 似乎这里的草稿不区分所属账户？用户体验太混乱」）。
+     *
+     * 起因：草稿的数据源是 `GET /drafts`（webmaild 本地表，一次把所有账号的草稿全给），
+     * 旧实现既不按工具栏选的账号筛、行上也不标归属 —— 明明选着某个账号，列表里却混着
+     * 另一个账号的草稿，而且看不出哪封是谁的（邮件列表那边至少有方向角标与底栏色点对照）。
+     *
+     * 契约：① 多账号时每行标出归属（色点 + 账号名）；② 工具栏选账号 = 只显示该账号的草稿，
+     * 底栏「已加载 N 封」跟着变；③ 草稿箱不分页——列表还有下一页时也不出现「加载更多」。
+     */
+    /**
+     * 草稿箱（2026-10-10 阶段 1 重做：**服务商的草稿文件夹是唯一事实源**）。
+     *
+     * 这次重做的直接起因是用户问「站内草稿和邮件服务商的草稿是两条渠道吗？……为什么不直接
+     * 用服务商的草稿文件夹」——旧设计确实荒谬：**手机写的草稿会以"邮件"身份出现在「全部」
+     * 里，站内「草稿」tab 里反而没有它**。现在两个方向合成一条：
+     * - 服务商草稿文件夹里的（手机/网页端写的）也进站内草稿箱，行上如实标「内容未读取」，
+     *   点开时才去服务器抓原文解析（列表只用 IMAP envelope）；
+     * - 30 天前的旧草稿收进「更早的草稿」折叠区（数据一封不少，只是不糊住当前在写的）。
+     */
+    test("草稿箱：服务器草稿（未读正文）如实标注、旧草稿折叠、打开时按 id 取单封", async ({ page }) => {
+      const calls = {
+        flags: [],
+        send: [],
+        delete: [],
+        drafts: [] as unknown[],
+        draftQueries: [] as string[],
+        draftStore: undefined as Record<string, unknown>[] | undefined,
+      };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      // 塞两封"别的客户端写的"草稿：一封最近（正文还没读过）、一封 2019 年的
+      const now = new Date().toISOString();
+      calls.draftStore!.push(
+        {
+          id: "srv-new",
+          kind: "new",
+          kindRef: "",
+          accountId: "acc1",
+          to: "phone@example.com",
+          cc: "",
+          bcc: "",
+          subject: "手机上写了一半",
+          body: "",
+          readReceipt: false,
+          inReplyTo: "",
+          references: [],
+          createdAt: now,
+          updatedAt: now,
+          contentLoaded: false,
+          attachments: [],
+        },
+        {
+          id: "srv-old",
+          kind: "new",
+          kindRef: "",
+          accountId: "acc1",
+          to: "old@example.com",
+          cc: "",
+          bcc: "",
+          subject: "2019 年的旧草稿",
+          body: "",
+          readReceipt: false,
+          inReplyTo: "",
+          references: [],
+          createdAt: "2019-01-01T00:00:00.000Z",
+          updatedAt: "2019-01-01T00:00:00.000Z",
+          contentLoaded: false,
+          attachments: [],
+        },
+      );
+
+      await gotoReady(page, "/mail");
+      await page.getByRole("tab", { name: "草稿", exact: true }).click();
+      const rows = page.locator('[data-slot="mail-draft-list"] > li');
+      await expect(rows).toHaveCount(1);
+      // ⚠ 没读过正文 ≠ 没有正文：不能显示「（无正文）」
+      await expect(rows.first()).toContainText("手机上写了一半");
+      await expect(rows.first()).toContainText("内容未读取");
+      await expect(rows.first()).not.toContainText("（无正文）");
+
+      // 旧草稿在折叠区里（默认收起）
+      const olderToggle = page.locator('[data-slot="drafts-older-toggle"]');
+      await expect(olderToggle).toContainText("更早的草稿（1）");
+      await expect(page.locator('[data-slot="mail-draft-list-older"]')).toHaveCount(0);
+      await olderToggle.click();
+      const olderRows = page.locator('[data-slot="mail-draft-list-older"] > li');
+      await expect(olderRows).toHaveCount(1);
+      await expect(olderRows.first()).toContainText("2019 年的旧草稿");
+
+      // 草稿箱打开时**先出缓存、再去服务端对一遍**（两种读法各一次）
+      expect(calls.draftQueries.some((q) => q.includes("refresh=1")), "草稿箱要带 refresh=1 去核对").toBe(true);
+
+      // 点开这封服务器草稿 → 写信页**按 id 取单封**（服务端此时才抓原文解析）
+      await rows.first().locator("[data-mail-row]").click();
+      await expect(page).toHaveURL(/\/mail\/compose\?draft=srv-new/);
+      await expect
+        .poll(() => calls.drafts?.some((c) => (c as { method?: string; id?: string }).method === "GET" && (c as { id?: string }).id === "srv-new"))
+        .toBe(true);
+      await expect(page.locator("#mail-to")).toHaveValue("phone@example.com");
+      await expect(page.locator("#mail-subject")).toHaveValue("手机上写了一半");
+    });
+
+    test("草稿箱：每行标出账号，且跟随账号筛选", async ({ page }) => {
+      // 邮件列表造长一点 + 分页：让「加载更多」在邮件视图里**确实存在**（否则下面那条
+      // 「草稿箱没有加载更多」在游标为 null 时就是空转断言）
+      const many = [
+        ...MAIL_LIST,
+        ...Array.from({ length: 25 }, (_, i) =>
+          mailItem({
+            messageId: `mid:draftpage${i}@test.local`,
+            date: `2026-09-2${i % 9}T0${i % 9}:00:00.000Z`,
+            subject: `分页样本 ${i + 1}`,
+            fromAddr: "page@example.com",
+            fromName: "分页",
+          }),
+        ),
+      ];
+      const calls = {
+        flags: [],
+        send: [],
+        delete: [],
+        drafts: [] as unknown[],
+        listStore: many,
+        pageSize: 3,
+        listQueries: [] as string[],
+      };
+      await stubMailApi(page, calls);
+      calls.listStore = many;
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      // 两个账号各一封草稿（页面内 fetch 走桩）
+      for (const [accountId, to, subject] of [
+        ["acc1", "a@b.example", "草稿一"],
+        ["acc2", "c@d.example", "草稿二"],
+      ]) {
+        await page.evaluate(
+          ([id, addr, subj]) =>
+            fetch("/api/mail/drafts", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ kind: "new", accountId: id, to: addr, subject: subj, body: "半截正文" }),
+            }),
+          [accountId, to, subject],
+        );
+      }
+
+      await gotoReady(page, "/mail");
+      // 前提：邮件列表确实还有下一页（兜底按钮在），下面草稿箱那条断言才有意义
+      const more = page.locator('[data-slot="mail-load-more"]');
+      await expect(more).toBeVisible();
+      await page.getByRole("tab", { name: "草稿", exact: true }).click();
+      const rows = page.locator('[data-slot="mail-draft-list"] > li');
+      await expect(rows).toHaveCount(2);
+      // ① 每行标出归属：**色点 + title**，与邮件列表行同一套（不写可见的账号名——
+      //    用户 2026-10-10 报「草稿 tab 里为什么包含账号的备注名？其他 tab 都不这样」）。
+      //    判据取 title 与「行文本里没有账号名」两侧，锁住的就是「同形」这条契约。
+      const marks = page.locator('[data-slot="draft-account"]');
+      await expect(marks).toHaveCount(2);
+      const titles = await marks.evaluateAll((els) => els.map((el) => el.getAttribute("title")));
+      expect(titles.sort()).toEqual(["主账号", "学校"]);
+      const rowText = (await rows.allInnerTexts()).join(" | ");
+      expect(rowText).not.toContain("主账号");
+      expect(rowText).not.toContain("学校");
+      // ③ 草稿箱既不分页、也不该在后台继续拉邮件列表。
+      //    ⚠ 这里**不能用 `toHaveCount(0)`**：它会重试，而旧实现下那枚按钮是"先出现、
+      //      随后后台把剩下的页悄悄拉完又自己消失"——重试式断言恰好被这个副作用满足了
+      //      （2026-10-10 实测踩中：第一帧 load-more=1，1.5 秒后变 0，断言绿）。
+      //      故：取一次快照（不重试）+ 断言这段时间没有新的 /messages 请求。
+      expect(await more.count(), "草稿箱下面不该有「加载更多」").toBe(0);
+      const beforeQueries = calls.listQueries?.length ?? 0;
+      await page.waitForTimeout(1200);
+      expect(calls.listQueries?.length ?? 0, "停在草稿箱时不该继续拉邮件列表").toBe(beforeQueries);
+
+      // ② 选「学校」→ 只剩它的那封，底栏统计跟着变
+      await page.getByRole("button", { name: "按账号筛选" }).click();
+      await page.getByRole("menuitem", { name: /学校/ }).click();
+      await expect(rows).toHaveCount(1);
+      await expect(rows.first()).toContainText("草稿二");
+      await expect(rows.first()).not.toContainText("草稿一");
+      await expect(page.locator('[data-slot="mail-list-stats"]')).toContainText("已加载 1 封");
+    });
+
     test("账号管理：编辑账号（备注名/发件人姓名/连接字段回填），保存发出 PUT", async ({ page }) => {
       const calls = { flags: [], send: [], delete: [], accounts: [] as unknown[] };
       await stubMailApi(page, calls);
@@ -4582,6 +4866,7 @@ test.describe("站内邮件（/mail）", () => {
 
       await gotoReady(page, "/mail");
       await page.getByRole("button", { name: "账号", exact: true }).click();
+      const dialog = page.locator('[data-slot="dialog-content"]');
       // 第一行的编辑按钮（aria-label 带邮箱）
       await page.getByRole("button", { name: "编辑账号 me@mail.example.cn" }).click();
 
@@ -4593,20 +4878,29 @@ test.describe("站内邮件（/mail）", () => {
       await expect(page.locator("#acct-username")).toHaveValue("me@mail.example.cn");
       await expect(page.locator("#acct-password")).toHaveValue("");
 
-      // 账号颜色（2026-10-09）：色板反映账号当前色（acc1 = cyan），且**自己**的色不算撞色
-      const swatch = (name: string) =>
-        page.locator(`[data-slot="account-color-swatch"][data-color="${name}"]`);
-      await expect(swatch("cyan")).toHaveAttribute("aria-pressed", "true");
-      await expect(swatch("violet")).toHaveAttribute("aria-pressed", "false");
-      await expect(page.locator('[data-slot="account-color-taken"]')).toHaveCount(0);
-      // 选到另一个账号在用的色 → 提示（只提示不拦）
-      await swatch("violet").click();
-      await expect(swatch("violet")).toHaveAttribute("aria-pressed", "true");
-      await expect(page.locator('[data-slot="account-color-taken"]')).toBeVisible();
+      // 窗口结构（2026-10-10 用户报「编辑账号时窗口拉长，窗口样式没写好」）：标题栏与操作栏
+      // 固定在窗口上、**只滚中段**。旧实现把 `overflow-y-auto` 挂在弹窗本身上 = 整窗一起滚：
+      // 滚到底时标题被推到视口之外（标题/关闭按钮/「保存」都要靠滚动才够得着）。
+      // ⚠ 断言不去写死"哪个元素是滚动容器"（那是实现细节）：先找出真正在滚的元素（谁滚不是
+      //   重点），再断言**弹窗本身没有滚**、且标题与「保存」都还在视口里。
+      const { scrollTop, popupScrolled } = await dialog.evaluate((el) => {
+        const scroller =
+          [el, ...el.querySelectorAll("*")].find(
+            (n) =>
+              ["auto", "scroll"].includes(getComputedStyle(n).overflowY) &&
+              n.scrollHeight > n.clientHeight + 4,
+          ) ?? el;
+        scroller.scrollTop = scroller.scrollHeight;
+        return { scrollTop: Math.round(scroller.scrollTop), popupScrolled: Math.round(el.scrollTop) > 0 };
+      });
+      expect(scrollTop, "表单比窗口高，应当有东西能滚（不然这条断言是空转）").toBeGreaterThan(0);
+      expect(popupScrolled, "滚动必须发生在中段，不能是整个弹窗").toBe(false);
+      await expect(dialog.locator('[data-slot="dialog-title"]')).toBeInViewport();
+      await expect(dialog.getByRole("button", { name: "保存", exact: true })).toBeInViewport();
 
       // 改发件人姓名 → 保存（PUT；密码留空 = 不改，不下发）
       await page.locator("#acct-sender-name").fill("Shaoyuan Yu");
-      await page.getByRole("button", { name: "保存", exact: true }).click();
+      await dialog.getByRole("button", { name: "保存", exact: true }).click();
       await expect.poll(() => calls.accounts.length).toBe(1);
       const put = calls.accounts[0] as {
         method: string;
@@ -4617,11 +4911,13 @@ test.describe("站内邮件（/mail）", () => {
       expect(put.id).toBe("acc1");
       expect(put.body.senderName).toBe("Shaoyuan Yu");
       expect(put.body.displayName).toBe("主账号");
-      expect(put.body.color, "颜色要随账号一起提交（旧实现根本不发这个字段）").toBe("violet");
+      // 账号色（2026-10-10）：前端不再下发 color —— 编辑时由后端保留原色、新建时由后端按
+      // 「第一个未被占用的色」分配（弹窗里的颜色选择器已整体移除）
+      expect(put.body.color, "编辑不该带颜色：颜色由后端保留/分配").toBeUndefined();
       expect(put.body.password).toBeUndefined();
     });
 
-    test("账号颜色：历史缺省色按色板渲染（不是原样内联），色板五色互不相同", async ({ page }) => {
+    test("账号颜色：历史缺省色按色板渲染（不是原样内联），五个色板色互不相同", async ({ page }) => {
       const calls = {
         flags: [] as unknown[],
         send: [] as unknown[],
@@ -4631,35 +4927,31 @@ test.describe("站内邮件（/mail）", () => {
       await stubMailApi(page, calls);
       // 复现历史注册表：老版本 webmaild 给每个新账号填的是写死的 `#0ea5e9`
       calls.accountStore![0].color = "#0ea5e9";
+      // 再补三个账号占住其余色板色：色板一共 5 个，「五色互不相同」这条要有五个色点才验得了
+      for (const [id, displayName, color] of [
+        ["acc3", "第三", "pink"],
+        ["acc4", "第四", "orange"],
+        ["acc5", "第五", "teal"],
+      ]) {
+        calls.accountStore!.push({ ...calls.accountStore![0], id, displayName, color, unread: 0 });
+      }
       const code = new TOTP({ secret: totpSecret! }).generate();
       await loginWithCode(page, code);
 
       await gotoReady(page, "/mail");
       await page.getByRole("button", { name: "账号", exact: true }).click();
-      const dialog = page.locator('[data-slot="dialog-content"]');
-      // 色板只在添加/编辑表单展开时在 → 点开「添加账号」
-      await dialog.getByRole("button", { name: "添加账号" }).click();
-      await expect(dialog.locator('[data-slot="account-color-swatch"]').first()).toBeVisible();
+      const rows = page.locator('[data-slot="account-list"] > li');
+      await expect(rows).toHaveCount(5);
 
       const c = await colorProbe(page);
-      // 五色互不相同：色板值的唯一来源是生成器，重复值意味着生成器坏了（用户最初报的就是"没有区别"）
-      const swatchColors = Object.values(c.swatches);
-      expect(swatchColors.length, "色板应有五格").toBe(5);
-      expect(new Set(swatchColors).size, "色板五色必须互不相同").toBe(5);
+      // 账号色点（历史缺省色 + 其余四色）互不相同：色板值的唯一来源是生成器，
+      // 出现重复值就说明生成器/别名坏了（用户最初报的就是「多个账号颜色没有区别」）
+      const dots = Object.values(c.dialog);
+      expect(dots.length, "应读到五个色点").toBe(5);
+      expect(new Set(dots).size, "五个色板色必须互不相同").toBe(5);
       // 历史缺省色走别名渲染成色板 cyan，而不是把 `#0ea5e9` 原样内联（那会与同组色不是一套）
-      expect(c.dialog["主账号"], "历史缺省色应渲染为色板 cyan").toBe(c.swatches.cyan);
-      expect(c.dialog["主账号"], "不能是注册表里那个原样的 #0ea5e9").not.toBe("#0ea5e9");
-      expect(c.bar["主账号"], "底栏同理（两处一致）").toBe(c.dialog["主账号"]);
-
-      // 编辑表单里的选中态也按别名走：历史色要落在 cyan 那一格，否则看起来像"这个账号没有颜色"
-      await dialog.getByRole("button", { name: "编辑账号 me@mail.example.cn" }).click();
-      await expect(
-        dialog.locator('[data-slot="account-color-swatch"][data-color="cyan"]'),
-      ).toHaveAttribute("aria-pressed", "true");
-      await dialog.getByRole("button", { name: "编辑账号 ysy@edu.example.cn" }).click();
-      await expect(
-        dialog.locator('[data-slot="account-color-swatch"][data-color="violet"]'),
-      ).toHaveAttribute("aria-pressed", "true");
+      expect(c.dialog["主账号"], "历史缺省色不能是注册表里那个原样的 #0ea5e9").not.toBe("#0ea5e9");
+      expect(c.bar["主账号"], "底栏与弹窗列表必须同色").toBe(c.dialog["主账号"]);
     });
 
     test("未读角标：大标题显示未读总数，收到新邮件弹提醒（toast + 动画）", async ({ page }) => {
@@ -5207,6 +5499,10 @@ test.describe("站内邮件（/mail）", () => {
       await gotoReady(page, "/mail");
       await page.locator('[data-slot="mail-list"] > li').nth(0).locator("[data-mail-row]").click();
       await expect(page).toHaveURL(/\/mail\/message\//);
+      // ⚠ 等正文挂上再量：`toHaveURL` 在路由一换就通过，而详情还要等一次取数 +
+      //   （dev 下）路由首次编译——2026-10-10 实测过一次 `querySelector(".mail-body")`
+      //   拿到 null 的偶发红（单跑必过）。等元素而不是等时间。
+      await expect(page.locator(".mail-body")).toBeVisible();
       const shape = await page.evaluate(() => {
         const body = document.querySelector(".mail-body")!;
         const li = body.querySelector("li")!;
@@ -5474,6 +5770,7 @@ test.describe("站内邮件（/mail）", () => {
      *   `scripts/gen-account-colors.mjs` 算出、会随「柔和度」调整，锁死值只会换来假红。
      *   「同一个账号在两处必须是同一个色」才是契约（2026-10-09 用户报「账号管理页显示的账号颜色
      *   和底栏指示器有色差」：弹窗当年把色板名当 CSS 颜色内联，`pink` 被画成 #FFC0CB）。
+     * ⚠ 2026-10-10 起账号管理弹窗**没有颜色选择器**了（颜色全自动分配），故这里只比对两处色点。
      */
     const colorProbe = (page: Page) =>
       page.evaluate(() => {
@@ -5502,12 +5799,7 @@ test.describe("站内邮件（/mail）", () => {
           const dot = li.querySelector('span[aria-hidden]');
           if (name && dot) dialog[name] = hex(getComputedStyle(dot).backgroundColor);
         });
-        const swatches: Record<string, string> = {};
-        document.querySelectorAll('[data-slot="account-color-swatch"]').forEach((el) => {
-          const name = el.getAttribute("data-color");
-          if (name) swatches[name] = hex(getComputedStyle(el).backgroundColor);
-        });
-        return { bar, dialog, swatches };
+        return { bar, dialog };
       });
 
     test("账号管理：列出账号 → 新增（连接测试后落盘）→ 删除（确认弹窗）", async ({ page }) => {
@@ -5540,16 +5832,9 @@ test.describe("站内邮件（/mail）", () => {
 
       // 新增：展开表单 → 填写 → 提交（未填密码时后端 400 的分支不在此覆盖，由 webmail 单测锁定）
       await dialog.getByRole("button", { name: "添加账号" }).click();
-      // 账号颜色（2026-10-09）：预选 = 第一个**没人用过**的色板色，顺序即色板声明顺序
-      // （cyan→pink→violet→orange→teal）——acc1=cyan、acc2=violet 时缺的正是 pink
-      const swatch = (name: string) =>
-        dialog.locator(`[data-slot="account-color-swatch"][data-color="${name}"]`);
-      await expect(swatch("pink")).toHaveAttribute("aria-pressed", "true");
-      // 选到别人在用的色 → 有提示（不拦）；换一个没被占用的色 → 提示消失
-      await swatch("cyan").click();
-      await expect(dialog.locator('[data-slot="account-color-taken"]')).toBeVisible();
-      await swatch("orange").click();
-      await expect(dialog.locator('[data-slot="account-color-taken"]')).toHaveCount(0);
+      // 账号颜色（2026-10-10）：表单里**没有**颜色选择器，颜色完全由后端在落盘时分配
+      // （旧实现有五个色钮 + 一段「系统会自动挑、你也能改」的解释文案，用户反馈多余）
+      await expect(dialog.locator('[data-slot="account-color-picker"]')).toHaveCount(0);
       await dialog.getByLabel("备注名").fill("镜像");
       await dialog.getByLabel("邮箱地址").fill("mirror@example.com");
       await dialog.getByLabel("密码 / 授权码").fill("secret");
@@ -5559,8 +5844,10 @@ test.describe("站内邮件（/mail）", () => {
       await expect.poll(() => calls.accounts?.length).toBe(1);
       expect(calls.accounts?.[0]).toMatchObject({
         method: "POST",
-        body: { displayName: "镜像", email: "mirror@example.com", color: "orange" },
+        body: { displayName: "镜像", email: "mirror@example.com" },
       });
+      // 前端不下发 color：分配权在后端（`nextAccountColor()`，新建 = 第一个未被占用的色名）
+      expect((calls.accounts?.[0] as { body: Record<string, unknown> }).body.color).toBeUndefined();
       await expect(rows).toHaveCount(3);
       await expect(rows.nth(2)).toContainText("mirror@example.com");
 
@@ -5592,7 +5879,18 @@ test.describe("站内邮件（/mail）", () => {
      * 「已发送」）会静默少同步一个文件夹，最典型的症状是新账号「发件」页永远为空。
      * 现在：探测（POST /folders，用表单里现填的连接参数）→ 勾选 → 随账号一起提交。
      */
-    test("账号管理：文件夹选择器（探测 → 用推荐 → 随账号提交 folders）", async ({ page }) => {
+    /**
+     * 同步范围（2026-10-10 按用户反馈重做）：以前这里是一长串**服务器文件夹路径**加两个
+     * 没头没脑的按钮（「用推荐的一组 / 清空」），用户说「还是很混乱，且很丑」「看了也
+     * 一头雾水」。现在按用户视角问「站内显示哪些邮件」：收件箱锁定常开、已发送 / 垃圾邮件
+     * 各一个开关（说明里直接写清它决定哪个页面有没有内容）、其余文件夹收进折叠区。
+     *
+     * 契约：① 新增模式下「读取服务器文件夹」要先填密码才能点（探测 = 真登录一次）；
+     * ② 探测请求带上表单里的连接参数；③ 后端给的推荐集被预选成开关（不是空面板）；
+     * ④ 面板里只出现人话标签，服务器路径藏在「其他文件夹」折叠区里；
+     * ⑤ 关掉「我发出的邮件」时给出后果提醒；⑥ 勾选结果随账号提交（收件箱恒定在列）。
+     */
+    test("账号管理：同步范围（读取服务器文件夹 → 推荐集预选 → 开关随账号提交）", async ({ page }) => {
       const calls = { flags: [], send: [], delete: [], accounts: [] as unknown[], folders: [] as unknown[] };
       await stubMailApi(page, calls);
       const code = new TOTP({ secret: totpSecret! }).generate();
@@ -5603,48 +5901,115 @@ test.describe("站内邮件（/mail）", () => {
       const dialog = page.locator('[data-slot="dialog-content"]');
       await dialog.getByRole("button", { name: "添加账号" }).click();
 
-      const pick = dialog.getByRole("button", { name: "选择文件夹" });
-      // 未填密码时探测按钮禁用（新增模式拿不到已存凭据）
-      await expect(pick).toBeDisabled();
+      const sync = dialog.locator('[data-slot="folder-sync"]');
+      const read = dialog.getByRole("button", { name: "读取服务器文件夹" });
+      // 未填密码时不能读（新增模式拿不到已存凭据）——面板先把当前范围说清楚
+      await expect(read).toBeDisabled();
+      await expect(sync).toContainText("未指定");
+      await expect(sync).toContainText("收件箱 + 已发送 + 垃圾邮件");
       await dialog.getByLabel("备注名").fill("镜像");
       await dialog.getByLabel("邮箱地址").fill("mirror@example.com");
       await dialog.getByLabel("密码 / 授权码").fill("secret");
       await dialog.getByLabel("主机").first().fill("imap.example.com");
       await dialog.getByLabel("主机").nth(1).fill("smtp.example.com");
-      await expect(pick).toBeEnabled();
+      await expect(read).toBeEnabled();
 
-      await pick.click();
-      const picker = dialog.locator('[data-slot="folder-picker"]');
-      await expect(picker).toBeVisible();
-      // 探测请求带上了表单里的连接参数（没有账号 id 也能预览）
+      await read.click();
       await expect.poll(() => calls.folders?.length).toBe(1);
       expect(calls.folders?.[0]).toMatchObject({
         imapHost: "imap.example.com",
         email: "mirror@example.com",
         password: "secret",
       });
-      const boxes = picker.locator('input[type="checkbox"]');
-      await expect(boxes).toHaveCount(4);
-      await expect(picker).toContainText("垃圾邮件");
 
-      // 「用推荐的一组」= INBOX + 已发送 + 垃圾邮件 → 3 个 chips
-      await picker.getByRole("button", { name: "用推荐的一组" }).click();
-      await expect(dialog.locator('[data-slot="folder-chip"]')).toHaveCount(3);
-      // 手动加一个自定义文件夹、去掉 INBOX
-      await boxes.nth(3).check();
-      await boxes.nth(0).uncheck();
-      await expect(dialog.locator('[data-slot="folder-chip"]')).toHaveCount(3);
-      await expect(dialog.locator('[data-slot="folder-chip"]').nth(0)).toHaveText("已发送");
+      // 人话标签 + 推荐集已预选（收件箱是锁定对勾，不是可点复选框 → 勾上的 input 只有 2 个）
+      await expect(sync).toContainText("收件箱");
+      await expect(sync).toContainText("我发出的邮件");
+      await expect(sync).toContainText("垃圾邮件");
+      await expect(sync.locator('input[type="checkbox"]:checked')).toHaveCount(2);
+      // 服务器路径不进主面板，收在「其他文件夹」里且默认收起
+      await expect(sync.getByText("项目")).toHaveCount(0);
+      const more = sync.locator('[data-slot="folder-more-toggle"]');
+      await expect(more).toContainText("其他文件夹（1 个）");
+      await more.click();
+      await expect(sync.getByText("项目")).toBeVisible();
 
-      // 收起探测面板（按钮在展开态下位于对话框滚动区之外，真实使用也是先收起再保存）
-      await dialog.getByRole("button", { name: "收起" }).click();
-      await expect(dialog.locator('[data-slot="folder-picker"]')).toHaveCount(0);
+      // 勾上自定义文件夹、关掉发件箱（关掉时会出现后果提醒）
+      await sync.locator("label").filter({ hasText: "项目" }).locator("input").check();
+      const sent = sync.locator("label").filter({ hasText: "我发出的邮件" }).locator("input");
+      await sent.uncheck();
+      await expect(sync).toContainText("关掉后，你从这个账号发出的邮件在站内看不到");
+
       await dialog.getByRole("button", { name: "测试并保存" }).click();
       await expect.poll(() => calls.accounts?.length).toBe(1);
       expect(calls.accounts?.[0]).toMatchObject({
         method: "POST",
-        body: { folders: ["已发送", "垃圾邮件", "项目"] },
+        // 收件箱恒定在列（它在界面上是锁定常开的），关掉的那个不在列
+        body: { folders: ["INBOX", "垃圾邮件", "项目"] },
       });
+    });
+
+    /**
+     * 文件夹清单**按账号**探测（2026-10-10 用户报：「我添加了这个账号后没有手动修改过，
+     * 现在『同步文件夹』中自动显示已有 INBOX / 已发送 / 垃圾邮件，但是下方未添加的里面
+     * 又有 Sent Messages 和 Junk」）。
+     *
+     * 那不是这个账号的清单，而是**上一个被探测过的账号**的：`folderList` 是弹窗组件的
+     * state、弹窗常驻挂载，而旧代码只在「清单为空」时探测 → 一个页面会话里**只有第一次
+     * 打开选择器真探测过**，之后编辑任何账号看到的都是第一次那个账号的文件夹（实测复现：
+     * 先看 QQ 账号，再编辑阿里云账号，面板里列的仍是 QQ 的 `Sent Messages / Drafts /
+     * Deleted Messages / Junk / Archives / 其他文件夹/QQ邮件订阅`）。危害不止是看不懂：
+     * 用户照着它勾选，会把**别的账号的文件夹路径**写进这个账号的白名单。
+     *
+     * 契约：① 每个账号各探测一次；② 面板里只有**当前账号**的文件夹（换账号就换清单，
+     * 上一个账号的清单一条都不许留）；③ 面板属于「一次表单会话」，关掉表单后不该再弹开着。
+     */
+    test("账号管理：文件夹清单按账号探测，不串用上一个账号的清单", async ({ page }) => {
+      const calls = {
+        flags: [],
+        send: [],
+        delete: [],
+        accounts: [] as unknown[],
+        folders: [] as unknown[],
+        folderQueries: [] as string[],
+      };
+      await stubMailApi(page, calls);
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      await page.getByRole("button", { name: "账号", exact: true }).click();
+      const dialog = page.locator('[data-slot="dialog-content"]');
+      const sync = dialog.locator('[data-slot="folder-sync"]');
+      const more = sync.locator('[data-slot="folder-more-toggle"]');
+
+      // acc1 的清单：INBOX / 已发送 / 垃圾邮件 / 项目（桩里 acc2 才有 Sent）——编辑即自动读
+      await dialog.getByRole("button", { name: "编辑账号 me@mail.example.cn" }).click();
+      await expect(sync).toContainText("垃圾邮件");
+      await expect(more).toContainText("其他文件夹（1 个）");
+      await expect(sync.getByText("项目")).toHaveCount(0); // 折叠区默认收起
+      await more.click();
+      await expect(sync.getByText("项目")).toBeVisible();
+      await expect(sync, "「Sent」是 acc2 的文件夹").not.toContainText("Sent");
+
+      // ② 表单还开着、直接改编辑另一个账号：面板必须换成 acc2 的清单（旧实现复用 acc1 的）
+      await dialog.getByRole("button", { name: "编辑账号 ysy@edu.example.cn" }).click();
+      await expect(sync).toContainText("我发出的邮件");
+      await expect(sync, "acc2 没有垃圾文件夹，这一行不该在").not.toContainText("垃圾邮件");
+      await expect(more, "acc2 只有收件箱 + 已发送，没有「其他文件夹」").toHaveCount(0);
+      await expect(sync, "上一个账号的清单不能留在面板里").not.toContainText("项目");
+
+      // ③ 关掉表单再回来：面板不能停在上一个账号的清单上
+      await dialog.getByRole("button", { name: "取消", exact: true }).click();
+      await dialog.getByRole("button", { name: "编辑账号 me@mail.example.cn" }).click();
+      await expect(sync).toContainText("垃圾邮件");
+      await expect(more).toContainText("其他文件夹（1 个）");
+
+      expect(calls.folderQueries, "清单按账号记账：每次都是为自己这个账号探测").toEqual([
+        "acc1",
+        "acc2",
+        "acc1",
+      ]);
     });
 
     /**

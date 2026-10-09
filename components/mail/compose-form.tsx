@@ -134,6 +134,12 @@ export function ComposeForm() {
   /** 草稿落盘状态（底栏展示）：null = 尚无内容；saved = 已自动保存（附时刻，底栏显示相对时间）；
    *  error = 服务器写入失败 */
   const [draftState, setDraftState] = useState<MailDraftBarState | null>(null);
+  /**
+   * 这封草稿在服务器上带的附件（2026-10-10）。
+   * 站内还不能编辑草稿附件，但**保存时后端会把它们原样带过去**（draft-mirror 的
+   * readKeptAttachments），这里只做只读告知——否则用户会以为附件被弄丢了。
+   */
+  const [keptAttachments, setKeptAttachments] = useState<{ filename: string; size: number }[]>([]);
   // 底栏（MailShell 的贯通状态栏）在撰写路由显示草稿状态：挂载即标记撰写模式（左区换成
   // 草稿状态、中区账号指示隐藏），离开路由自动还原成列表统计
   usePublishDraftBar(draftState);
@@ -144,6 +150,16 @@ export function ComposeForm() {
   const draftIdRef = useRef<string | null>(null);
   /** 恢复流程完成前抑制自动保存（异步拉草稿期间，空白初值不得把服务器草稿冲掉） */
   const restoreDoneRef = useRef(false);
+  /**
+   * 「恢复草稿引起的那一次状态变化不算用户改动」。
+   *
+   * ⚠ 必须挡住（2026-10-10）：恢复草稿会 set 一串 state（正文/收件人/发件账号/replyRef…），
+   * 而自动保存的 effect 就盯这些 state——不挡的话"打开一封草稿"＝"立刻把它重存一遍"：
+   * 服务器上的那份会被替换（新 UID、时间变成"刚刚"），用户只是看了一眼却看到"最近修改时间
+   * 变成了现在"，草稿箱里的排序也被搅乱。草稿改为以服务商草稿文件夹为唯一事实源之后，
+   * 每一次这样的重存都是一次真实的服务器写入，代价更明确。
+   */
+  const skipNextAutosaveRef = useRef(false);
   /** 自上次成功保存后有修改（卸载 flush 只补有修改的草稿） */
   const dirtyRef = useRef(false);
   /** 已发送（防卸载 flush 在发送成功后又新建一封草稿） */
@@ -257,13 +273,28 @@ export function ComposeForm() {
     void (async () => {
       let restored = false;
       try {
-        const res = await fetch("/api/mail/drafts");
-        if (res.ok) {
-          const data = (await res.json()) as { items?: MailDraft[] };
-          const list = data.items ?? [];
-          const hit = urlDraftId
-            ? (list.find((d) => d.id === urlDraftId) ?? null)
-            : (list.find((d) => d.kind === draftKind && d.kindRef === draftKindRef) ?? null);
+        // ⚠ 取草稿分两步（2026-10-10 草稿改为"服务商草稿文件夹 = 唯一事实源"之后）：
+        //   ① 先定位是哪一封（`?draft=<id>` 直接取；否则按归属键按 kind/kindRef 从**本地缓存**里找
+        //      ——不发 IMAP，写信页是高频入口）；
+        //   ② 再按 id 取单封：服务器草稿的正文/附件在**服务端按需抓原文解析**，列表那一步只有
+        //      envelope（主题/收件人/时间）。漏了这一步就会出现"草稿有内容，写信页却是空白"。
+        let hit: MailDraft | null = null;
+        if (urlDraftId) {
+          const res = await fetch(`/api/mail/drafts/${encodeURIComponent(urlDraftId)}`);
+          if (res.ok) hit = (await res.json()) as MailDraft;
+        } else {
+          const params = new URLSearchParams({ kind: draftKind, kindRef: draftKindRef });
+          const res = await fetch(`/api/mail/drafts?${params}`);
+          if (res.ok) {
+            const data = (await res.json()) as { items?: MailDraft[] };
+            const first = data.items?.[0];
+            if (first) {
+              const one = await fetch(`/api/mail/drafts/${encodeURIComponent(first.id)}`);
+              if (one.ok) hit = (await one.json()) as MailDraft;
+            }
+          }
+        }
+        {
           if (hit && !cancelled) {
             draftIdRef.current = hit.id;
             applyDraft({
@@ -281,6 +312,11 @@ export function ComposeForm() {
             if (hit.to || hit.subject || hit.body) {
               setDraftState({ status: "saved", at: new Date(hit.updatedAt).getTime() || Date.now() });
             }
+            // 服务商草稿里带的附件：站内不显示也不支持编辑，但保存时会由后端原样保留
+            // （draft-mirror 的 readKeptAttachments），这里只如实告知，别让用户以为丢了
+            setKeptAttachments(hit.attachments ?? []);
+            // 下面这串 setState 触发的自动保存要跳过（见 skipNextAutosaveRef）
+            skipNextAutosaveRef.current = true;
             restored = true;
           }
         }
@@ -369,6 +405,10 @@ export function ComposeForm() {
   // 草稿自动保存（500ms 防抖；恢复完成前不保存——防空白初值冲掉服务器草稿）
   useEffect(() => {
     if (!restoreDoneRef.current) return;
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false;
+      return;
+    }
     dirtyRef.current = true;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => flushDraft(), 500);
@@ -808,6 +848,12 @@ export function ComposeForm() {
         />
       </Field>
 
+      {keptAttachments.length > 0 && (
+        <p className="flex items-start gap-2 text-xs text-muted-foreground" data-slot="draft-kept-attachments">
+          <PaperclipIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          {t("draftKeptAttachments", { count: keptAttachments.length })}
+        </p>
+      )}
       {attachments.length > 0 && (
         <ul className="flex shrink-0 flex-wrap gap-2">
           {attachments.map((a, i) => (

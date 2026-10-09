@@ -179,4 +179,13 @@ export interface MailDraft {
   references: string[];
   createdAt: string;
   updatedAt: string;
+  /**
+   * 正文/附件是否已读过（2026-10-10 草稿改为"服务商草稿文件夹 = 唯一事实源"之后）：
+   * 列表只用 IMAP envelope 就能拼出来（主题/收件人/时间），**正文与附件要抓原文**——
+   * 所以 `contentLoaded: false` 时 `body` 是空串，意思是"还没读过"，**不是**"这封草稿没有正文"。
+   */
+  contentLoaded?: boolean;
+  /** 附件清单（读过的服务器草稿才有；站内暂存的草稿为空）。只读展示 + 保存时原样保留 */
+  attachments?: { filename: string; contentType: string; size: number }[];
+
 }
