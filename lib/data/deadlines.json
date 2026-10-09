@@ -2444,6 +2444,19 @@
               "t": "2025-10-27 23:59:59"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://dasfaa2027.github.io/",
+          "tz": "Etc/GMT+12",
+          "date": "May 27-30, 2027",
+          "place": "Shenyang, China",
+          "timeline": [
+            {
+              "t": "2026-11-25 23:59:00",
+              "c": "Research papers"
+            }
+          ]
         }
       ]
     },
@@ -3028,10 +3041,10 @@
               "c": "Official February cutoff is 17:00 PST (UTC-8), represented as the equivalent"
             },
             {
-              "t": "2026-06-10 23:59:59"
+              "t": "2026-06-10 12:00:00"
             },
             {
-              "t": "2026-10-07 23:59:59"
+              "t": "2026-10-07 12:00:00"
             }
           ]
         }
@@ -5609,6 +5622,23 @@
           "timeline": [
             {
               "t": "2026-01-10 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://www.icpr2027.com/",
+          "tz": "Etc/GMT+12",
+          "date": "October 4-6 and 14-15, 2027",
+          "place": "Online",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2027-03-01 23:59:59"
+            },
+            {
+              "t": "2027-03-08 23:59:59",
+              "c": "All dates tentative; March 1 is paper registration; author rebuttal"
             }
           ]
         }
