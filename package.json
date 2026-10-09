@@ -13,6 +13,7 @@
     "fetch:ccf-dblp": "node scripts/fetch-ccf-dblp.mjs",
     "fetch:deadlines": "node scripts/fetch-deadlines.mjs",
     "fetch:cas": "node scripts/fetch-cas.mjs",
+    "gen:colors": "node scripts/gen-account-colors.mjs",
     "totp:setup": "node scripts/totp-setup.mjs",
     "test:e2e": "playwright test",
     "test:e2e:changed": "playwright test --grep \"$(node scripts/e2e-select.mjs)\"",

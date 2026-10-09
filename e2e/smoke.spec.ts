@@ -4621,6 +4621,47 @@ test.describe("站内邮件（/mail）", () => {
       expect(put.body.password).toBeUndefined();
     });
 
+    test("账号颜色：历史缺省色按色板渲染（不是原样内联），色板五色互不相同", async ({ page }) => {
+      const calls = {
+        flags: [] as unknown[],
+        send: [] as unknown[],
+        delete: [] as unknown[],
+        accountStore: undefined as Record<string, unknown>[] | undefined,
+      };
+      await stubMailApi(page, calls);
+      // 复现历史注册表：老版本 webmaild 给每个新账号填的是写死的 `#0ea5e9`
+      calls.accountStore![0].color = "#0ea5e9";
+      const code = new TOTP({ secret: totpSecret! }).generate();
+      await loginWithCode(page, code);
+
+      await gotoReady(page, "/mail");
+      await page.getByRole("button", { name: "账号", exact: true }).click();
+      const dialog = page.locator('[data-slot="dialog-content"]');
+      // 色板只在添加/编辑表单展开时在 → 点开「添加账号」
+      await dialog.getByRole("button", { name: "添加账号" }).click();
+      await expect(dialog.locator('[data-slot="account-color-swatch"]').first()).toBeVisible();
+
+      const c = await colorProbe(page);
+      // 五色互不相同：色板值的唯一来源是生成器，重复值意味着生成器坏了（用户最初报的就是"没有区别"）
+      const swatchColors = Object.values(c.swatches);
+      expect(swatchColors.length, "色板应有五格").toBe(5);
+      expect(new Set(swatchColors).size, "色板五色必须互不相同").toBe(5);
+      // 历史缺省色走别名渲染成色板 cyan，而不是把 `#0ea5e9` 原样内联（那会与同组色不是一套）
+      expect(c.dialog["主账号"], "历史缺省色应渲染为色板 cyan").toBe(c.swatches.cyan);
+      expect(c.dialog["主账号"], "不能是注册表里那个原样的 #0ea5e9").not.toBe("#0ea5e9");
+      expect(c.bar["主账号"], "底栏同理（两处一致）").toBe(c.dialog["主账号"]);
+
+      // 编辑表单里的选中态也按别名走：历史色要落在 cyan 那一格，否则看起来像"这个账号没有颜色"
+      await dialog.getByRole("button", { name: "编辑账号 me@mail.example.cn" }).click();
+      await expect(
+        dialog.locator('[data-slot="account-color-swatch"][data-color="cyan"]'),
+      ).toHaveAttribute("aria-pressed", "true");
+      await dialog.getByRole("button", { name: "编辑账号 ysy@edu.example.cn" }).click();
+      await expect(
+        dialog.locator('[data-slot="account-color-swatch"][data-color="violet"]'),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
+
     test("未读角标：大标题显示未读总数，收到新邮件弹提醒（toast + 动画）", async ({ page }) => {
       const calls = {
         flags: [],
@@ -5426,6 +5467,49 @@ test.describe("站内邮件（/mail）", () => {
       await expect(rows).toHaveCount(1);
     });
 
+    /**
+     * 读「同一个账号在两处显示的色点颜色」：底栏账号一览 vs 账号管理弹窗列表。
+     *
+     * ⚠ 断言方式是**两处互相比对**，不是比对具体色值（`rgb(30,175,213)` 这类）——色板值由
+     *   `scripts/gen-account-colors.mjs` 算出、会随「柔和度」调整，锁死值只会换来假红。
+     *   「同一个账号在两处必须是同一个色」才是契约（2026-10-09 用户报「账号管理页显示的账号颜色
+     *   和底栏指示器有色差」：弹窗当年把色板名当 CSS 颜色内联，`pink` 被画成 #FFC0CB）。
+     */
+    const colorProbe = (page: Page) =>
+      page.evaluate(() => {
+        // ⚠ 计算样式可能是 lab()/oklch()，canvas 的 fillStyle **不会**归一成 rgb（只原样回显）→
+        //   必须真画一个像素再 getImageData 读回
+        const hex = (css: string) => {
+          const ctx = document.createElement("canvas").getContext("2d")!;
+          ctx.fillStyle = "#000000";
+          ctx.fillStyle = css;
+          ctx.fillRect(0, 0, 1, 1);
+          const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+          return "#" + [r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("");
+        };
+        // 条目里的 aria-hidden 有两个（色点 + 「·」分隔符）——取无文本的那个
+        const dotOf = (row: Element) =>
+          [...row.querySelectorAll("[aria-hidden]")].find((d) => !d.textContent) ?? null;
+        const bar: Record<string, string> = {};
+        document.querySelectorAll('[data-slot="mail-statusbar-accounts"] > span').forEach((el) => {
+          const name = (el.textContent ?? "").replace(/^·/, "").trim();
+          const dot = dotOf(el);
+          if (name && dot) bar[name] = hex(getComputedStyle(dot).backgroundColor);
+        });
+        const dialog: Record<string, string> = {};
+        document.querySelectorAll('[data-slot="account-list"] > li').forEach((li) => {
+          const name = li.querySelector("p")?.textContent?.trim() ?? "";
+          const dot = li.querySelector('span[aria-hidden]');
+          if (name && dot) dialog[name] = hex(getComputedStyle(dot).backgroundColor);
+        });
+        const swatches: Record<string, string> = {};
+        document.querySelectorAll('[data-slot="account-color-swatch"]').forEach((el) => {
+          const name = el.getAttribute("data-color");
+          if (name) swatches[name] = hex(getComputedStyle(el).backgroundColor);
+        });
+        return { bar, dialog, swatches };
+      });
+
     test("账号管理：列出账号 → 新增（连接测试后落盘）→ 删除（确认弹窗）", async ({ page }) => {
       const calls = { flags: [], send: [], delete: [], accounts: [] as unknown[] };
       await stubMailApi(page, calls);
@@ -5444,9 +5528,19 @@ test.describe("站内邮件（/mail）", () => {
       await expect(rows.nth(0)).toContainText("主账号");
       await expect(rows.nth(0)).toContainText("me@mail.example.cn");
 
+      // 色点一致性（2026-10-09 用户报「账号管理页显示的账号颜色和底栏指示器有色差」）：
+      // 同一个账号在弹窗列表与底栏必须逐字节同色。弹窗曾把色板名（cyan/pink/…）当 CSS 颜色
+      // 内联 —— 它们恰好都是 CSS 具名颜色，`pink` 画出来是 #FFC0CB，而底栏走的是一套算出来的
+      // 柔和色：**不报错，只是静默画出另一个色**（实测 ΔE 50）。
+      const light = await colorProbe(page);
+      expect(Object.keys(light.bar).length, "底栏应列出全部账号（宽度 ≥40rem）").toBe(2);
+      for (const name of ["主账号", "学校"]) {
+        expect(light.dialog[name], `「${name}」在弹窗与底栏必须同色`).toBe(light.bar[name]);
+      }
+
       // 新增：展开表单 → 填写 → 提交（未填密码时后端 400 的分支不在此覆盖，由 webmail 单测锁定）
       await dialog.getByRole("button", { name: "添加账号" }).click();
-      // 账号颜色（2026-10-09）：预选 = 第一个**没人用过**的色板色，而色板顺序是「差异最大优先」
+      // 账号颜色（2026-10-09）：预选 = 第一个**没人用过**的色板色，顺序即色板声明顺序
       // （cyan→pink→violet→orange→teal）——acc1=cyan、acc2=violet 时缺的正是 pink
       const swatch = (name: string) =>
         dialog.locator(`[data-slot="account-color-swatch"][data-color="${name}"]`);

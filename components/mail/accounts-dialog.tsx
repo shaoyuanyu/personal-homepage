@@ -511,47 +511,55 @@ export function AccountsDialog() {
               data-slot="account-list"
               className="flex flex-col divide-y divide-border rounded-lg border border-border"
             >
-              {accounts?.map((a) => (
-                <li key={a.id} className="flex items-center gap-3 px-3 py-2.5">
-                  <span
-                    className="inline-block size-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: a.color }}
-                    aria-hidden
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
-                      {a.displayName}
-                      {!a.enabled && (
-                        <span className="ml-2 text-xs text-muted-foreground">{t("disabled")}</span>
-                      )}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">{a.email}</p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t("editAccount", { email: a.email })}
-                    title={t("editAccount", { email: a.email })}
-                    onClick={() => openEdit(a)}
-                  >
-                    <PencilIcon data-icon="default" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t("deleteAccount", { email: a.email })}
-                    disabled={(accounts?.length ?? 0) <= 1}
-                    title={
-                      (accounts?.length ?? 0) <= 1
-                        ? t("keepOne")
-                        : t("deleteAccount", { email: a.email })
-                    }
-                    onClick={() => setPendingDelete(a)}
-                  >
-                    <Trash2Icon data-icon="default" />
-                  </Button>
-                </li>
-              ))}
+              {accounts?.map((a) => {
+                // ⚠ 必须走 accountDotProps，**不能**直接把 a.color 当 CSS 颜色内联（2026-10-09 用户报
+                //   「账号管理页显示的账号颜色和底栏指示器的有色差」）：色板色存的是**名字**
+                //   （cyan/pink/violet/orange/teal），而它们恰好都是 **CSS 具名颜色**，`background-color: pink`
+                //   解析出来是 `#FFC0CB`（淡粉），不是 Tailwind `pink-600` 的 `#DB2777`——不会报错、只是
+                //   静默地画出另一个色，且没有 `dark:` 档。名字 → 类的映射只在 accountDotProps 里。
+                const d = accountDotProps(a.color);
+                return (
+                  <li key={a.id} className="flex items-center gap-3 px-3 py-2.5">
+                    <span
+                      className={cn("inline-block size-2.5 shrink-0 rounded-full", d.className)}
+                      style={d.style}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {a.displayName}
+                        {!a.enabled && (
+                          <span className="ml-2 text-xs text-muted-foreground">{t("disabled")}</span>
+                        )}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">{a.email}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("editAccount", { email: a.email })}
+                      title={t("editAccount", { email: a.email })}
+                      onClick={() => openEdit(a)}
+                    >
+                      <PencilIcon data-icon="default" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("deleteAccount", { email: a.email })}
+                      disabled={(accounts?.length ?? 0) <= 1}
+                      title={
+                        (accounts?.length ?? 0) <= 1
+                          ? t("keepOne")
+                          : t("deleteAccount", { email: a.email })
+                      }
+                      onClick={() => setPendingDelete(a)}
+                    >
+                      <Trash2Icon data-icon="default" />
+                    </Button>
+                  </li>
+                );
+              })}
             </ul>
 
             {/* 添加 / 编辑账号：共用一张展开式表单 */}
@@ -919,7 +927,7 @@ export function AccountsDialog() {
  *
  * ⚠ 选中态**不能只靠颜色本身**表达——五个圆钮本来就是五种颜色，选中与否都是个色点。
  *   这里用「外描边 + 未选中略淡」两种非颜色线索：`aria-pressed` + `data-color` 供 E2E 断言，
- *   颜色类名（`bg-cyan-600` 这类）不进断言（CLAUDE.md：锁契约不锁像素）。
+ *   颜色类名（`bg-[#1eafd5]` 这类）不进断言（CLAUDE.md：锁契约不锁像素）。
  */
 function ColorSwatch({
   color,
