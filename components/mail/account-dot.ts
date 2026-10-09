@@ -13,13 +13,18 @@ const ACCOUNT_DOT: Record<string, string> = {
 };
 
 /**
- * 色板顺序 = 新账号自动取色的顺序，也是账号管理弹窗里色板的排列顺序。
+ * 色板顺序 = 分配顺序 = 账号管理弹窗里色板的排列顺序。
  *
- * ⚠ 与后端 `webmail/src/accounts.ts` 的 `ACCOUNT_COLOR_PALETTE` 是**同一套名字**，
- *   改动必须两处同步（同 SENT_FOLDER_NAMES 的约定）；色板顺序决定「下一个没被占用的颜色」
- *   是哪个，两边不一致时新建账号拿到的颜色会与弹窗里的高亮对不上。
+ * ⚠ 这是**「每次取离已用色最远」的贪心解**（浅色 600 档 OKLab ΔE：cyan→pink 31.1、
+ *   再 violet 24.5、再 orange 15.4、最后 teal 6.9）：按顺序取第一个未占用的色，就等于
+ *   「每次挑一个跟已有账号差距最大的」——第 1、2 个账号拿到的是色板里差距最大的一对。
+ *   ⚠ 唯一弱项是**第 5 个**（teal 与 cyan ΔE 只有 6.9，肉眼难分）：要到第 5 个账号才会遇到。
+ *
+ * ⚠ 与后端 `webmail/src/accounts.ts` 的 `ACCOUNT_COLOR_PALETTE` 是**同一套名字、同一顺序**，
+ *   改动必须两处同步（同 SENT_FOLDER_NAMES 的约定）；顺序决定「下一个没被占用的颜色」是哪个，
+ *   两边不一致时新建账号拿到的颜色会与弹窗里的高亮对不上。
  */
-export const ACCOUNT_COLOR_NAMES = ["cyan", "violet", "orange", "pink", "teal"] as const;
+export const ACCOUNT_COLOR_NAMES = ["cyan", "pink", "violet", "orange", "teal"] as const;
 
 export type AccountColorName = (typeof ACCOUNT_COLOR_NAMES)[number];
 

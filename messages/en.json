@@ -564,7 +564,7 @@
       "senderNamePlaceholder": "e.g. Shaoyuan Yu (blank = address only)",
       "nameFieldsHint": "The label is shown only on this site; the sender name is sent with your emails.",
       "fieldColor": "Account color",
-      "colorHint": "Used by the account indicator in the status bar, the account switcher, and list rows. Give each account its own color, or the dots stop telling accounts apart.",
+      "colorHint": "New accounts are given the most distinct remaining color automatically — you only need to pick one here to override it.",
       "colorTaken": "Another account already uses this color",
       "colorCustom": "Current color",
       "colorNames": {

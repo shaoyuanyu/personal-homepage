@@ -4273,7 +4273,16 @@ test.describe("站内邮件（/mail）", () => {
       const threadToggle = thread.locator('[data-slot="mail-thread-toggle"]');
       const threadList = thread.locator('[data-slot="mail-thread-list"]');
       await expect(thread).toBeVisible();
-      if ((await thread.getAttribute("data-open")) === "false") await threadToggle.click();
+      // ⚠ 展开会话必须"点到为真为止"（2026-10-09 全量跑偶发红两次后定稿）：
+      //   自动折叠的**复量**发生在挂载后 360ms（图片/字体迟到时首次量不到溢出），所以
+      //   「读一眼 data-open 再决定点不点」会与它抢跑——读到 true 不点，随后被它收起来；
+      //   读到 true 后连点两次，中间那一瞬间被它收起就会把状态点反。
+      //   任何一次点击都会置 `threadTouched` ⇒ 自动折叠从此停手（effect 重跑直接 return，
+      //   已排队的定时器被 cleanup 清掉），所以"先点一下定住、再点到展开"是与时序无关的写法。
+      await threadToggle.click();
+      for (let i = 0; i < 3 && (await thread.getAttribute("data-open")) !== "true"; i++) {
+        await threadToggle.click();
+      }
       await expect(thread).toHaveAttribute("data-open", "true");
       await expect(threadToggle).toHaveAttribute("aria-expanded", "true");
       await expect(threadList.locator("> li")).toHaveCount(2);
@@ -4294,7 +4303,17 @@ test.describe("站内邮件（/mail）", () => {
       await expect(thread).toHaveAttribute("data-open", "false");
       await expect(threadToggle).toHaveAttribute("aria-expanded", "false");
       expect((await thread.boundingBox())!.height, "收起态只剩标题行").toBeLessThanOrEqual(40);
-      expect(await threadList.evaluate((el) => el.clientHeight), "收起后列表不占高度").toBe(0);
+      // 收起的面板：整块被压平 + `inert`（键盘与读屏都进不去被折叠的内容）
+      await expect(page.locator("#mail-thread-panel")).toHaveAttribute("inert", "");
+      // ⚠ 量的是 **clientHeight（内容盒）而不是 getBoundingClientRect**（2026-10-09 全量跑连红
+      //   两次后查清）：列表自己带 `border`，收起时内容盒为 0、但边框盒恒有 2px（上下各 1px
+      //   边框），量边框盒永远等不到 0。另外点完立刻量会量到 300ms 轨道动画中途（实测 1px），
+      //   所以用 poll 等稳态；容差 1px 是给分数布局取整留的（别写 `toBe(0)`）。
+      await expect
+        .poll(async () => threadList.evaluate((el) => el.clientHeight), {
+          message: "收起后列表内容盒应当归零（等 300ms 轨道动画结束）",
+        })
+        .toBeLessThanOrEqual(1);
       await threadToggle.click();
       await expect(thread).toHaveAttribute("data-open", "true");
 
@@ -5427,15 +5446,15 @@ test.describe("站内邮件（/mail）", () => {
 
       // 新增：展开表单 → 填写 → 提交（未填密码时后端 400 的分支不在此覆盖，由 webmail 单测锁定）
       await dialog.getByRole("button", { name: "添加账号" }).click();
-      // 账号颜色（2026-10-09）：预选 = 第一个**没人用过**的色板色（acc1=cyan、acc2=violet → orange），
-      // 这样从界面加进来的账号不会一进来就与既有账号撞成同一个色点
+      // 账号颜色（2026-10-09）：预选 = 第一个**没人用过**的色板色，而色板顺序是「差异最大优先」
+      // （cyan→pink→violet→orange→teal）——acc1=cyan、acc2=violet 时缺的正是 pink
       const swatch = (name: string) =>
         dialog.locator(`[data-slot="account-color-swatch"][data-color="${name}"]`);
-      await expect(swatch("orange")).toHaveAttribute("aria-pressed", "true");
-      // 选到别人在用的色 → 有提示（不拦）；换回一个没被占用的色 → 提示消失
+      await expect(swatch("pink")).toHaveAttribute("aria-pressed", "true");
+      // 选到别人在用的色 → 有提示（不拦）；换一个没被占用的色 → 提示消失
       await swatch("cyan").click();
       await expect(dialog.locator('[data-slot="account-color-taken"]')).toBeVisible();
-      await swatch("pink").click();
+      await swatch("orange").click();
       await expect(dialog.locator('[data-slot="account-color-taken"]')).toHaveCount(0);
       await dialog.getByLabel("备注名").fill("镜像");
       await dialog.getByLabel("邮箱地址").fill("mirror@example.com");
@@ -5446,7 +5465,7 @@ test.describe("站内邮件（/mail）", () => {
       await expect.poll(() => calls.accounts?.length).toBe(1);
       expect(calls.accounts?.[0]).toMatchObject({
         method: "POST",
-        body: { displayName: "镜像", email: "mirror@example.com", color: "pink" },
+        body: { displayName: "镜像", email: "mirror@example.com", color: "orange" },
       });
       await expect(rows).toHaveCount(3);
       await expect(rows.nth(2)).toContainText("mirror@example.com");
