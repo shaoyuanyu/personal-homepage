@@ -5095,6 +5095,19 @@
               "t": "2026-06-06 23:59:59"
             }
           ]
+        },
+        {
+          "y": 2027,
+          "link": "https://icdm2027-website.onrender.com/",
+          "tz": "Etc/GMT+12",
+          "date": "November 15-18, 2027",
+          "place": "Brisbane, Australia",
+          "timeline": [
+            {
+              "t": "2027-06-06 23:59:00",
+              "c": "Full papers; dates are tentative and subject to change"
+            }
+          ]
         }
       ]
     },
@@ -5299,6 +5312,18 @@
           "timeline": [
             {
               "t": "2026-02-04 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://2027.ieeeicip.org/",
+          "tz": "Etc/GMT+12",
+          "date": "November 29-December 3, 2027",
+          "place": "Singapore",
+          "timeline": [
+            {
+              "t": "2027-03-31 23:59:59"
             }
           ]
         }
@@ -6303,6 +6328,23 @@
             },
             {
               "t": "2026-01-19 23:59:59"
+            }
+          ]
+        },
+        {
+          "y": 2027,
+          "link": "https://2027.ijcai.org/",
+          "tz": "Etc/GMT+12",
+          "date": "August 7-13, 2027",
+          "place": "Kyoto, Japan",
+          "timeline": [
+            {
+              "k": "abstract",
+              "t": "2027-01-04 23:59:00"
+            },
+            {
+              "t": "2027-01-11 23:59:00",
+              "c": "Separate satellite event: August 15-17, 2027, Hengqin, China"
             }
           ]
         }
